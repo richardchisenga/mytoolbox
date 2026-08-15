@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  frontend:
+    build: .
+    container_name: mytoolbox_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://backend:5000
+    depends_on:
+      - backend
+    networks:
+      - mytoolbox_network
+
+  backend:
+    build: ./backend
+    container_name: mytoolbox_api
+    ports:
+      - "5000:5000"
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    networks:
+      - mytoolbox_network
+
+networks:
+  mytoolbox_network:
+    driver: bridge
