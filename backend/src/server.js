@@ -22,6 +22,11 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
+// ✅ ADD THIS ROOT ROUTE
+app.get('/', (req, res) => {
+  res.send('✅ mytoolbox backend is running!');
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/lessons', lessonRoutes);
 app.use('/api/schemes', schemeRoutes);
@@ -31,6 +36,6 @@ app.get('/api/health', (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 mytoolbox API running on port ${PORT}`);
 });
