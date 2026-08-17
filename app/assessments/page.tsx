@@ -19,7 +19,7 @@ export default function AssessmentsPage() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const addQuestion = () => {
+  const addQuestion = () => { 
     setQuestions([
       ...questions,
       { id: `q-${Date.now()}`, type: "short-answer", question: "", marks: 5 },
