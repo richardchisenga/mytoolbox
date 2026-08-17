@@ -19,10 +19,16 @@ export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [lessons, setLessons] = useState<any[]>([]);
+  const [stats, setStats] = useState({
+    totalLessons: 0,
+    totalSchemes: 0,
+    totalAssessments: 0,
+    alignment: "100%",
+  });
 
   useEffect(() => {
-    // Fetch user data from backend
-    const fetchUserData = async () => {
+    const fetchDashboardData = async () => {
       try {
         const token = localStorage.getItem("token");
         if (!token) {
@@ -30,34 +36,67 @@ export default function DashboardPage() {
           return;
         }
 
-        const response = await fetch(
+        // Fetch user data
+        const userResponse = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/api/auth/me`,
           {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
+            headers: { Authorization: `Bearer ${token}` },
           }
         );
 
-        if (response.ok) {
-          const userData = await response.json();
+        if (userResponse.ok) {
+          const userData = await userResponse.json();
           setUser(userData);
         } else {
-          // If token is invalid, redirect to login
           localStorage.removeItem("token");
           router.push("/login");
+          return;
         }
+
+        // Fetch lessons (this is a mock - you'll implement real API later)
+        // For now, we'll use sample data but with the user's name
+        setLessons([
+          { 
+            id: 1, 
+            title: "Fractions – Introduction", 
+            grade: "Grade 5", 
+            subject: "Mathematics", 
+            date: "2026-08-14" 
+          },
+          { 
+            id: 2, 
+            title: "Photosynthesis", 
+            grade: "Grade 8", 
+            subject: "Science", 
+            date: "2026-08-13" 
+          },
+          { 
+            id: 3, 
+            title: "Reading Comprehension", 
+            grade: "Grade 3", 
+            subject: "English", 
+            date: "2026-08-12" 
+          },
+        ]);
+
+        // Set stats (you'll get these from your API later)
+        setStats({
+          totalLessons: 24,
+          totalSchemes: 3,
+          totalAssessments: 12,
+          alignment: "100%",
+        });
+
       } catch (error) {
-        console.error("Failed to fetch user data:", error);
+        console.error("Failed to fetch dashboard data:", error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchUserData();
+    fetchDashboardData();
   }, [router]);
 
-  // Show loading state
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-cream">
@@ -69,28 +108,20 @@ export default function DashboardPage() {
     );
   }
 
-  // If no user, redirect to login
   if (!user) {
-    router.push("/login");
     return null;
   }
 
-  // Stats data - replace with real data from your backend
-  const stats = [
-    { label: "Lessons created", value: "24", icon: DocumentTextIcon },
-    { label: "Schemes of work", value: "3", icon: CalendarIcon },
-    { label: "Assessments", value: "12", icon: ClipboardDocumentListIcon },
-    { label: "Curriculum alignment", value: "100%", icon: ChartBarIcon },
-  ];
-
-  const recentLessons = [
-    { id: 1, title: "Fractions – Introduction", grade: "Grade 5", subject: "Mathematics", date: "2026-08-14" },
-    { id: 2, title: "Photosynthesis", grade: "Grade 8", subject: "Science", date: "2026-08-13" },
-    { id: 3, title: "Reading Comprehension", grade: "Grade 3", subject: "English", date: "2026-08-12" },
+  const statCards = [
+    { label: "Lessons created", value: stats.totalLessons, icon: DocumentTextIcon },
+    { label: "Schemes of work", value: stats.totalSchemes, icon: CalendarIcon },
+    { label: "Assessments", value: stats.totalAssessments, icon: ClipboardDocumentListIcon },
+    { label: "Curriculum alignment", value: stats.alignment, icon: ChartBarIcon },
   ];
 
   return (
     <div className="min-h-screen bg-cream">
+      {/* Header */}
       <header className="bg-primary text-white shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-16">
           <div className="flex items-center space-x-2">
@@ -117,7 +148,9 @@ export default function DashboardPage() {
         </div>
       </header>
 
+      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Welcome Section */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-primary">
@@ -137,8 +170,9 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {stats.map((stat, index) => (
+          {statCards.map((stat, index) => (
             <div key={index} className="bg-white p-6 rounded-xl shadow-sm border border-highlight hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between">
                 <stat.icon className="w-8 h-8 text-primary" />
@@ -149,6 +183,7 @@ export default function DashboardPage() {
           ))}
         </div>
 
+        {/* Recent Lessons */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <div className="bg-white rounded-xl shadow-sm border border-highlight p-6">
@@ -161,7 +196,7 @@ export default function DashboardPage() {
                 </Link>
               </div>
               <div className="space-y-3">
-                {recentLessons.map((lesson) => (
+                {lessons.map((lesson) => (
                   <div key={lesson.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-primary/5 transition-colors cursor-pointer border border-transparent hover:border-highlight">
                     <div>
                       <p className="font-medium text-dark">{lesson.title}</p>
@@ -179,13 +214,17 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {/* Quick Actions */}
           <div>
             <div className="bg-gradient-to-br from-primary/5 to-white rounded-xl shadow-sm border border-highlight p-6">
               <h2 className="text-xl font-semibold text-primary flex items-center gap-2 mb-4">
                 <SparklesIcon className="w-5 h-5 text-secondary" /> Quick Actions
               </h2>
               <div className="space-y-3">
-                <button className="w-full text-left p-3 bg-white rounded-lg border border-highlight hover:border-secondary hover:shadow-sm transition-all flex items-center gap-3">
+                <button 
+                  onClick={() => router.push("/generate")}
+                  className="w-full text-left p-3 bg-white rounded-lg border border-highlight hover:border-secondary hover:shadow-sm transition-all flex items-center gap-3"
+                >
                   <BookOpenIcon className="w-5 h-5 text-primary" />
                   <span className="text-sm font-medium">Generate from topic</span>
                 </button>
