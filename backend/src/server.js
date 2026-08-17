@@ -35,18 +35,33 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // ============================================
-// ROUTES - Import from files
+// ROUTES
 // ============================================
 
-// Import route files
-const authRoutes = require('./routes/auth');
-const lessonRoutes = require('./routes/lessons');
-const schemeRoutes = require('./routes/schemes');
+// ✅ Try to load routes with error handling
+try {
+  const authRoutes = require('./routes/auth');
+  app.use('/api/auth', authRoutes);
+  console.log('✅ Auth routes loaded');
+} catch (error) {
+  console.log('⚠️ Auth routes not loaded:', error.message);
+}
 
-// Use routes
-app.use('/api/auth', authRoutes);
-app.use('/api/lessons', lessonRoutes);
-app.use('/api/schemes', schemeRoutes);
+try {
+  const lessonRoutes = require('./routes/lessons');
+  app.use('/api/lessons', lessonRoutes);
+  console.log('✅ Lesson routes loaded');
+} catch (error) {
+  console.log('⚠️ Lesson routes not loaded:', error.message);
+}
+
+try {
+  const schemeRoutes = require('./routes/schemes');
+  app.use('/api/schemes', schemeRoutes);
+  console.log('✅ Scheme routes loaded');
+} catch (error) {
+  console.log('⚠️ Scheme routes not loaded:', error.message);
+}
 
 // ============================================
 // BASIC ROUTES
@@ -89,7 +104,5 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server running on port ${PORT}`);
-  console.log(`✅ Health check: http://localhost:${PORT}/api/health`);
-  console.log(`✅ Auth routes: http://localhost:${PORT}/api/auth`);
-  console.log(`✅ Lesson routes: http://localhost:${PORT}/api/lessons`);
+  console.log(`✅ Health check: /api/health`);
 });
