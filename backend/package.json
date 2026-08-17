@@ -12,7 +12,8 @@
     "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
     "helmet": "^7.0.0",
-    "express-rate-limit": "^6.10.0"
+    "express-rate-limit": "^6.10.0",
+    "openai": "^4.20.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
