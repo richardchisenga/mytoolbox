@@ -31,6 +31,11 @@ export default function GeneratePage() {
           body: JSON.stringify({ topic, grade, subject }),
         }
       );
+      
+      if (!response.ok) {
+        throw new Error("Failed to generate lesson");
+      }
+      
       const data = await response.json();
       setGeneratedLesson(data);
     } catch (error) {
@@ -110,7 +115,7 @@ export default function GeneratePage() {
         ) : (
           <div className="bg-white p-6 rounded-xl shadow-md mt-6">
             <h2 className="text-2xl font-bold text-primary">
-              {generatedLesson.title}
+              {generatedLesson.title || generatedLesson.topic || "Lesson Generated"}
             </h2>
             <p className="text-gray-600">
               {generatedLesson.grade} · {generatedLesson.subject}
