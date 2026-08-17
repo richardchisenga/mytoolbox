@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import { useState } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   DocumentTextIcon,
   CalendarIcon,
@@ -13,26 +13,81 @@ import {
   SparklesIcon,
   BookOpenIcon,
   PencilSquareIcon,
-} from '@heroicons/react/24/outline'
+} from "@heroicons/react/24/outline";
 
 export default function DashboardPage() {
-  const router = useRouter()
-  const [userName] = useState('John Banda')
-  const [school] = useState('Manungu Secondary School')
+  const router = useRouter();
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    // Fetch user data from backend
+    const fetchUserData = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) {
+          router.push("/login");
+          return;
+        }
+
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/auth/me`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        if (response.ok) {
+          const userData = await response.json();
+          setUser(userData);
+        } else {
+          // If token is invalid, redirect to login
+          localStorage.removeItem("token");
+          router.push("/login");
+        }
+      } catch (error) {
+        console.error("Failed to fetch user data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUserData();
+  }, [router]);
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-cream">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="mt-4 text-dark/60">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If no user, redirect to login
+  if (!user) {
+    router.push("/login");
+    return null;
+  }
+
+  // Stats data - replace with real data from your backend
   const stats = [
-    { label: 'Lessons created', value: '24', icon: DocumentTextIcon },
-    { label: 'Schemes of work', value: '3', icon: CalendarIcon },
-    { label: 'Assessments', value: '12', icon: ClipboardDocumentListIcon },
-    { label: 'Curriculum alignment', value: '100%', icon: ChartBarIcon },
-  ]
+    { label: "Lessons created", value: "24", icon: DocumentTextIcon },
+    { label: "Schemes of work", value: "3", icon: CalendarIcon },
+    { label: "Assessments", value: "12", icon: ClipboardDocumentListIcon },
+    { label: "Curriculum alignment", value: "100%", icon: ChartBarIcon },
+  ];
 
   const recentLessons = [
-    { id: 1, title: 'Fractions – Introduction', grade: 'Grade 5', subject: 'Mathematics', date: '2026-08-14' },
-    { id: 2, title: 'Photosynthesis', grade: 'Grade 8', subject: 'Science', date: '2026-08-13' },
-    { id: 3, title: 'Reading Comprehension', grade: 'Grade 3', subject: 'English', date: '2026-08-12' },
-    { id: 4, title: 'Human Rights – Lesson 3', grade: 'Grade 10', subject: 'Civic Education', date: '2026-08-11' },
-  ]
+    { id: 1, title: "Fractions – Introduction", grade: "Grade 5", subject: "Mathematics", date: "2026-08-14" },
+    { id: 2, title: "Photosynthesis", grade: "Grade 8", subject: "Science", date: "2026-08-13" },
+    { id: 3, title: "Reading Comprehension", grade: "Grade 3", subject: "English", date: "2026-08-12" },
+  ];
 
   return (
     <div className="min-h-screen bg-cream">
@@ -48,8 +103,16 @@ export default function DashboardPage() {
             <Link href="/profile" className="hover:text-secondary">Profile</Link>
           </nav>
           <div className="flex items-center space-x-4">
-            <span className="text-sm hidden md:inline">{userName}</span>
-            <button onClick={() => router.push('/')} className="text-sm hover:text-secondary">Logout</button>
+            <span className="text-sm hidden md:inline">{user.fullName}</span>
+            <button 
+              onClick={() => {
+                localStorage.removeItem("token");
+                router.push("/login");
+              }} 
+              className="text-sm hover:text-secondary"
+            >
+              Logout
+            </button>
           </div>
         </div>
       </header>
@@ -57,12 +120,20 @@ export default function DashboardPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-primary">Welcome back, {userName.split(' ')[0]}! 👋</h1>
-            <p className="text-dark/70 mt-1">{school} · <span className="text-success font-semibold">100% curriculum aligned</span></p>
+            <h1 className="text-3xl font-bold text-primary">
+              Welcome back, {user.fullName.split(" ")[0]}! 👋
+            </h1>
+            <p className="text-dark/70 mt-1">
+              {user.school} · <span className="text-success font-semibold">100% curriculum aligned</span>
+            </p>
           </div>
           <div className="mt-4 md:mt-0 flex flex-col sm:flex-row gap-3">
-            <Link href="/generate" className="btn-primary flex items-center justify-center gap-2"><PlusCircleIcon className="w-5 h-5" /> New Lesson</Link>
-            <Link href="/schemes" className="btn-outline flex items-center justify-center gap-2"><CalendarIcon className="w-5 h-5" /> New Scheme</Link>
+            <Link href="/generate" className="btn-primary flex items-center justify-center gap-2">
+              <PlusCircleIcon className="w-5 h-5" /> New Lesson
+            </Link>
+            <Link href="/schemes" className="btn-outline flex items-center justify-center gap-2">
+              <CalendarIcon className="w-5 h-5" /> New Scheme
+            </Link>
           </div>
         </div>
 
@@ -85,7 +156,9 @@ export default function DashboardPage() {
                 <h2 className="text-xl font-semibold text-primary flex items-center gap-2">
                   <DocumentTextIcon className="w-5 h-5" /> Recent Lessons
                 </h2>
-                <Link href="/dashboard/lessons" className="text-sm text-primary hover:underline flex items-center gap-1">View all <ArrowRightIcon className="w-4 h-4" /></Link>
+                <Link href="/dashboard/lessons" className="text-sm text-primary hover:underline flex items-center gap-1">
+                  View all <ArrowRightIcon className="w-4 h-4" />
+                </Link>
               </div>
               <div className="space-y-3">
                 {recentLessons.map((lesson) => (
@@ -96,7 +169,9 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-dark/40">{lesson.date}</span>
-                      <button className="text-primary hover:text-secondary transition-colors"><PencilSquareIcon className="w-5 h-5" /></button>
+                      <button className="text-primary hover:text-secondary transition-colors">
+                        <PencilSquareIcon className="w-5 h-5" />
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -127,12 +202,16 @@ export default function DashboardPage() {
 
             <div className="mt-4 bg-white rounded-xl shadow-sm border border-highlight p-6">
               <div className="flex items-center gap-1 text-secondary mb-2">{'★'.repeat(5)}</div>
-              <p className="text-sm text-dark/80 italic">"This app is very helpful, I love it. It has made my life easier 😊"</p>
-              <p className="text-xs text-dark/60 mt-2">— Martha Kaluba, Itezhi-Tezhi Boarding School</p>
+              <p className="text-sm text-dark/80 italic">
+                "This app is very helpful, I love it. It has made my life easier 😊"
+              </p>
+              <p className="text-xs text-dark/60 mt-2">
+                — {user.fullName}, {user.school}
+              </p>
             </div>
           </div>
         </div>
       </main>
     </div>
-  )
+  );
 }
