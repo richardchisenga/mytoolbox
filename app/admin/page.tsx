@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import {
   UsersIcon,
@@ -14,9 +13,27 @@ import {
 } from "@heroicons/react/24/outline";
 
 export default function AdminDashboard() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [stats, setStats] = useState<any>(null);
 
-  useEffect(() => {
+  // Admin password - CHANGE THIS to something secure
+  const ADMIN_PASSWORD = "admin123";
+
+  const handleLogin = () => {
+    if (password === ADMIN_PASSWORD) {
+      setIsAuthenticated(true);
+      setError("");
+      // Load stats after authentication
+      loadStats();
+    } else {
+      setError("Wrong password! Please try again.");
+      setPassword("");
+    }
+  };
+
+  const loadStats = () => {
     // Simulate loading stats - replace with actual API call
     setStats({
       totalUsers: 1247,
@@ -32,8 +49,60 @@ export default function AdminDashboard() {
       systemHealth: "Operational",
       uptime: "99.98%",
     });
-  }, []);
+  };
 
+  // If not authenticated, show password screen
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <div className="bg-white p-8 rounded-xl shadow-lg max-w-sm w-full border border-gray-200">
+          <div className="text-center mb-6">
+            <h1 className="text-2xl font-bold text-primary">🔐 Admin Access</h1>
+            <p className="text-gray-600 mt-2 text-sm">
+              Enter the admin password to continue.
+            </p>
+          </div>
+
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+              ❌ {error}
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Password
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="mt-1 w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="Enter admin password"
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+              autoFocus
+            />
+          </div>
+
+          <button
+            onClick={handleLogin}
+            className="mt-4 bg-yellow-500 text-black px-6 py-3 rounded-lg hover:bg-yellow-400 w-full font-semibold transition-colors"
+          >
+            🔑 Access Admin
+          </button>
+
+          <p className="text-center mt-4 text-xs text-gray-500">
+            Default password: <span className="font-mono">admin123</span>
+          </p>
+          <p className="text-center text-xs text-gray-400">
+            Change this in the code (ADMIN_PASSWORD variable)
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // If authenticated, show admin dashboard
   if (!stats) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -82,12 +151,23 @@ export default function AdminDashboard() {
             <h1 className="text-3xl font-bold text-primary">Admin Dashboard</h1>
             <p className="text-gray-600">Overview of your platform</p>
           </div>
-          <Link
-            href="/dashboard"
-            className="text-primary hover:underline flex items-center gap-1"
-          >
-            ← Back to Dashboard
-          </Link>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setIsAuthenticated(false);
+                setPassword("");
+              }}
+              className="text-sm text-red-600 hover:text-red-800 transition-colors"
+            >
+              🔒 Lock Admin
+            </button>
+            <Link
+              href="/dashboard"
+              className="text-primary hover:underline flex items-center gap-1"
+            >
+              ← Back to Dashboard
+            </Link>
+          </div>
         </div>
 
         {/* Stats Grid */}
@@ -95,7 +175,7 @@ export default function AdminDashboard() {
           {statCards.map((stat, index) => (
             <div
               key={index}
-              className="bg-white rounded-xl shadow-sm border border-gray-200 p-6"
+              className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
             >
               <div className="flex items-center justify-between">
                 <div className={`${stat.bg} p-3 rounded-lg`}>
