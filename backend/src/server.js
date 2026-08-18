@@ -72,7 +72,16 @@ try {
   console.log('⚠️ Scheme routes not loaded:', error.message);
 }
 
-// 6. 404 handler
+// ✅ 6. Subscription routes (NEW)
+try {
+  const subscriptionRoutes = require('./routes/subscription');
+  app.use('/api/subscription', subscriptionRoutes);
+  console.log('✅ Subscription routes loaded');
+} catch (error) {
+  console.log('⚠️ Subscription routes not loaded:', error.message);
+}
+
+// 7. 404 handler
 app.use((req, res) => {
   res.status(404).json({
     error: 'Not found',
@@ -80,7 +89,7 @@ app.use((req, res) => {
   });
 });
 
-// 7. Error handler
+// 8. Error handler
 app.use((err, req, res, next) => {
   console.error('Error:', err.message);
   res.status(500).json({
