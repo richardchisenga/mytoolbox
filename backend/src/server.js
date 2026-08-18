@@ -5,6 +5,9 @@ const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const app = express();
+// ✅ Enable trust proxy for Railway
+app.set('trust proxy', 1);
+
 const PORT = process.env.PORT || 5000;
 
 // ============================================
@@ -34,7 +37,7 @@ const limiter = rateLimit({
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   validate: { 
-    xForwardedForHeader: false  // ← THIS FIXES THE ERROR
+    xForwardedForHeader: false  // Fixes the header validation
   }
 });
 app.use(limiter);
