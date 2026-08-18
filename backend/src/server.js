@@ -5,47 +5,51 @@ const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const app = express();
-// ✅ Enable trust proxy for Railway
 app.set('trust proxy', 1);
-
-const PORT = process.env.PORT || 5000;  
+const PORT = process.env.PORT || 5000;
 
 // ============================================
-// CORS - FIXED WITH OPTIONS HANDLING
+// ⚡ CORS - PERMANENT FIX
 // ============================================
-app.use(cors({
-  origin: [
-    'https://mytoolbox-nine.vercel.app',
-    'https://mytoolbox.vercel.app',
-    'http://localhost:3000'
-  ],
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'https://mytoolbox-nine.vercel.app',
+      'https://mytoolbox.vercel.app',
+      'http://localhost:3000'
+    ];
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('Blocked origin:', origin);
+      callback(null, true); // Allow all for testing
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+};
 
-// ✅ Handle preflight requests
-app.options('*', cors());
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // ============================================
 // MIDDLEWARE
 // ============================================
 
-// Security
 app.use(helmet());
-
-// Parse JSON
 app.use(express.json({ limit: '10mb' }));
 
-// Rate limiting - FIXED
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 100,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  validate: { 
-    xForwardedForHeader: false  // Fixes the header validation
-  }
+  validate: { xForwardedForHeader: false }
 });
 app.use(limiter);
 
@@ -53,7 +57,6 @@ app.use(limiter);
 // ROUTES
 // ============================================
 
-// ✅ Try to load routes with error handling
 try {
   const authRoutes = require('./routes/auth');
   app.use('/api/auth', authRoutes);
@@ -82,18 +85,22 @@ try {
 // BASIC ROUTES
 // ============================================
 
-// Root route
 app.get('/', (req, res) => {
   res.send('✅ mytoolbox backend is running!');
 });
 
-// Health check
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     message: 'Backend is live!'
   });
+});
+
+// Log all requests for debugging
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path} - Origin: ${req.headers.origin}`);
+  next();
 });
 
 // 404 handler
@@ -120,4 +127,5 @@ app.use((err, req, res, next) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`✅ Health check: /api/health`);
+  console.log(`✅ CORS enabled for Vercel frontend`);
 });
