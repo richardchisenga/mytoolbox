@@ -8,7 +8,7 @@ const app = express();
 // ✅ Enable trust proxy for Railway
 app.set('trust proxy', 1);
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5000;  
 
 // ============================================
 // CORS - FIXED WITH OPTIONS HANDLING
