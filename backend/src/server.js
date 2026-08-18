@@ -5,13 +5,18 @@ const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 8080;  // ✅ Use 8080 for Railway
+// ✅ Railway uses PORT from environment
+const PORT = process.env.PORT || 5000;
 
 // ============================================
-// CORS - Allow all origins for testing
+// CORS - Allow your frontend
 // ============================================
 app.use(cors({
-  origin: '*',
+  origin: [
+    'https://mytoolbox-nine.vercel.app',
+    'https://mytoolbox.vercel.app',
+    'http://localhost:3000'
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -25,16 +30,6 @@ app.options('*', cors());
 
 app.use(helmet());
 app.use(express.json({ limit: '10mb' }));
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  validate: { xForwardedForHeader: false }
-});
-app.use(limiter);
 
 // ============================================
 // ROUTES
@@ -97,11 +92,10 @@ app.use((err, req, res, next) => {
 });
 
 // ============================================
-// START SERVER - LISTEN ON ALL INTERFACES
+// START SERVER
 // ============================================
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`✅ Health check: /api/health`);
-  console.log(`✅ CORS enabled for all origins`);
 });
