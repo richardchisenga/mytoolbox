@@ -11,21 +11,28 @@ app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
 
 // ============================================
-// MIDDLEWARE
+// CORS - FIXED WITH OPTIONS HANDLING
 // ============================================
-
-// Security
-app.use(helmet());
-
-// CORS - allow your frontend
 app.use(cors({
   origin: [
     'https://mytoolbox-nine.vercel.app',
     'https://mytoolbox.vercel.app',
     'http://localhost:3000'
   ],
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// ✅ Handle preflight requests
+app.options('*', cors());
+
+// ============================================
+// MIDDLEWARE
+// ============================================
+
+// Security
+app.use(helmet());
 
 // Parse JSON
 app.use(express.json({ limit: '10mb' }));
