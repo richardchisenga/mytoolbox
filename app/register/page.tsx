@@ -50,8 +50,8 @@ export default function RegisterPage() {
             school,
             province,
             district,
-            grades,
-            subjects,
+            grades: grades.length ? grades : ["Grade 11"],
+            subjects: subjects.length ? subjects : ["Mathematics"],
           }),
         }
       );
@@ -75,7 +75,7 @@ export default function RegisterPage() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-cream px-4">
       <div className="w-full max-w-md bg-white rounded-xl shadow-lg p-6 md:p-8 border border-highlight">
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-primary">Mwabuka buti — good morning</h1>
+          <h1 className="text-2xl font-bold text-primary">Tabukeni mwane  shikenu mwani welcome</h1>
           <p className="text-sm text-dark/70 mt-1">Set up once — your details flow straight onto your lesson plans.</p>
         </div>
 
