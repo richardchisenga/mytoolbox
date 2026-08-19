@@ -27,8 +27,7 @@ export default function Home() {
       <section className="bg-gradient-to-b from-green-50 to-white py-20 px-4 flex-1">
         <div className="max-w-4xl mx-auto text-center">
           <h1 className="text-4xl md:text-6xl font-bold text-green-800 leading-tight">
-            Reclaim your weekends,<br />
-            <span className="text-yellow-600">starting today</span>
+            Teaching made easy
           </h1>
           <p className="text-lg md:text-xl text-gray-600 mt-4 max-w-2xl mx-auto">
             Create professional, curriculum-aligned lesson plans in minutes.
