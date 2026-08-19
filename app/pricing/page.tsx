@@ -7,11 +7,10 @@ import { useRouter } from "next/navigation";
 export default function PricingPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [user, setUser] = useState<any>(null);
   const [subscription, setSubscription] = useState<any>(null);
 
   useEffect(() => {
-    const fetchUser = async () => {
+    const fetchSubscription = async () => {
       const token = localStorage.getItem("token");
       if (!token) {
         router.push("/login");
@@ -20,7 +19,7 @@ export default function PricingPage() {
 
       try {
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/auth/me`,
+          `${process.env.NEXT_PUBLIC_API_URL}/api/subscription/status`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -28,63 +27,22 @@ export default function PricingPage() {
 
         if (response.ok) {
           const data = await response.json();
-          setUser(data);
-          
-          const subResponse = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL}/api/subscription/status`,
-            {
-              headers: { Authorization: `Bearer ${token}` },
-            }
-          );
-          
-          if (subResponse.ok) {
-            const subData = await subResponse.json();
-            setSubscription(subData);
-          }
-        } else {
-          router.push("/login");
+          setSubscription(data);
         }
       } catch (error) {
-        console.error("Error:", error);
+        console.error("Error fetching subscription:", error);
       }
     };
 
-    fetchUser();
+    fetchSubscription();
   }, [router]);
-
-  const handleUpgrade = async () => {
-    setLoading(true);
-    try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/subscription/upgrade`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        alert("✅ Upgraded to Pro! Your subscription is now active.");
-        router.push("/dashboard");
-      } else {
-        alert("❌ Upgrade failed. Please try again.");
-      }
-    } catch (error) {
-      console.error("Error:", error);
-      alert("❌ Upgrade failed. Please try again.");
-    }
-    setLoading(false);
-  };
 
   return (
     <div className="min-h-screen bg-cream p-8">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold text-primary text-center">Choose Your Plan</h1>
+        <h1 className="text-3xl font-bold text-primary text-center">
+          Choose Your Plan
+        </h1>
         <p className="text-gray-600 text-center mt-2">
           Upgrade to Pro for unlimited lesson plans and premium features
         </p>
@@ -102,10 +60,10 @@ export default function PricingPage() {
               <li className="flex items-center gap-2 text-gray-400">❌ Priority support</li>
             </ul>
             <button
-              className="mt-4 w-full py-2 border border-gray-300 rounded-md text-gray-500"
+              className="mt-4 w-full py-2 border border-gray-300 rounded-md text-gray-500 cursor-default"
               disabled
             >
-              Current Plan {subscription?.role === "free" ? "✅" : ""}
+              {subscription?.role === "free" ? "✅ Current Plan" : "Free"}
             </button>
           </div>
 
@@ -133,7 +91,7 @@ export default function PricingPage() {
             ) : (
               <Link
                 href="/payment"
-                className="mt-4 w-full bg-yellow-500 text-black py-2 rounded-md hover:bg-yellow-400 text-center block"
+                className="mt-4 w-full bg-yellow-500 text-black py-2 rounded-md hover:bg-yellow-400 text-center block font-semibold"
               >
                 Subscribe Now
               </Link>
