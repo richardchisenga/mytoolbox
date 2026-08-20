@@ -91,11 +91,20 @@ try {
   console.log('⚠️ Payment routes not loaded:', error.message);
 }
 
+// ✅ 8. Admin routes (NEW)
+try {
+  const adminRoutes = require('./routes/admin');
+  app.use('/api/admin', adminRoutes);
+  console.log('✅ Admin routes loaded');
+} catch (error) {
+  console.log('⚠️ Admin routes not loaded:', error.message);
+}
+
 // ============================================
 // ERROR HANDLING - MUST BE AT THE END
 // ============================================
 
-// 8. 404 handler
+// 9. 404 handler
 app.use((req, res) => {
   res.status(404).json({
     error: 'Not found',
@@ -103,7 +112,7 @@ app.use((req, res) => {
   });
 });
 
-// 9. Error handler
+// 10. Error handler
 app.use((err, req, res, next) => {
   console.error('Error:', err.message);
   res.status(500).json({
