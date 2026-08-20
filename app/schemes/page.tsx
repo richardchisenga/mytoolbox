@@ -56,6 +56,97 @@ export default function SchemesPage() {
     }
   };
 
+  // Export to Word/HTML
+  const exportScheme = () => {
+    if (!generatedScheme) return;
+    
+    const content = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Scheme of Work - ${generatedScheme.subject}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 30px; }
+    .header { text-align: center; border-bottom: 3px solid #1B5E20; padding-bottom: 10px; margin-bottom: 20px; }
+    .header h1 { color: #1B5E20; margin: 0; }
+    .header h2 { margin: 5px 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border: 1px solid #333; padding: 8px; text-align: left; vertical-align: top; }
+    th { background-color: #1B5E20; color: white; font-weight: bold; }
+    .week-col { width: 5%; text-align: center; }
+    .topic-col { width: 15%; }
+    .outcome-col { width: 15%; }
+    .methods-col { width: 10%; }
+    .aids-col { width: 10%; }
+    .references-col { width: 10%; }
+    .knowledge-col { width: 15%; }
+    .skills-col { width: 10%; }
+    .values-col { width: 10%; }
+    .subtopic { font-size: 11px; color: #555; }
+    .footer { text-align: center; border-top: 2px solid #1B5E20; padding-top: 10px; margin-top: 20px; font-size: 11px; color: #777; }
+    @media print {
+      body { margin: 15px; }
+      th { background-color: #1B5E20 !important; color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>KASHINAKAZHI SECONDARY SCHOOL</h1>
+    <h2>${generatedScheme.subject} SCHEMES OF WORK</h2>
+    <p><strong>${generatedScheme.grade} TERM ${generatedScheme.term}</strong></p>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th class="week-col">WEEK</th>
+        <th class="topic-col">TOPIC</th>
+        <th class="outcome-col">SPECIFIC OUTCOME</th>
+        <th class="methods-col">TEACHING AND LEARNING METHODS</th>
+        <th class="aids-col">TEACHING AND LEARNING AIDS</th>
+        <th class="references-col">REFERENCE BOOKS</th>
+        <th class="knowledge-col">KNOWLEDGE</th>
+        <th class="skills-col">SKILLS</th>
+        <th class="values-col">VALUES</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${generatedScheme.weeks.map((week: any) => `
+        <tr>
+          <td class="week-col">${week.week}</td>
+          <td class="topic-col">
+            <strong>${week.topic}</strong>
+            ${week.subtopics ? week.subtopics.map((s: string) => `<div class="subtopic">• ${s}</div>`).join('') : ''}
+          </td>
+          <td class="outcome-col">${week.specificOutcome}</td>
+          <td class="methods-col">${week.methods ? week.methods.map((m: string) => `<div>${m}</div>`).join('') : ''}</td>
+          <td class="aids-col">${week.aids ? week.aids.map((a: string) => `<div>${a}</div>`).join('') : ''}</td>
+          <td class="references-col">${week.references ? week.references.map((r: string) => `<div>${r}</div>`).join('') : ''}</td>
+          <td class="knowledge-col">${week.knowledge || ''}</td>
+          <td class="skills-col">${week.skills || ''}</td>
+          <td class="values-col">${week.values || ''}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    © 2026 mytoolbox - Made for teachers in Zambia
+  </div>
+</body>
+</html>
+    `;
+
+    const blob = new Blob([content], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${generatedScheme.subject}_Scheme_of_Work_Term_${generatedScheme.term}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="min-h-screen bg-cream">
       <header className="bg-primary text-white shadow-md">
@@ -163,67 +254,74 @@ export default function SchemesPage() {
                   <ArrowLeftIcon className="w-5 h-5" /> New scheme
                 </button>
                 <h2 className="text-2xl font-bold text-primary">
-                  {generatedScheme.school || 'Scheme of Work'} — {generatedScheme.subject}
+                  {generatedScheme.school} — {generatedScheme.subject}
                 </h2>
                 <p className="text-sm text-dark/60">
-                  {generatedScheme.grade} · {generatedScheme.term} · {generatedScheme.year || "2026"}
+                  {generatedScheme.grade} · {generatedScheme.term} · {generatedScheme.year}
                 </p>
               </div>
-              <button className="btn-primary flex items-center gap-2">
+              <button
+                onClick={exportScheme}
+                className="btn-primary flex items-center gap-2"
+              >
                 <ArrowDownTrayIcon className="w-5 h-5" /> Export
               </button>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-highlight overflow-hidden">
-              <div className="grid grid-cols-1 md:grid-cols-6 bg-primary/5 p-4 border-b border-highlight font-semibold text-primary">
-                <div>Week</div>
-                <div className="md:col-span-2">Topic</div>
-                <div>Specific Outcome</div>
-                <div>Methods</div>
-                <div>Aids</div>
-              </div>
-              <div className="divide-y divide-gray-100">
-                {generatedScheme.weeks && generatedScheme.weeks.map((week: any, idx: number) => (
-                  <div
-                    key={idx}
-                    className="grid grid-cols-1 md:grid-cols-6 p-4 hover:bg-primary/5 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="bg-secondary/10 text-primary font-bold rounded-full w-8 h-8 flex items-center justify-center text-sm">
-                        {week.week || idx + 1}
-                      </span>
-                    </div>
-                    <div className="md:col-span-2 space-y-1 mt-2 md:mt-0">
-                      {week.topic && <p className="text-sm font-medium">{week.topic}</p>}
-                      {week.topics && week.topics.map((t: string, i: number) => (
-                        <p key={i} className="text-sm">{t}</p>
-                      ))}
-                    </div>
-                    <div className="space-y-1 mt-2 md:mt-0">
-                      {week.specificOutcome && <p className="text-xs text-dark/70">• {week.specificOutcome}</p>}
-                      {week.objectives && week.objectives.map((obj: string, i: number) => (
-                        <p key={i} className="text-xs text-dark/70">• {obj}</p>
-                      ))}
-                    </div>
-                    <div className="space-y-1 mt-2 md:mt-0">
-                      {week.methods && week.methods.map((m: string, i: number) => (
-                        <span key={i} className="text-xs bg-gray-100 px-2 py-0.5 rounded-full mr-1">{m}</span>
-                      ))}
-                    </div>
-                    <div className="space-y-1 mt-2 md:mt-0">
-                      {week.aids && week.aids.map((a: string, i: number) => (
-                        <span key={i} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full mr-1">{a}</span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <div className="bg-white rounded-xl shadow-sm border border-highlight overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-primary text-white">
+                    <th className="p-2 border border-highlight text-center w-12">WEEK</th>
+                    <th className="p-2 border border-highlight text-left">TOPIC</th>
+                    <th className="p-2 border border-highlight text-left">SPECIFIC OUTCOME</th>
+                    <th className="p-2 border border-highlight text-left">TEACHING AND LEARNING METHODS</th>
+                    <th className="p-2 border border-highlight text-left">TEACHING AND LEARNING AIDS</th>
+                    <th className="p-2 border border-highlight text-left">REFERENCE BOOKS</th>
+                    <th className="p-2 border border-highlight text-left">KNOWLEDGE</th>
+                    <th className="p-2 border border-highlight text-left">SKILLS</th>
+                    <th className="p-2 border border-highlight text-left">VALUES</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {generatedScheme.weeks.map((week: any, idx: number) => (
+                    <tr key={idx} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                      <td className="p-2 border border-highlight text-center font-bold">{week.week}</td>
+                      <td className="p-2 border border-highlight">
+                        <strong>{week.topic}</strong>
+                        {week.subtopics && week.subtopics.map((s: string, i: number) => (
+                          <div key={i} className="text-xs text-gray-600">• {s}</div>
+                        ))}
+                      </td>
+                      <td className="p-2 border border-highlight text-xs">{week.specificOutcome}</td>
+                      <td className="p-2 border border-highlight text-xs">
+                        {week.methods && week.methods.map((m: string, i: number) => (
+                          <div key={i}>• {m}</div>
+                        ))}
+                      </td>
+                      <td className="p-2 border border-highlight text-xs">
+                        {week.aids && week.aids.map((a: string, i: number) => (
+                          <div key={i}>• {a}</div>
+                        ))}
+                      </td>
+                      <td className="p-2 border border-highlight text-xs">
+                        {week.references && week.references.map((r: string, i: number) => (
+                          <div key={i}>• {r}</div>
+                        ))}
+                      </td>
+                      <td className="p-2 border border-highlight text-xs">{week.knowledge || '-'}</td>
+                      <td className="p-2 border border-highlight text-xs">{week.skills || '-'}</td>
+                      <td className="p-2 border border-highlight text-xs">{week.values || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
-            <div className="mt-6 bg-success/10 border border-success/30 rounded-xl p-4 flex items-center gap-3">
+            <div className="mt-6 bg-success/10 border border-success/30 rounded-xl p-4 flex flex-wrap items-center gap-3">
               <span className="text-success font-bold">✓ CDC Mapped</span>
               <span className="text-sm text-dark/60">|</span>
-              <span className="text-sm text-dark/60">{generatedScheme.totalWeeks || 13} weeks · Full term coverage</span>
+              <span className="text-sm text-dark/60">{generatedScheme.totalWeeks} weeks · Full term coverage</span>
               <span className="text-sm text-dark/60">|</span>
               <span className="text-sm text-success font-semibold">100% aligned to syllabus</span>
             </div>
