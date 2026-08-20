@@ -18,14 +18,13 @@ export default function AdminDashboard() {
   const [error, setError] = useState("");
   const [stats, setStats] = useState<any>(null);
 
-  // Admin password - CHANGE THIS to something secure
-  const ADMIN_PASSWORD = "admin123";
+  // ✅ Your new password
+  const ADMIN_PASSWORD = "1914@29ce";
 
   const handleLogin = () => {
     if (password === ADMIN_PASSWORD) {
       setIsAuthenticated(true);
       setError("");
-      // Load stats after authentication
       loadStats();
     } else {
       setError("Wrong password! Please try again.");
@@ -34,7 +33,6 @@ export default function AdminDashboard() {
   };
 
   const loadStats = () => {
-    // Simulate loading stats - replace with actual API call
     setStats({
       totalUsers: 1247,
       totalLessons: 3456,
@@ -91,12 +89,7 @@ export default function AdminDashboard() {
             🔑 Access Admin
           </button>
 
-          <p className="text-center mt-4 text-xs text-gray-500">
-            Default password: <span className="font-mono">admin123</span>
-          </p>
-          <p className="text-center text-xs text-gray-400">
-            Change this in the code (ADMIN_PASSWORD variable)
-          </p>
+          {/* ✅ Password display removed */}
         </div>
       </div>
     );
