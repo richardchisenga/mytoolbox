@@ -2,67 +2,58 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeftIcon, CalendarIcon, ArrowDownTrayIcon } from "@heroicons/react/24/outline";
 
 export default function SchemesPage() {
+  const router = useRouter();
   const [grade, setGrade] = useState("");
   const [subject, setSubject] = useState("");
   const [term, setTerm] = useState("1");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedScheme, setGeneratedScheme] = useState<any>(null);
+  const [error, setError] = useState("");
 
-  const generateScheme = () => {
+  const generateScheme = async () => {
+    setError("");
     if (!grade || !subject) {
-      alert("Please select grade and subject");
+      setError("Please select grade and subject");
       return;
     }
 
     setIsGenerating(true);
-    // Simulate API call - replace with actual backend integration later
-    setTimeout(() => {
-      const weeks = [];
-      const topics = [
-        `Introduction to ${subject}`,
-        `Basic concepts in ${subject}`,
-        `Core principles of ${subject}`,
-        `Practical applications of ${subject}`,
-        `Advanced topics in ${subject}`,
-        `Review and consolidation`,
-        `Assessment preparation`,
-        `Mid-term assessment`,
-        `${subject} in action`,
-        `Real-world examples in ${subject}`,
-        `Critical thinking in ${subject}`,
-        `Group projects in ${subject}`,
-        `Revision and final assessment`,
-      ];
-
-      for (let i = 0; i < 13; i++) {
-        weeks.push({
-          week: i + 1,
-          topics: [
-            `Week ${i + 1}: ${topics[i]}`,
-            `Topic ${i + 1}: Detailed exploration`,
-          ],
-          objectives: [
-            `Understand and apply ${subject} concepts`,
-            "Develop problem-solving skills",
-            "Demonstrate understanding through practical tasks",
-          ],
-        });
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        router.push("/login");
+        return;
       }
 
-      setGeneratedScheme({
-        id: `scheme-${Date.now()}`,
-        grade: `Grade ${grade}`,
-        subject,
-        term: `Term ${term}`,
-        year: "2026",
-        totalWeeks: 13,
-        weeks,
-      });
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/schemes/generate`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ grade, subject, term }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to generate scheme");
+      }
+
+      const data = await response.json();
+      setGeneratedScheme(data);
+    } catch (error: any) {
+      console.error("Generation failed:", error);
+      setError(error.message || "Failed to generate scheme. Please try again.");
+    } finally {
       setIsGenerating(false);
-    }, 1500);
+    }
   };
 
   return (
@@ -95,6 +86,12 @@ export default function SchemesPage() {
               </p>
             </div>
 
+            {error && (
+              <div className="max-w-2xl p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm mb-4">
+                ❌ {error}
+              </div>
+            )}
+
             <div className="max-w-2xl bg-white rounded-xl shadow-sm border border-highlight p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -105,11 +102,9 @@ export default function SchemesPage() {
                     className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                   >
                     <option value="">Select grade</option>
-                    {["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"].map(
-                      (g) => (
-                        <option key={g}>Grade {g}</option>
-                      )
-                    )}
+                    {["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"].map((g) => (
+                      <option key={g}>Grade {g}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -119,7 +114,7 @@ export default function SchemesPage() {
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
                     className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                    placeholder="e.g. Science"
+                    placeholder="e.g. Biology"
                   />
                 </div>
               </div>
@@ -145,7 +140,7 @@ export default function SchemesPage() {
                 >
                   {isGenerating ? (
                     <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />{" "}
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       Generating Scheme...
                     </>
                   ) : (
@@ -168,10 +163,10 @@ export default function SchemesPage() {
                   <ArrowLeftIcon className="w-5 h-5" /> New scheme
                 </button>
                 <h2 className="text-2xl font-bold text-primary">
-                  Scheme of Work — {generatedScheme.subject}
+                  {generatedScheme.school || 'Scheme of Work'} — {generatedScheme.subject}
                 </h2>
                 <p className="text-sm text-dark/60">
-                  {generatedScheme.grade} · {generatedScheme.term} · {generatedScheme.year}
+                  {generatedScheme.grade} · {generatedScheme.term} · {generatedScheme.year || "2026"}
                 </p>
               </div>
               <button className="btn-primary flex items-center gap-2">
@@ -180,32 +175,45 @@ export default function SchemesPage() {
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-highlight overflow-hidden">
-              <div className="grid grid-cols-1 md:grid-cols-4 bg-primary/5 p-4 border-b border-highlight font-semibold text-primary">
+              <div className="grid grid-cols-1 md:grid-cols-6 bg-primary/5 p-4 border-b border-highlight font-semibold text-primary">
                 <div>Week</div>
-                <div className="md:col-span-2">Topics</div>
-                <div>Objectives</div>
+                <div className="md:col-span-2">Topic</div>
+                <div>Specific Outcome</div>
+                <div>Methods</div>
+                <div>Aids</div>
               </div>
               <div className="divide-y divide-gray-100">
-                {generatedScheme.weeks.map((week: any) => (
+                {generatedScheme.weeks && generatedScheme.weeks.map((week: any, idx: number) => (
                   <div
-                    key={week.week}
-                    className="grid grid-cols-1 md:grid-cols-4 p-4 hover:bg-primary/5 transition-colors"
+                    key={idx}
+                    className="grid grid-cols-1 md:grid-cols-6 p-4 hover:bg-primary/5 transition-colors"
                   >
                     <div className="flex items-center gap-2">
                       <span className="bg-secondary/10 text-primary font-bold rounded-full w-8 h-8 flex items-center justify-center text-sm">
-                        {week.week}
+                        {week.week || idx + 1}
                       </span>
                     </div>
                     <div className="md:col-span-2 space-y-1 mt-2 md:mt-0">
-                      {week.topics.map((topic: string, idx: number) => (
-                        <p key={idx} className="text-sm">
-                          {topic}
-                        </p>
+                      {week.topic && <p className="text-sm font-medium">{week.topic}</p>}
+                      {week.topics && week.topics.map((t: string, i: number) => (
+                        <p key={i} className="text-sm">{t}</p>
                       ))}
                     </div>
                     <div className="space-y-1 mt-2 md:mt-0">
-                      <p className="text-xs text-dark/70">• {week.objectives[0]}</p>
-                      <p className="text-xs text-dark/70">• {week.objectives[1]}</p>
+                      {week.specificOutcome && <p className="text-xs text-dark/70">• {week.specificOutcome}</p>}
+                      {week.objectives && week.objectives.map((obj: string, i: number) => (
+                        <p key={i} className="text-xs text-dark/70">• {obj}</p>
+                      ))}
+                    </div>
+                    <div className="space-y-1 mt-2 md:mt-0">
+                      {week.methods && week.methods.map((m: string, i: number) => (
+                        <span key={i} className="text-xs bg-gray-100 px-2 py-0.5 rounded-full mr-1">{m}</span>
+                      ))}
+                    </div>
+                    <div className="space-y-1 mt-2 md:mt-0">
+                      {week.aids && week.aids.map((a: string, i: number) => (
+                        <span key={i} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full mr-1">{a}</span>
+                      ))}
                     </div>
                   </div>
                 ))}
@@ -215,11 +223,9 @@ export default function SchemesPage() {
             <div className="mt-6 bg-success/10 border border-success/30 rounded-xl p-4 flex items-center gap-3">
               <span className="text-success font-bold">✓ CDC Mapped</span>
               <span className="text-sm text-dark/60">|</span>
-              <span className="text-sm text-dark/60">13 weeks · Full term coverage</span>
+              <span className="text-sm text-dark/60">{generatedScheme.totalWeeks || 13} weeks · Full term coverage</span>
               <span className="text-sm text-dark/60">|</span>
-              <span className="text-sm text-success font-semibold">
-                100% aligned to syllabus
-              </span>
+              <span className="text-sm text-success font-semibold">100% aligned to syllabus</span>
             </div>
           </div>
         )}
