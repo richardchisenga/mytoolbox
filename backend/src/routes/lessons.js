@@ -37,43 +37,32 @@ const authenticate = (req, res, next) => {
   }
 };
 
-// Generate lesson using DeepSeek
+// Generate lesson using DeepSeek with CBC or OBC template
 router.post('/generate', authenticate, async (req, res) => {
   try {
-    const { grade, subject, topic, classSize } = req.body;
+    const { grade, subject, topic, classSize, curriculum } = req.body;
 
     if (!grade || !subject || !topic) {
       return res.status(400).json({ error: 'Grade, subject, and topic are required' });
     }
 
+    // Determine curriculum type
+    const curriculumType = curriculum || 'cbc'; // 'cbc' or 'obc'
+
+    // Build the prompt based on curriculum type
+    const prompt = buildLessonPrompt(grade, subject, topic, classSize, curriculumType);
+
     // If DeepSeek is configured, use it
     if (deepseekClient) {
       try {
-        const prompt = `
-You are an expert Zambian teacher creating a lesson plan for ${grade} ${subject} on the topic: "${topic}".
-
-Return the response in JSON format with these keys:
-{
-  "title": "${topic}",
-  "grade": "${grade}",
-  "subject": "${subject}",
-  "duration": "40 min",
-  "objectives": ["Objective 1", "Objective 2", "Objective 3", "Objective 4"],
-  "development": ["Introduction: ...", "Main Activity: ...", "Consolidation: ...", "Conclusion: ..."],
-  "activities": ["Activity 1", "Activity 2", "Activity 3"],
-  "assessment": "Assessment description",
-  "curriculumCodes": ["CDC Code 1", "CDC Code 2"]
-}
-`;
-
         const completion = await deepseekClient.chat.completions.create({
-          model: "deepseek-chat",
+          model: "deepseek-v4-flash",
           messages: [
-            { role: "system", content: "You are a helpful assistant specialized in the Zambian education curriculum. Always respond with valid JSON only." },
+            { role: "system", content: "You are an expert Zambian teacher following the Ministry of Education curriculum standards. Always respond with valid JSON only." },
             { role: "user", content: prompt }
           ],
           temperature: 0.7,
-          max_tokens: 2048
+          max_tokens: 4096
         });
 
         // Parse the response
@@ -89,11 +78,12 @@ Return the response in JSON format with these keys:
           id: `lesson-${Date.now()}`,
           userId: req.userId,
           ...lessonData,
+          curriculum: curriculumType,
           classSize: classSize || 40,
           createdAt: new Date().toISOString()
         };
 
-        console.log('✅ Lesson generated with DeepSeek for user:', req.userId);
+        console.log(`✅ Lesson generated with DeepSeek (${curriculumType}) for user:`, req.userId);
         return res.status(201).json(lesson);
       } catch (error) {
         console.error('❌ DeepSeek API error:', error.message);
@@ -101,46 +91,257 @@ Return the response in JSON format with these keys:
       }
     }
 
-    // Fallback mock lesson
-    console.log('📝 Using mock lesson fallback');
-    const mockLesson = {
-      id: `lesson-${Date.now()}`,
-      userId: req.userId,
-      grade,
-      subject,
-      topic,
-      classSize: classSize || 40,
-      duration: '40 min',
-      objectives: [
-        `By the end of this lesson, learners will be able to explain the key concepts of ${topic}`,
-        `Apply knowledge of ${topic} to solve problems`,
-        'Demonstrate understanding through practical activities'
-      ],
-      development: [
-        'Introduction (5 min): Engage learners with real-world examples',
-        'Main Activity (20 min): Group work exploring the topic',
-        'Consolidation (10 min): Class discussion and clarification',
-        'Conclusion (5 min): Summary and preview of next lesson'
-      ],
-      activities: [
-        'Group discussion using local examples',
-        'Hands-on activity with available materials',
-        'Peer teaching and collaborative learning'
-      ],
-      assessment: 'Observation, participation, and a short written exercise',
-      curriculumCodes: [
-        'Outcome: Curriculum alignment (Matched)',
-        'Competency: Critical thinking (Matched)'
-      ],
-      createdAt: new Date().toISOString()
-    };
-
+    // Fallback mock lesson with template structure
+    const mockLesson = generateMockLesson(grade, subject, topic, classSize, curriculumType);
     res.status(201).json(mockLesson);
+
   } catch (error) {
     console.error('❌ Generation error:', error);
     res.status(500).json({ error: 'Failed to generate lesson' });
   }
 });
+
+// ============================================
+// BUILD LESSON PROMPT
+// ============================================
+
+function buildLessonPrompt(grade, subject, topic, classSize, curriculumType) {
+  const size = classSize || 40;
+  const boys = Math.floor(size * 0.45);
+  const girls = size - boys;
+
+  if (curriculumType === 'cbc') {
+    return `
+You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
+
+Follow the Ministry of Education CBC lesson plan template exactly.
+
+Return ONLY valid JSON with this exact structure:
+{
+  "title": "${topic}",
+  "grade": "${grade}",
+  "subject": "${subject}",
+  "teacherName": "MR/MRS",
+  "date": "Current date",
+  "time": "08:00-08:40",
+  "duration": "40 min",
+  "classSize": ${size},
+  "boys": ${boys},
+  "girls": ${girls},
+  "generalCompetences": ["Critical thinking", "Creativity", "Communication", "Collaboration"],
+  "specificCompetence": "Specific competence statement",
+  "lessonGoal": "By the end of this lesson, learners will be able to...",
+  "rationale": "Why this topic is important for learners",
+  "priorKnowledge": "What learners already know",
+  "references": ["Reference 1", "Reference 2"],
+  "learningEnvironment": "classroom, laboratory, school garden",
+  "materials": ["Material 1", "Material 2", "Material 3"],
+  "expectedStandard": "What learners should achieve",
+  "lessonProgression": [
+    {
+      "stage": "INTRODUCTION",
+      "time": "5 min",
+      "teacherRole": "Ask engaging questions to introduce the topic",
+      "learnerRole": "Listen, participate, and give examples",
+      "assessmentCriteria": "Observation of participation"
+    },
+    {
+      "stage": "LESSON DEVELOPMENT",
+      "time": "10 min",
+      "teacherRole": "Explain key concepts and demonstrate",
+      "learnerRole": "Take notes, ask questions, discuss",
+      "assessmentCriteria": "Correct understanding of concepts"
+    },
+    {
+      "stage": "ACTIVITY 1",
+      "time": "11 min",
+      "teacherRole": "Guide group work and provide materials",
+      "learnerRole": "Work in groups, complete tasks",
+      "assessmentCriteria": "Group collaboration and task completion"
+    },
+    {
+      "stage": "ACTIVITY 2",
+      "time": "16 min",
+      "teacherRole": "Facilitate presentations and consolidate",
+      "learnerRole": "Present findings and correct own work",
+      "assessmentCriteria": "Accurate presentation"
+    },
+    {
+      "stage": "EXERCISE/ASSESSMENT",
+      "time": "20 min",
+      "teacherRole": "Give assessment and monitor",
+      "learnerRole": "Complete assessment individually",
+      "assessmentCriteria": "Correct responses"
+    },
+    {
+      "stage": "CONCLUSION",
+      "time": "10 min",
+      "teacherRole": "Summarize key points",
+      "learnerRole": "Share what they learned",
+      "assessmentCriteria": "Verbal explanation"
+    }
+  ],
+  "homework": "Research and write about the topic",
+  "lessonEvaluation": "Lesson was successful, key competences were acquired"
+}
+`;
+  } else {
+    // OBC (Objective-Based Curriculum)
+    return `
+You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
+
+Follow the Ministry of Education OBC lesson plan template exactly.
+
+Return ONLY valid JSON with this exact structure:
+{
+  "title": "${topic}",
+  "grade": "${grade}",
+  "subject": "${subject}",
+  "teacherName": "MR/MRS",
+  "date": "Current date",
+  "duration": "80 min",
+  "classSize": ${size},
+  "boys": ${boys},
+  "girls": ${girls},
+  "references": ["Reference 1", "Reference 2", "Reference 3"],
+  "teachingAids": ["Chart", "Images", "Video", "PowerPoint", "Worksheet"],
+  "rationale": "Why this topic is important for learners",
+  "learningOutcomes": [
+    "Outcome 1",
+    "Outcome 2",
+    "Outcome 3",
+    "Outcome 4"
+  ],
+  "lessonDevelopment": [
+    {
+      "time": "10 min",
+      "learningPoints": "Introduction: What is the topic?",
+      "teacherActivities": "Ask questions, write definitions on board",
+      "pupilActivities": "Define in their own words, participate"
+    },
+    {
+      "time": "20 min",
+      "learningPoints": "Key concepts and their sources",
+      "teacherActivities": "List key points with sources, use diagrams",
+      "pupilActivities": "Complete tables, take notes"
+    },
+    {
+      "time": "20 min",
+      "learningPoints": "Main content and examples",
+      "teacherActivities": "Use charts and diagrams to explain",
+      "pupilActivities": "Label diagrams, write examples"
+    },
+    {
+      "time": "15 min",
+      "learningPoints": "Distinctions and applications",
+      "teacherActivities": "Give contrasting examples",
+      "pupilActivities": "Classify given processes"
+    },
+    {
+      "time": "15 min",
+      "learningPoints": "Conclusion and summary",
+      "teacherActivities": "Lead oral quiz and recap",
+      "pupilActivities": "Answer worksheet questions"
+    }
+  ],
+  "learnersEvaluation": [
+    "Question 1",
+    "Question 2",
+    "Question 3",
+    "Question 4",
+    "Question 5"
+  ]
+}
+`;
+  }
+}
+
+// ============================================
+// MOCK LESSON GENERATOR (Fallback)
+// ============================================
+
+function generateMockLesson(grade, subject, topic, classSize, curriculumType) {
+  const size = classSize || 40;
+  const boys = Math.floor(size * 0.45);
+  const girls = size - boys;
+
+  if (curriculumType === 'cbc') {
+    return {
+      id: `lesson-${Date.now()}`,
+      userId: 'mock-user',
+      title: topic,
+      grade,
+      subject,
+      teacherName: 'MR/MRS',
+      date: new Date().toISOString().split('T')[0],
+      time: '08:00-08:40',
+      duration: '40 min',
+      classSize: size,
+      boys: boys,
+      girls: girls,
+      generalCompetences: ['Critical thinking', 'Creativity', 'Communication', 'Collaboration'],
+      specificCompetence: `Classify and explain the types of ${topic}`,
+      lessonGoal: `By the end of this lesson, learners will be able to identify, classify, and explain ${topic}`,
+      rationale: `Understanding ${topic} is essential for learners to make informed decisions and develop critical thinking skills.`,
+      priorKnowledge: 'Learners have basic knowledge of the topic from previous lessons',
+      references: ['2026 Teaching Module', 'Curriculum Guide'],
+      learningEnvironment: 'classroom, laboratory, school garden',
+      materials: ['Manila paper', 'Markers', 'Charts', 'Worksheet'],
+      expectedStandard: 'Topic concepts classified correctly',
+      lessonProgression: [
+        { stage: 'INTRODUCTION', time: '5 min', teacherRole: 'Ask: "What do you know about this topic?"', learnerRole: 'Listen, participate, give examples', assessmentCriteria: 'Observation of participation' },
+        { stage: 'LESSON DEVELOPMENT', time: '10 min', teacherRole: 'Explain key concepts and demonstrate', learnerRole: 'Take notes, ask questions, discuss', assessmentCriteria: 'Correct understanding of concepts' },
+        { stage: 'ACTIVITY 1', time: '11 min', teacherRole: 'Guide group work and provide materials', learnerRole: 'Work in groups, complete tasks', assessmentCriteria: 'Group collaboration and task completion' },
+        { stage: 'ACTIVITY 2', time: '16 min', teacherRole: 'Facilitate presentations and consolidate', learnerRole: 'Present findings and correct own work', assessmentCriteria: 'Accurate presentation' },
+        { stage: 'EXERCISE', time: '20 min', teacherRole: 'Give assessment and monitor', learnerRole: 'Complete assessment individually', assessmentCriteria: 'Correct classification' },
+        { stage: 'CONCLUSION', time: '10 min', teacherRole: 'Summarize key points', learnerRole: 'Share what they learned', assessmentCriteria: 'Verbal explanation' }
+      ],
+      homework: `Research and list local examples of ${topic}`,
+      lessonEvaluation: 'Lesson was successful, key competences were acquired',
+      curriculum: 'cbc',
+      createdAt: new Date().toISOString()
+    };
+  } else {
+    return {
+      id: `lesson-${Date.now()}`,
+      userId: 'mock-user',
+      title: topic,
+      grade,
+      subject,
+      teacherName: 'MR/MRS',
+      date: new Date().toISOString().split('T')[0],
+      duration: '80 min',
+      classSize: size,
+      boys: boys,
+      girls: girls,
+      references: ['Biological Science by Lisuba Bornface', 'Simply Biology by Xavier', 'Biology 12 Golden Tips'],
+      teachingAids: ['Chart', 'Images', 'Video', 'PowerPoint', 'Worksheet'],
+      rationale: `Understanding ${topic} is essential for understanding body systems and maintaining health.`,
+      learningOutcomes: [
+        `Define ${topic} and differentiate it from related concepts`,
+        `Name the main types of ${topic}`,
+        `List the principal organs/structures involved in ${topic}`,
+        `Explain the importance of ${topic} in living organisms`
+      ],
+      lessonDevelopment: [
+        { time: '10 min', learningPoints: 'Introduction: What is the topic?', teacherActivities: 'Ask: "What do you know?" Write definitions on board', pupilActivities: 'Define in their own words, participate' },
+        { time: '20 min', learningPoints: 'Key concepts and their sources', teacherActivities: 'List key concepts with sources, use diagrams', pupilActivities: 'Complete tables, take notes' },
+        { time: '20 min', learningPoints: 'Main content and examples', teacherActivities: 'Use charts and diagrams to explain', pupilActivities: 'Label diagrams, write examples' },
+        { time: '15 min', learningPoints: 'Distinctions and applications', teacherActivities: 'Give contrasting examples', pupilActivities: 'Classify given processes' },
+        { time: '15 min', learningPoints: 'Conclusion and summary', teacherActivities: 'Lead oral quiz and recap', pupilActivities: 'Answer worksheet questions' }
+      ],
+      learnersEvaluation: [
+        'Define the topic',
+        'Name three key concepts',
+        'Which organ/structure is involved?',
+        'What is the difference between related concepts?',
+        'Why is this important?'
+      ],
+      curriculum: 'obc',
+      createdAt: new Date().toISOString()
+    };
+  }
+}
 
 // Get user's lessons
 router.get('/mine', authenticate, (req, res) => {
