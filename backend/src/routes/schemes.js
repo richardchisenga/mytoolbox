@@ -1,8 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const { PrismaClient } = require('@prisma/client');
+const { exportSchemeToWord, exportSchemeToPDF } = require('../utils/export');
 
-const schemes = [];
+const prisma = new PrismaClient();
 
 const authenticate = (req, res, next) => {
   try {
@@ -16,109 +18,103 @@ const authenticate = (req, res, next) => {
   }
 };
 
-// Generate scheme with Ministry of Education template
-router.post('/generate', authenticate, (req, res) => {
+// Generate scheme with custom weeks and topics
+router.post('/generate', authenticate, async (req, res) => {
   try {
-    const { grade, subject, term } = req.body;
+    const { grade, subject, term, weeks, assessmentWeeks, testTopics } = req.body;
+    
     if (!grade || !subject) {
       return res.status(400).json({ error: 'Grade and subject are required' });
     }
 
-    // Ministry of Education Scheme of Work Template
-    const weeks = [];
-    
-    // Week 1: Orientation
-    weeks.push({
-      week: 1,
-      topic: "ORIENTATION",
-      specificOutcome: "Get oriented to the subject and expectations",
-      methods: ["Group work", "Question and answer"],
-      aids: ["Worksheets", "Textbooks"],
-      knowledge: "Subject overview and expectations",
-      skills: "Communication, listening",
-      values: "Responsibility, punctuality"
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      select: { school: true }
     });
 
-    // Week 2: Introduction to Biology
-    weeks.push({
-      week: 2,
-      topic: "INTRODUCTION TO BIOLOGY",
-      subtopics: [
-        "Definition of Biology",
-        "Branches of biology",
-        "Importance of biology"
-      ],
-      specificOutcome: "Define the term biology. State the branches of biology. Identify the characteristics of living organisms.",
-      methods: ["Group work", "Question and answer", "Demonstrations"],
-      aids: ["Worksheets", "Lower animals and Plants", "Stones, Wood, Glass"],
-      references: ["K.C.S.C Golden Tips pg 1-2", "Basics of Biology pg 1-3", "Macmillan Secondary Biology pg 1-2"],
-      knowledge: "The characteristics of living organisms: Feeding, breathing, reproducing, growing, locomotion, sensitivity and excretion.",
-      skills: "Communicating information on the characteristics of living organisms. Comparing Living and non-Living organisms.",
-      values: "Appreciating characteristics of living organisms. Asking questions for more understanding."
-    });
+    const schoolName = user?.school || 'KASHINAKAZHI SECONDARY SCHOOL';
+    const totalWeeks = weeks || 13;
+    const assessmentWeekNumbers = assessmentWeeks || [6, 13];
+    const testTopicMap = testTopics || {};
 
-    // Week 3: Living Organisms and Life Processes
-    weeks.push({
-      week: 3,
-      topic: "LIVING ORGANISMS AND LIFE PROCESSES",
-      subtopics: [
-        "Characteristics of living organisms",
-        "Life processes of living organisms"
-      ],
-      specificOutcome: "Distinguish between living and non-living organisms. Describe life processes of living organisms.",
-      methods: ["Group work", "Question and answer", "Demonstrations"],
-      aids: ["Worksheets", "Charts", "Textbooks"],
-      references: ["K.C.S.C Golden Tips pg 2-3", "Basics of Biology pg 4-6"],
-      knowledge: "Life processes of living organisms: Metabolism (Catabolism and anabolism). Include the role of enzymes.",
-      skills: "Communicating Metabolism and the role of enzymes.",
-      values: "Appreciating life processes and role of enzymes."
-    });
-
-    // Generate remaining weeks
+    const generatedWeeks = [];
     const topics = [
-      "CELL STRUCTURE AND FUNCTION",
-      "CELL ORGANELLES",
-      "MOVEMENT OF SUBSTANCES",
-      "ENZYMES",
-      "NUTRITION IN PLANTS",
-      "NUTRITION IN ANIMALS",
-      "RESPIRATION",
-      "GASEOUS EXCHANGE",
-      "TRANSPORT IN PLANTS",
-      "TRANSPORT IN ANIMALS",
-      "EXCRETION",
-      "HOMEOSTASIS"
+      `Introduction to ${subject}`,
+      `Basic concepts in ${subject}`,
+      `Core principles of ${subject}`,
+      `Practical applications of ${subject}`,
+      `Advanced topics in ${subject}`,
+      `Review and consolidation`,
+      `Assessment preparation`,
+      `Mid-term assessment`,
+      `${subject} in action`,
+      `Real-world examples in ${subject}`,
+      `Critical thinking in ${subject}`,
+      `Group projects in ${subject}`,
+      `Revision and final assessment`
     ];
 
-    for (let i = 0; i < 12; i++) {
-      const weekNum = i + 4;
-      weeks.push({
+    const methods = ['Group work', 'Question and answer', 'Demonstrations', 'Discussion', 'Practical activities'];
+    const aids = ['Worksheets', 'Charts', 'Textbooks', 'Lab equipment', 'Multimedia'];
+
+    for (let i = 0; i < totalWeeks; i++) {
+      const weekNum = i + 1;
+      const isAssessmentWeek = assessmentWeekNumbers.includes(weekNum);
+      const customTopic = testTopicMap[weekNum];
+      
+      generatedWeeks.push({
         week: weekNum,
-        topic: topics[i] || `TOPIC ${weekNum}`,
-        specificOutcome: `By the end of this week, learners will be able to understand and apply concepts related to ${topics[i] || `topic ${weekNum}`}`,
-        methods: ["Group work", "Question and answer", "Demonstrations", "Discussion"],
-        aids: ["Worksheets", "Charts", "Textbooks", "Lab equipment"],
-        references: [`K.C.S.C Golden Tips pg ${10 + i * 2}-${12 + i * 2}`, `Basics of Biology pg ${8 + i * 2}`],
-        knowledge: `Key concepts in ${topics[i] || `topic ${weekNum}`}`,
-        skills: "Critical thinking, problem-solving, analysis",
-        values: "Curiosity, responsibility, collaboration"
+        topic: customTopic || topics[i % topics.length],
+        isAssessment: isAssessmentWeek,
+        assessmentType: isAssessmentWeek ? 'Test/Assessment' : '',
+        specificOutcome: isAssessmentWeek 
+          ? `Assessment on topics covered in weeks ${Math.max(1, weekNum - 3)} - ${weekNum}`
+          : `By the end of this week, learners will be able to understand and apply ${subject} concepts related to ${topics[i % topics.length]}`,
+        methods: isAssessmentWeek 
+          ? ['Assessment', 'Test', 'Evaluation']
+          : [
+              methods[i % methods.length],
+              methods[(i + 1) % methods.length]
+            ],
+        aids: isAssessmentWeek
+          ? ['Test papers', 'Assessment rubrics', 'Marking guide']
+          : [
+              aids[i % aids.length],
+              aids[(i + 1) % aids.length]
+            ],
+        objectives: isAssessmentWeek
+          ? [
+              `Demonstrate understanding of topics covered`,
+              `Apply knowledge to solve problems`,
+              'Show mastery of key concepts'
+            ]
+          : [
+              `Understand key concepts of ${topics[i % topics.length]}`,
+              `Apply knowledge to solve problems`,
+              'Demonstrate understanding through practical tasks'
+            ],
+        knowledge: isAssessmentWeek ? 'Assessment of covered topics' : `Key concepts in ${topics[i % topics.length]}`,
+        skills: isAssessmentWeek ? 'Evaluation, Critical thinking' : 'Critical thinking, problem-solving, analysis',
+        values: isAssessmentWeek ? 'Honesty, Responsibility' : 'Curiosity, responsibility, collaboration'
       });
     }
 
     const scheme = {
       id: `scheme-${Date.now()}`,
       userId: req.userId,
-      school: "KASHINAKAZHI SECONDARY SCHOOL",
+      school: schoolName,
       grade: `Grade ${grade}`,
       subject,
       term: `Term ${term}`,
       year: "2026",
-      totalWeeks: 13,
-      weeks,
+      totalWeeks: totalWeeks,
+      assessmentWeeks: assessmentWeekNumbers,
+      testTopics: testTopicMap,
+      weeks: generatedWeeks,
       createdAt: new Date().toISOString()
     };
 
-    schemes.push(scheme);
+    await prisma.scheme.create({ data: scheme });
     res.status(201).json(scheme);
   } catch (error) {
     console.error('Scheme generation error:', error);
@@ -126,16 +122,92 @@ router.post('/generate', authenticate, (req, res) => {
   }
 });
 
-router.get('/mine', authenticate, (req, res) => {
-  const userSchemes = schemes.filter(s => s.userId === req.userId);
-  res.json(userSchemes);
+// Get all schemes for user
+router.get('/mine', authenticate, async (req, res) => {
+  try {
+    const userSchemes = await prisma.scheme.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(userSchemes);
+  } catch (error) {
+    console.error('Error fetching schemes:', error);
+    res.status(500).json({ error: 'Failed to fetch schemes' });
+  }
 });
 
-router.get('/:id', authenticate, (req, res) => {
-  const scheme = schemes.find(s => s.id === req.params.id);
-  if (!scheme) return res.status(404).json({ error: 'Scheme not found' });
-  if (scheme.userId !== req.userId) return res.status(403).json({ error: 'Unauthorized' });
-  res.json(scheme);
+// Get a single scheme
+router.get('/:id', authenticate, async (req, res) => {
+  try {
+    const scheme = await prisma.scheme.findUnique({
+      where: { id: req.params.id }
+    });
+
+    if (!scheme) {
+      return res.status(404).json({ error: 'Scheme not found' });
+    }
+
+    if (scheme.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    res.json(scheme);
+  } catch (error) {
+    console.error('Error fetching scheme:', error);
+    res.status(500).json({ error: 'Failed to fetch scheme' });
+  }
+});
+
+// Export Scheme to Word
+router.get('/export/:id/word', authenticate, async (req, res) => {
+  try {
+    const scheme = await prisma.scheme.findUnique({
+      where: { id: req.params.id }
+    });
+
+    if (!scheme) {
+      return res.status(404).json({ error: 'Scheme not found' });
+    }
+
+    if (scheme.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const buffer = await exportSchemeToWord(scheme);
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename=${scheme.subject}_Scheme_of_Work_Term_${scheme.term}.docx`);
+    res.send(buffer);
+  } catch (error) {
+    console.error('Export error:', error);
+    res.status(500).json({ error: 'Failed to export scheme' });
+  }
+});
+
+// Export Scheme to PDF
+router.get('/export/:id/pdf', authenticate, async (req, res) => {
+  try {
+    const scheme = await prisma.scheme.findUnique({
+      where: { id: req.params.id }
+    });
+
+    if (!scheme) {
+      return res.status(404).json({ error: 'Scheme not found' });
+    }
+
+    if (scheme.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const buffer = await exportSchemeToPDF(scheme);
+    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=${scheme.subject}_Scheme_of_Work_Term_${scheme.term}.pdf`);
+    res.send(buffer);
+  } catch (error) {
+    console.error('Export error:', error);
+    res.status(500).json({ error: 'Failed to export scheme' });
+  }
 });
 
 module.exports = router;
