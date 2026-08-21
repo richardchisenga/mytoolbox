@@ -3,21 +3,56 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeftIcon, CalendarIcon, ArrowDownTrayIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, CalendarIcon, ArrowDownTrayIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 
 export default function SchemesPage() {
   const router = useRouter();
   const [grade, setGrade] = useState("");
   const [subject, setSubject] = useState("");
   const [term, setTerm] = useState("1");
+  const [totalWeeks, setTotalWeeks] = useState(13);
+  const [assessmentWeeks, setAssessmentWeeks] = useState<number[]>([6, 13]);
+  const [testTopics, setTestTopics] = useState<{ [key: number]: string }>({});
+  const [newAssessmentWeek, setNewAssessmentWeek] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedScheme, setGeneratedScheme] = useState<any>(null);
   const [error, setError] = useState("");
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const addAssessmentWeek = () => {
+    const week = parseInt(newAssessmentWeek);
+    if (!week || week < 1 || week > totalWeeks) {
+      alert(`Please enter a valid week (1-${totalWeeks})`);
+      return;
+    }
+    if (assessmentWeeks.includes(week)) {
+      alert(`Week ${week} is already an assessment week`);
+      return;
+    }
+    setAssessmentWeeks([...assessmentWeeks, week].sort((a, b) => a - b));
+    setNewAssessmentWeek("");
+  };
+
+  const removeAssessmentWeek = (week: number) => {
+    setAssessmentWeeks(assessmentWeeks.filter(w => w !== week));
+    const newTopics = { ...testTopics };
+    delete newTopics[week];
+    setTestTopics(newTopics);
+  };
+
+  const updateTestTopic = (week: number, topic: string) => {
+    setTestTopics({ ...testTopics, [week]: topic });
+  };
 
   const generateScheme = async () => {
     setError("");
     if (!grade || !subject) {
       setError("Please select grade and subject");
+      return;
+    }
+
+    if (assessmentWeeks.length === 0) {
+      setError("Please add at least one assessment week");
       return;
     }
 
@@ -29,6 +64,11 @@ export default function SchemesPage() {
         return;
       }
 
+      const testTopicMap: { [key: number]: string } = {};
+      assessmentWeeks.forEach(week => {
+        testTopicMap[week] = testTopics[week] || `Assessment - Week ${week}`;
+      });
+
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/schemes/generate`,
         {
@@ -37,7 +77,14 @@ export default function SchemesPage() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ grade, subject, term }),
+          body: JSON.stringify({
+            grade,
+            subject,
+            term,
+            weeks: totalWeeks,
+            assessmentWeeks,
+            testTopics: testTopicMap,
+          }),
         }
       );
 
@@ -56,95 +103,38 @@ export default function SchemesPage() {
     }
   };
 
-  // Export to Word/HTML
-  const exportScheme = () => {
+  const downloadScheme = async (format: 'word' | 'pdf') => {
     if (!generatedScheme) return;
     
-    const content = `
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Scheme of Work - ${generatedScheme.subject}</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 30px; }
-    .header { text-align: center; border-bottom: 3px solid #1B5E20; padding-bottom: 10px; margin-bottom: 20px; }
-    .header h1 { color: #1B5E20; margin: 0; }
-    .header h2 { margin: 5px 0; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th, td { border: 1px solid #333; padding: 8px; text-align: left; vertical-align: top; }
-    th { background-color: #1B5E20; color: white; font-weight: bold; }
-    .week-col { width: 5%; text-align: center; }
-    .topic-col { width: 15%; }
-    .outcome-col { width: 15%; }
-    .methods-col { width: 10%; }
-    .aids-col { width: 10%; }
-    .references-col { width: 10%; }
-    .knowledge-col { width: 15%; }
-    .skills-col { width: 10%; }
-    .values-col { width: 10%; }
-    .subtopic { font-size: 11px; color: #555; }
-    .footer { text-align: center; border-top: 2px solid #1B5E20; padding-top: 10px; margin-top: 20px; font-size: 11px; color: #777; }
-    @media print {
-      body { margin: 15px; }
-      th { background-color: #1B5E20 !important; color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    setIsDownloading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/schemes/export/${generatedScheme.id}/${format}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${generatedScheme.subject}_Scheme_of_Work_Term_${generatedScheme.term}.${format === 'word' ? 'docx' : 'pdf'}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      } else {
+        alert('Failed to download scheme');
+      }
+    } catch (error) {
+      console.error('Download error:', error);
+      alert('Failed to download scheme');
+    } finally {
+      setIsDownloading(false);
     }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h1>KASHINAKAZHI SECONDARY SCHOOL</h1>
-    <h2>${generatedScheme.subject} SCHEMES OF WORK</h2>
-    <p><strong>${generatedScheme.grade} TERM ${generatedScheme.term}</strong></p>
-  </div>
-
-  <table>
-    <thead>
-      <tr>
-        <th class="week-col">WEEK</th>
-        <th class="topic-col">TOPIC</th>
-        <th class="outcome-col">SPECIFIC OUTCOME</th>
-        <th class="methods-col">TEACHING AND LEARNING METHODS</th>
-        <th class="aids-col">TEACHING AND LEARNING AIDS</th>
-        <th class="references-col">REFERENCE BOOKS</th>
-        <th class="knowledge-col">KNOWLEDGE</th>
-        <th class="skills-col">SKILLS</th>
-        <th class="values-col">VALUES</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${generatedScheme.weeks.map((week: any) => `
-        <tr>
-          <td class="week-col">${week.week}</td>
-          <td class="topic-col">
-            <strong>${week.topic}</strong>
-            ${week.subtopics ? week.subtopics.map((s: string) => `<div class="subtopic">• ${s}</div>`).join('') : ''}
-          </td>
-          <td class="outcome-col">${week.specificOutcome}</td>
-          <td class="methods-col">${week.methods ? week.methods.map((m: string) => `<div>${m}</div>`).join('') : ''}</td>
-          <td class="aids-col">${week.aids ? week.aids.map((a: string) => `<div>${a}</div>`).join('') : ''}</td>
-          <td class="references-col">${week.references ? week.references.map((r: string) => `<div>${r}</div>`).join('') : ''}</td>
-          <td class="knowledge-col">${week.knowledge || ''}</td>
-          <td class="skills-col">${week.skills || ''}</td>
-          <td class="values-col">${week.values || ''}</td>
-        </tr>
-      `).join('')}
-    </tbody>
-  </table>
-
-  <div class="footer">
-    © 2026 mytoolbox - Made for teachers in Zambia
-  </div>
-</body>
-</html>
-    `;
-
-    const blob = new Blob([content], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${generatedScheme.subject}_Scheme_of_Work_Term_${generatedScheme.term}.html`;
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   return (
@@ -173,7 +163,7 @@ export default function SchemesPage() {
                 <CalendarIcon className="w-8 h-8 text-secondary" /> Schemes of Work
               </h1>
               <p className="text-dark/70 mt-1">
-                Generate a full-term scheme of work mapped to the syllabus
+                Generate a full-term scheme of work with custom assessment weeks
               </p>
             </div>
 
@@ -184,6 +174,7 @@ export default function SchemesPage() {
             )}
 
             <div className="max-w-2xl bg-white rounded-xl shadow-sm border border-highlight p-6">
+              {/* Basic Info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-dark">Grade</label>
@@ -210,17 +201,79 @@ export default function SchemesPage() {
                 </div>
               </div>
 
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-dark">Term</label>
-                <select
-                  value={term}
-                  onChange={(e) => setTerm(e.target.value)}
-                  className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                >
-                  <option value="1">Term 1</option>
-                  <option value="2">Term 2</option>
-                  <option value="3">Term 3</option>
-                </select>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-dark">Term</label>
+                  <select
+                    value={term}
+                    onChange={(e) => setTerm(e.target.value)}
+                    className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="1">Term 1</option>
+                    <option value="2">Term 2</option>
+                    <option value="3">Term 3</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-dark">Total Weeks</label>
+                  <input
+                    type="number"
+                    value={totalWeeks}
+                    onChange={(e) => setTotalWeeks(parseInt(e.target.value) || 13)}
+                    className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    min="1"
+                    max="20"
+                  />
+                </div>
+              </div>
+
+              {/* Assessment Weeks Section */}
+              <div className="mt-6 border-t border-gray-200 pt-4">
+                <h3 className="text-lg font-semibold text-primary mb-3">📝 Assessment Weeks</h3>
+                <p className="text-sm text-gray-500 mb-3">
+                  Select which weeks will have tests or assessments
+                </p>
+
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={newAssessmentWeek}
+                    onChange={(e) => setNewAssessmentWeek(e.target.value)}
+                    placeholder={`Week (1-${totalWeeks})`}
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    min="1"
+                    max={totalWeeks}
+                  />
+                  <button
+                    onClick={addAssessmentWeek}
+                    className="bg-secondary text-dark px-4 py-2 rounded-md hover:bg-secondary/80 flex items-center gap-1"
+                  >
+                    <PlusIcon className="w-4 h-4" /> Add
+                  </button>
+                </div>
+
+                {assessmentWeeks.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {assessmentWeeks.map((week) => (
+                      <div key={week} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
+                        <span className="font-medium text-primary w-16">Week {week}</span>
+                        <input
+                          type="text"
+                          value={testTopics[week] || `Assessment - Week ${week}`}
+                          onChange={(e) => updateTestTopic(week, e.target.value)}
+                          placeholder="Enter test/assessment topic"
+                          className="flex-1 px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                        />
+                        <button
+                          onClick={() => removeAssessmentWeek(week)}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <TrashIcon className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="mt-6 flex gap-3">
@@ -259,13 +312,26 @@ export default function SchemesPage() {
                 <p className="text-sm text-dark/60">
                   {generatedScheme.grade} · {generatedScheme.term} · {generatedScheme.year}
                 </p>
+                <p className="text-sm text-secondary mt-1">
+                  📝 Assessment Weeks: {generatedScheme.assessmentWeeks?.join(', ') || 'None'}
+                </p>
               </div>
-              <button
-                onClick={exportScheme}
-                className="btn-primary flex items-center gap-2"
-              >
-                <ArrowDownTrayIcon className="w-5 h-5" /> Export
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => downloadScheme('word')}
+                  disabled={isDownloading}
+                  className="btn-primary flex items-center gap-2 disabled:opacity-50"
+                >
+                  <ArrowDownTrayIcon className="w-5 h-5" /> Word
+                </button>
+                <button
+                  onClick={() => downloadScheme('pdf')}
+                  disabled={isDownloading}
+                  className="btn-primary flex items-center gap-2 disabled:opacity-50"
+                >
+                  <ArrowDownTrayIcon className="w-5 h-5" /> PDF
+                </button>
+              </div>
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-highlight overflow-x-auto">
@@ -274,10 +340,10 @@ export default function SchemesPage() {
                   <tr className="bg-primary text-white">
                     <th className="p-2 border border-highlight text-center w-12">WEEK</th>
                     <th className="p-2 border border-highlight text-left">TOPIC</th>
+                    <th className="p-2 border border-highlight text-left">TYPE</th>
                     <th className="p-2 border border-highlight text-left">SPECIFIC OUTCOME</th>
                     <th className="p-2 border border-highlight text-left">TEACHING AND LEARNING METHODS</th>
                     <th className="p-2 border border-highlight text-left">TEACHING AND LEARNING AIDS</th>
-                    <th className="p-2 border border-highlight text-left">REFERENCE BOOKS</th>
                     <th className="p-2 border border-highlight text-left">KNOWLEDGE</th>
                     <th className="p-2 border border-highlight text-left">SKILLS</th>
                     <th className="p-2 border border-highlight text-left">VALUES</th>
@@ -285,13 +351,21 @@ export default function SchemesPage() {
                 </thead>
                 <tbody>
                   {generatedScheme.weeks.map((week: any, idx: number) => (
-                    <tr key={idx} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                    <tr key={idx} className={`${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'} ${week.isAssessment ? 'bg-yellow-50' : ''}`}>
                       <td className="p-2 border border-highlight text-center font-bold">{week.week}</td>
                       <td className="p-2 border border-highlight">
                         <strong>{week.topic}</strong>
-                        {week.subtopics && week.subtopics.map((s: string, i: number) => (
-                          <div key={i} className="text-xs text-gray-600">• {s}</div>
-                        ))}
+                      </td>
+                      <td className="p-2 border border-highlight text-center">
+                        {week.isAssessment ? (
+                          <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-semibold">
+                            📝 TEST/ASSESSMENT
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">
+                            Lesson
+                          </span>
+                        )}
                       </td>
                       <td className="p-2 border border-highlight text-xs">{week.specificOutcome}</td>
                       <td className="p-2 border border-highlight text-xs">
@@ -302,11 +376,6 @@ export default function SchemesPage() {
                       <td className="p-2 border border-highlight text-xs">
                         {week.aids && week.aids.map((a: string, i: number) => (
                           <div key={i}>• {a}</div>
-                        ))}
-                      </td>
-                      <td className="p-2 border border-highlight text-xs">
-                        {week.references && week.references.map((r: string, i: number) => (
-                          <div key={i}>• {r}</div>
                         ))}
                       </td>
                       <td className="p-2 border border-highlight text-xs">{week.knowledge || '-'}</td>
@@ -324,6 +393,8 @@ export default function SchemesPage() {
               <span className="text-sm text-dark/60">{generatedScheme.totalWeeks} weeks · Full term coverage</span>
               <span className="text-sm text-dark/60">|</span>
               <span className="text-sm text-success font-semibold">100% aligned to syllabus</span>
+              <span className="text-sm text-dark/60">|</span>
+              <span className="text-sm text-secondary font-semibold">📝 {generatedScheme.assessmentWeeks?.length || 0} assessment weeks</span>
             </div>
           </div>
         )}
