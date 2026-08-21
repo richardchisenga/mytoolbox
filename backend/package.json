@@ -4,7 +4,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "postinstall": "npx prisma generate"
+    "postinstall": "npx prisma generate && npx prisma db push"
   },
   "dependencies": {
     "express": "^4.18.2",
