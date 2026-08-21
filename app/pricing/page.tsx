@@ -8,6 +8,9 @@ export default function PricingPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [paymentError, setPaymentError] = useState("");
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -28,6 +31,8 @@ export default function PricingPage() {
         if (response.ok) {
           const data = await response.json();
           setUser(data);
+        } else {
+          router.push("/login");
         }
       } catch (error) {
         console.error("Error:", error);
@@ -37,8 +42,12 @@ export default function PricingPage() {
     fetchUser();
   }, [router]);
 
-  const handleUpgrade = async (plan: string) => {
+  const handleUpgrade = async (plan: string, phoneNumber: string) => {
     setLoading(true);
+    setPaymentError("");
+    setPaymentSuccess(false);
+    setStatusMessage("⏳ Initiating payment...");
+
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(
@@ -51,23 +60,88 @@ export default function PricingPage() {
           },
           body: JSON.stringify({
             plan: plan,
-            amount: plan === 'pro' ? 150 : 500,
+            phoneNumber: phoneNumber,
           }),
         }
       );
 
-      if (response.ok) {
-        const data = await response.json();
-        // Redirect to payment page with transaction details
-        router.push(`/payment?transaction=${data.transactionId}`);
-      } else {
-        alert("Payment initiation failed. Please try again.");
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Payment initiation failed");
       }
-    } catch (error) {
-      console.error("Error:", error);
-      alert("Payment initiation failed. Please try again.");
+
+      setStatusMessage("⏳ Payment initiated... Waiting for confirmation...");
+
+      if (data.mockMode) {
+        setStatusMessage("🧪 Mock Mode: Auto-completing in 5 seconds...");
+        // Mock mode - poll status
+        pollPaymentStatus(data.transactionId);
+      } else {
+        setStatusMessage("📱 Please complete the payment on your phone.");
+        // Real mode - poll status
+        pollPaymentStatus(data.transactionId);
+      }
+
+    } catch (error: any) {
+      setPaymentError(error.message);
+      setStatusMessage("");
+      setLoading(false);
     }
-    setLoading(false);
+  };
+
+  const pollPaymentStatus = async (transactionId: string) => {
+    const token = localStorage.getItem("token");
+    const maxAttempts = 30; // 30 * 3 seconds = 90 seconds
+    let attempts = 0;
+
+    setStatusMessage("⏳ Checking payment status...");
+
+    const checkStatus = setInterval(async () => {
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/payments/status/${transactionId}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log("Payment status:", data);
+
+          if (data.status === "completed") {
+            clearInterval(checkStatus);
+            setPaymentSuccess(true);
+            setStatusMessage("✅ Payment successful! You've been upgraded to Pro!");
+            setTimeout(() => {
+              router.push("/dashboard");
+            }, 2000);
+          } else if (data.status === "failed") {
+            clearInterval(checkStatus);
+            setPaymentError("Payment failed. Please try again.");
+            setStatusMessage("");
+            setLoading(false);
+          }
+        }
+
+        attempts++;
+        if (attempts >= maxAttempts) {
+          clearInterval(checkStatus);
+          setPaymentError("Payment taking too long. Please check your transaction status.");
+          setStatusMessage("");
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error("Status check error:", error);
+      }
+    }, 3000); // Check every 3 seconds
+  };
+
+  const getRemainingLessons = () => {
+    if (!user) return 0;
+    if (user.role === "PRO" || user.role === "SCHOOL") return "♾️ Unlimited";
+    return (user.lessonsLimit || 5) - (user.lessonsUsed || 0);
   };
 
   return (
@@ -77,8 +151,43 @@ export default function PricingPage() {
           Choose Your Plan
         </h1>
         <p className="text-gray-600 text-center mt-2">
-          Start free, upgrade when you need more
+          Start free with 5 lessons per month. Upgrade when you need more!
         </p>
+
+        {user && (
+          <div className="text-center mt-4">
+            <p className="text-sm text-gray-500">
+              Current Plan: <span className="font-semibold text-primary uppercase">{user.role || "FREE"}</span>
+            </p>
+            <p className="text-sm text-gray-500">
+              Lessons used this month: <span className="font-semibold">{user.lessonsUsed || 0}</span>
+              {user.role !== "PRO" && user.role !== "SCHOOL" && ` / ${user.lessonsLimit || 5} remaining`}
+            </p>
+            {user.role !== "PRO" && user.role !== "SCHOOL" && (
+              <p className="text-sm text-gray-500">
+                Remaining lessons: <span className="font-semibold text-secondary">{getRemainingLessons()}</span>
+              </p>
+            )}
+          </div>
+        )}
+
+        {statusMessage && (
+          <div className="max-w-2xl mx-auto mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-600 text-sm text-center">
+            ℹ️ {statusMessage}
+          </div>
+        )}
+
+        {paymentError && (
+          <div className="max-w-2xl mx-auto mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+            ❌ {paymentError}
+          </div>
+        )}
+
+        {paymentSuccess && (
+          <div className="max-w-2xl mx-auto mt-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-600 text-sm text-center">
+            ✅ Payment successful! Redirecting to dashboard...
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
           {/* Free Plan */}
@@ -94,7 +203,7 @@ export default function PricingPage() {
               <li className="flex items-center gap-2 text-gray-400">❌ Assessment weeks</li>
               <li className="flex items-center gap-2 text-gray-400">❌ Priority support</li>
             </ul>
-            {user?.role === 'free' ? (
+            {user?.role === "FREE" || user?.role === null ? (
               <button
                 className="mt-4 w-full py-2 border border-gray-300 rounded-md text-gray-500 cursor-default"
                 disabled
@@ -106,7 +215,7 @@ export default function PricingPage() {
                 className="mt-4 w-full bg-gray-200 text-gray-500 py-2 rounded-md cursor-default"
                 disabled
               >
-                Current Plan
+                Free
               </button>
             )}
           </div>
@@ -127,7 +236,7 @@ export default function PricingPage() {
               <li className="flex items-center gap-2">✅ Assessment weeks</li>
               <li className="flex items-center gap-2">✅ Priority support</li>
             </ul>
-            {user?.role === 'pro' ? (
+            {user?.role === "PRO" || user?.role === "SCHOOL" ? (
               <button
                 className="mt-4 w-full bg-green-500 text-white py-2 rounded-md cursor-default"
                 disabled
@@ -135,13 +244,32 @@ export default function PricingPage() {
                 ✅ Active
               </button>
             ) : (
-              <button
-                onClick={() => handleUpgrade('pro')}
-                disabled={loading}
-                className="mt-4 w-full bg-yellow-500 text-black py-2 rounded-md hover:bg-yellow-400 disabled:opacity-50"
-              >
-                {loading ? "Processing..." : "Upgrade to Pro"}
-              </button>
+              <div>
+                <input
+                  type="tel"
+                  id="phone-pro"
+                  placeholder="260XXXXXXXXX"
+                  className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                  pattern="260[0-9]{9}"
+                />
+                <button
+                  onClick={() => {
+                    const phone = (document.getElementById("phone-pro") as HTMLInputElement)?.value;
+                    if (!phone || phone.length < 10) {
+                      alert("Please enter a valid phone number (260XXXXXXXXX)");
+                      return;
+                    }
+                    handleUpgrade("pro", phone);
+                  }}
+                  disabled={loading}
+                  className="mt-2 w-full bg-yellow-500 text-black py-2 rounded-md hover:bg-yellow-400 disabled:opacity-50"
+                >
+                  {loading ? "Processing..." : "🚀 Upgrade to Pro"}
+                </button>
+                <p className="text-xs text-gray-400 mt-1 text-center">
+                  🔒 No real money charged in mock mode
+                </p>
+              </div>
             )}
           </div>
 
@@ -157,7 +285,7 @@ export default function PricingPage() {
               <li className="flex items-center gap-2">✅ Bulk reporting</li>
               <li className="flex items-center gap-2">✅ Dedicated support</li>
             </ul>
-            {user?.role === 'school' ? (
+            {user?.role === "SCHOOL" ? (
               <button
                 className="mt-4 w-full bg-green-500 text-white py-2 rounded-md cursor-default"
                 disabled
@@ -165,13 +293,32 @@ export default function PricingPage() {
                 ✅ Active
               </button>
             ) : (
-              <button
-                onClick={() => handleUpgrade('school')}
-                disabled={loading}
-                className="mt-4 w-full bg-primary text-white py-2 rounded-md hover:bg-primary/80 disabled:opacity-50"
-              >
-                {loading ? "Processing..." : "Contact Sales"}
-              </button>
+              <div>
+                <input
+                  type="tel"
+                  id="phone-school"
+                  placeholder="260XXXXXXXXX"
+                  className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                  pattern="260[0-9]{9}"
+                />
+                <button
+                  onClick={() => {
+                    const phone = (document.getElementById("phone-school") as HTMLInputElement)?.value;
+                    if (!phone || phone.length < 10) {
+                      alert("Please enter a valid phone number (260XXXXXXXXX)");
+                      return;
+                    }
+                    handleUpgrade("school", phone);
+                  }}
+                  disabled={loading}
+                  className="mt-2 w-full bg-primary text-white py-2 rounded-md hover:bg-primary/80 disabled:opacity-50"
+                >
+                  {loading ? "Processing..." : "🏫 Contact Sales"}
+                </button>
+                <p className="text-xs text-gray-400 mt-1 text-center">
+                  🔒 No real money charged in mock mode
+                </p>
+              </div>
             )}
           </div>
         </div>
