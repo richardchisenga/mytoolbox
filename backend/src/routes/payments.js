@@ -1,29 +1,16 @@
 const express = require('express');
 const router = express.Router();
-const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
+const { PrismaClient } = require('@prisma/client');
 
-// ============================================
-// CONFIGURATION
-// ============================================
+const prisma = new PrismaClient();
 
-// Mock mode - set to true for testing without API key
-const USE_MOCK = true; // ← Change to false when you have the API key
+// ✅ MOCK MODE - Set to true for testing without real payments
+const USE_MOCK = true; // ← Change to false when you have real Lipila credentials
 
-// Lipila API endpoints (update with actual Lipila URLs when available)
-const LIPILA_API = {
-  sandbox: 'https://sandbox.lipila.com/api/v1',
-  production: 'https://api.lipila.com/api/v1',
-};
-
-const getApiKey = () => process.env.LIPILA_API_KEY;
-const getEnvironment = () => process.env.NODE_ENV === 'production' ? 'production' : 'sandbox';
-const getBaseUrl = () => LIPILA_API[getEnvironment()];
-
-// ============================================
-// MIDDLEWARE
-// ============================================
+// Lipila API configuration (for real mode)
+const LIPILA_API_BASE = process.env.LIPILA_API_URL || 'https://api.lipila.com/v1';
 
 const authenticate = (req, res, next) => {
   try {
@@ -40,145 +27,230 @@ const authenticate = (req, res, next) => {
 };
 
 // ============================================
-// PAYMENT INITIATION
+// INITIATE PAYMENT - MOCK MODE
 // ============================================
 
 router.post('/initiate', authenticate, async (req, res) => {
   try {
-    const { amount, phoneNumber, provider } = req.body;
+    const { plan, phoneNumber } = req.body;
     const userId = req.userId;
 
-    // Validate input
-    if (!amount || !phoneNumber || !provider) {
-      return res.status(400).json({
-        error: 'Amount, phone number, and provider are required',
-      });
-    }
-
-    const validProviders = ['mtn', 'airtel', 'zamtel'];
-    if (!validProviders.includes(provider.toLowerCase())) {
-      return res.status(400).json({
-        error: 'Provider must be mtn, airtel, or zamtel',
-      });
-    }
-
-    // Generate unique reference ID
-    const referenceId = `mytoolbox-${uuidv4()}`;
-    const transactionId = `TX-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-
-    // Store transaction
-    const transaction = {
-      id: transactionId,
-      userId,
-      referenceId,
-      amount: parseFloat(amount),
-      phoneNumber,
-      provider: provider.toLowerCase(),
-      status: 'pending',
-      createdAt: new Date().toISOString(),
+    // Pricing
+    const pricing = {
+      pro: { amount: 150, label: 'Pro Plan' },
+      school: { amount: 500, label: 'School Plan' }
     };
 
-    if (!global.transactions) {
-      global.transactions = [];
+    const selectedPlan = pricing[plan];
+    if (!selectedPlan) {
+      return res.status(400).json({ error: 'Invalid plan selected' });
     }
-    global.transactions.push(transaction);
+
+    // Create payment record
+    const payment = await prisma.payment.create({
+      data: {
+        userId,
+        amount: selectedPlan.amount,
+        plan: plan,
+        currency: 'ZMW',
+        provider: 'mock',
+        phoneNumber: phoneNumber || '260977123456',
+        referenceId: `mytoolbox-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`,
+        transactionId: `TX-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        status: 'pending',
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000) // 30 minutes expiry
+      }
+    });
 
     // ============================================
-    // MOCK MODE - Test without real API
+    // MOCK MODE - Auto-complete payment after 5 seconds
     // ============================================
     if (USE_MOCK) {
       console.log('📝 MOCK MODE: Payment initiated for user:', userId);
-      console.log('📝 Transaction:', transaction);
+      console.log('📝 Payment details:', { 
+        plan: plan, 
+        amount: selectedPlan.amount, 
+        transactionId: payment.transactionId 
+      });
 
       // Auto-complete after 5 seconds
-      setTimeout(() => {
-        transaction.status = 'completed';
-        transaction.completedAt = new Date().toISOString();
-        console.log('✅ MOCK: Payment completed for user:', userId);
+      setTimeout(async () => {
+        try {
+          // Update payment status
+          await prisma.payment.update({
+            where: { id: payment.id },
+            data: { 
+              status: 'completed', 
+              completedAt: new Date(),
+              externalId: `mock-${Date.now()}`
+            }
+          });
+
+          // ✅ Upgrade user to PRO
+          const now = new Date();
+          const subscriptionEndsAt = new Date(now);
+          subscriptionEndsAt.setMonth(subscriptionEndsAt.getMonth() + 1);
+
+          await prisma.user.update({
+            where: { id: userId },
+            data: {
+              role: plan === 'school' ? 'SCHOOL' : 'PRO',
+              lessonsLimit: 999999,
+              subscriptionEndsAt: subscriptionEndsAt,
+              lessonsUsed: 0,
+              lastResetAt: now
+            }
+          });
+
+          console.log(`✅ MOCK: User ${userId} upgraded to ${plan} plan`);
+          console.log(`📝 Subscription ends: ${subscriptionEndsAt.toISOString()}`);
+        } catch (error) {
+          console.error('❌ MOCK upgrade error:', error);
+        }
       }, 5000);
 
-      return res.status(201).json({
+      return res.json({
         success: true,
-        message: 'Payment initiated (MOCK MODE)',
-        transactionId: transactionId,
-        referenceId: referenceId,
-        amount: amount,
-        provider: provider,
+        paymentId: payment.id,
+        transactionId: payment.transactionId,
+        referenceId: payment.referenceId,
+        amount: selectedPlan.amount,
+        plan: plan,
         status: 'pending',
         mockMode: true,
-        instructions: 'In mock mode, payment will auto-complete in 5 seconds.',
+        message: '✅ Payment initiated! In mock mode, payment will auto-complete in 5 seconds.',
+        instructions: 'You will be automatically upgraded to Pro in 5 seconds. No real money will be charged.'
       });
     }
 
     // ============================================
-    // REAL LIPILA API CALL
+    // REAL LIPILA API CALL (when USE_MOCK = false)
     // ============================================
     try {
-      const collectionData = {
-        referenceId: referenceId,
-        amount: parseFloat(amount),
-        accountNumber: phoneNumber,
-        currency: 'ZMW',
-        callbackUrl: `${process.env.BACKEND_URL || 'https://mytoolbox-production.up.railway.app'}/api/payments/webhook`,
-        description: `mytoolbox Pro Plan Subscription - ${referenceId}`,
-      };
+      const response = await fetch(`${LIPILA_API_BASE}/collections`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.LIPILA_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          referenceId: payment.referenceId,
+          amount: selectedPlan.amount,
+          accountNumber: phoneNumber,
+          currency: 'ZMW',
+          callbackUrl: `${process.env.BACKEND_URL}/api/payments/webhook`,
+          description: `mytoolbox ${selectedPlan.label} subscription - ${payment.referenceId}`
+        })
+      });
 
-      console.log('📝 Creating Lipila collection:', collectionData);
+      const data = await response.json();
 
-      const response = await axios.post(
-        `${getBaseUrl()}/collections`,
-        collectionData,
-        {
-          headers: {
-            'Authorization': `Bearer ${getApiKey()}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      if (data.identifier) {
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: { externalId: data.identifier }
+        });
+      }
 
-      transaction.externalId = response.data.identifier;
-      global.transactions = global.transactions.map(t =>
-        t.id === transaction.id ? transaction : t
-      );
-
-      console.log('✅ Collection created:', response.data);
-
-      return res.status(201).json({
+      res.json({
         success: true,
-        message: 'Payment initiated successfully',
-        transactionId: transactionId,
-        referenceId: referenceId,
-        amount: amount,
-        provider: provider,
+        paymentId: payment.id,
+        transactionId: payment.transactionId,
+        referenceId: payment.referenceId,
+        amount: selectedPlan.amount,
+        plan: plan,
         status: 'pending',
-        instructions: `Please complete the payment on your phone. A prompt will appear on ${provider.toUpperCase()} Money.`,
+        mockMode: false,
+        instructions: 'Please complete the payment on your phone. You will receive a prompt on your mobile money.'
       });
 
     } catch (error) {
-      console.error('❌ Lipila API Error:', error.response?.data || error.message);
+      console.error('❌ Lipila API Error:', error);
+      
+      // Mark payment as failed
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { status: 'failed' }
+      });
 
-      transaction.status = 'failed';
-      global.transactions = global.transactions.map(t =>
-        t.id === transaction.id ? transaction : t
-      );
-
-      return res.status(500).json({
-        error: 'Failed to initiate payment with Lipila',
-        details: error.response?.data?.message || error.message,
+      return res.status(500).json({ 
+        error: 'Payment initiation failed. Please try again.',
+        details: error.message 
       });
     }
 
   } catch (error) {
     console.error('❌ Payment initiation error:', error);
-    res.status(500).json({
-      error: 'Failed to initiate payment',
-      details: error.message,
-    });
+    res.status(500).json({ error: 'Payment initiation failed. Please try again.' });
   }
 });
 
 // ============================================
-// WEBHOOK HANDLER
+// CHECK PAYMENT STATUS
+// ============================================
+
+router.get('/status/:transactionId', authenticate, async (req, res) => {
+  try {
+    const { transactionId } = req.params;
+    const userId = req.userId;
+
+    const payment = await prisma.payment.findUnique({
+      where: { transactionId: transactionId }
+    });
+
+    if (!payment) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+
+    if (payment.userId !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Get current user to check if upgrade was applied
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    res.json({
+      transactionId: payment.transactionId,
+      referenceId: payment.referenceId,
+      status: payment.status,
+      amount: payment.amount,
+      plan: payment.plan,
+      createdAt: payment.createdAt,
+      completedAt: payment.completedAt || null,
+      userRole: user?.role,
+      isUpgraded: user?.role === 'PRO' || user?.role === 'SCHOOL'
+    });
+
+  } catch (error) {
+    console.error('❌ Status check error:', error);
+    res.status(500).json({ error: 'Failed to get transaction status' });
+  }
+});
+
+// ============================================
+// GET USER'S PAYMENT HISTORY
+// ============================================
+
+router.get('/history', authenticate, async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    const payments = await prisma.payment.findMany({
+      where: { userId: userId },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    res.json({ payments });
+  } catch (error) {
+    console.error('❌ Payment history error:', error);
+    res.status(500).json({ error: 'Failed to get payment history' });
+  }
+});
+
+// ============================================
+// WEBHOOK (for real Lipila payments)
 // ============================================
 
 router.post('/webhook', async (req, res) => {
@@ -186,31 +258,58 @@ router.post('/webhook', async (req, res) => {
     const payload = req.body;
     console.log('📞 Webhook received:', payload);
 
-    const { referenceId, status, amount, accountNumber, identifier } = payload;
+    const { referenceId, status, accountNumber, identifier } = payload;
 
     if (!referenceId) {
-      console.warn('⚠️ Webhook missing referenceId');
       return res.status(400).json({ error: 'Missing referenceId' });
     }
 
-    if (!global.transactions) {
-      global.transactions = [];
-    }
-    const transaction = global.transactions.find(t => t.referenceId === referenceId);
+    const payment = await prisma.payment.findUnique({
+      where: { referenceId: referenceId }
+    });
 
-    if (!transaction) {
-      console.warn('⚠️ Transaction not found for referenceId:', referenceId);
+    if (!payment) {
+      console.warn('⚠️ Payment not found for referenceId:', referenceId);
+      return res.status(200).json({ received: true });
+    }
+
+    if (payment.status === 'completed') {
       return res.status(200).json({ received: true });
     }
 
     if (status === 'SUCCESS' || status === 'COMPLETED') {
-      transaction.status = 'completed';
-      transaction.completedAt = new Date().toISOString();
-      console.log('✅ Payment successful for:', referenceId);
-      console.log(`🔄 User ${transaction.userId} upgraded to PRO`);
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: 'completed',
+          completedAt: new Date(),
+          externalId: identifier
+        }
+      });
+
+      // ✅ Upgrade user
+      const now = new Date();
+      const subscriptionEndsAt = new Date(now);
+      subscriptionEndsAt.setMonth(subscriptionEndsAt.getMonth() + 1);
+
+      await prisma.user.update({
+        where: { id: payment.userId },
+        data: {
+          role: payment.plan === 'school' ? 'SCHOOL' : 'PRO',
+          lessonsLimit: 999999,
+          subscriptionEndsAt: subscriptionEndsAt,
+          lessonsUsed: 0,
+          lastResetAt: now
+        }
+      });
+
+      console.log(`✅ User ${payment.userId} upgraded to ${payment.plan} plan`);
     } else if (status === 'FAILED' || status === 'CANCELLED') {
-      transaction.status = 'failed';
-      console.log('❌ Payment failed for:', referenceId);
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { status: 'failed' }
+      });
+      console.log(`❌ Payment failed for user ${payment.userId}`);
     }
 
     res.status(200).json({ received: true });
@@ -222,65 +321,38 @@ router.post('/webhook', async (req, res) => {
 });
 
 // ============================================
-// CHECK TRANSACTION STATUS
+// TEST MOCK PAYMENT DIRECTLY (for debugging)
 // ============================================
 
-router.get('/status/:transactionId', authenticate, async (req, res) => {
-  try {
-    const { transactionId } = req.params;
-    const userId = req.userId;
-
-    if (!global.transactions) {
-      global.transactions = [];
-    }
-    const transaction = global.transactions.find(t => t.id === transactionId);
-
-    if (!transaction) {
-      return res.status(404).json({ error: 'Transaction not found' });
-    }
-
-    if (transaction.userId !== userId) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
-
-    res.json({
-      transactionId: transaction.id,
-      referenceId: transaction.referenceId,
-      status: transaction.status,
-      amount: transaction.amount,
-      provider: transaction.provider,
-      createdAt: transaction.createdAt,
-      completedAt: transaction.completedAt || null,
-    });
-
-  } catch (error) {
-    console.error('❌ Status check error:', error);
-    res.status(500).json({ error: 'Failed to get transaction status' });
-  }
-});
-
-// ============================================
-// GET USER TRANSACTIONS
-// ============================================
-
-router.get('/my-transactions', authenticate, async (req, res) => {
+router.post('/test-mock', authenticate, async (req, res) => {
   try {
     const userId = req.userId;
+    
+    // Immediately upgrade user for testing
+    const now = new Date();
+    const subscriptionEndsAt = new Date(now);
+    subscriptionEndsAt.setMonth(subscriptionEndsAt.getMonth() + 1);
 
-    if (!global.transactions) {
-      global.transactions = [];
-    }
-    const userTransactions = global.transactions
-      .filter(t => t.userId === userId)
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-    res.json({
-      transactions: userTransactions,
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        role: 'PRO',
+        lessonsLimit: 999999,
+        subscriptionEndsAt: subscriptionEndsAt,
+        lessonsUsed: 0,
+        lastResetAt: now
+      }
     });
 
+    res.json({
+      success: true,
+      message: '✅ Mock upgrade successful! You are now a Pro user.',
+      role: 'PRO',
+      subscriptionEndsAt: subscriptionEndsAt
+    });
   } catch (error) {
-    console.error('❌ Get transactions error:', error);
-    res.status(500).json({ error: 'Failed to get transactions' });
+    console.error('❌ Test mock error:', error);
+    res.status(500).json({ error: 'Failed to upgrade user' });
   }
 });
 
