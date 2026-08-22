@@ -13,6 +13,7 @@ export default function SchemesPage() {
   const [totalWeeks, setTotalWeeks] = useState(13);
   const [assessmentWeeks, setAssessmentWeeks] = useState<number[]>([6, 13]);
   const [testTopics, setTestTopics] = useState<{ [key: number]: string }>({});
+  const [weekTopics, setWeekTopics] = useState<{ [key: number]: string }>({});
   const [newAssessmentWeek, setNewAssessmentWeek] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedScheme, setGeneratedScheme] = useState<any>(null);
@@ -44,6 +45,10 @@ export default function SchemesPage() {
     setTestTopics({ ...testTopics, [week]: topic });
   };
 
+  const updateWeekTopic = (week: number, topic: string) => {
+    setWeekTopics({ ...weekTopics, [week]: topic });
+  };
+
   const generateScheme = async () => {
     setError("");
     if (!grade || !subject) {
@@ -53,6 +58,18 @@ export default function SchemesPage() {
 
     if (assessmentWeeks.length === 0) {
       setError("Please add at least one assessment week");
+      return;
+    }
+
+    // ✅ Check if all weeks have topics
+    const missingTopics = [];
+    for (let i = 1; i <= totalWeeks; i++) {
+      if (!weekTopics[i] && !assessmentWeeks.includes(i)) {
+        missingTopics.push(i);
+      }
+    }
+    if (missingTopics.length > 0) {
+      setError(`Please add topics for weeks: ${missingTopics.join(', ')}`);
       return;
     }
 
@@ -84,6 +101,7 @@ export default function SchemesPage() {
             weeks: totalWeeks,
             assessmentWeeks,
             testTopics: testTopicMap,
+            weekTopics,
           }),
         }
       );
@@ -163,17 +181,17 @@ export default function SchemesPage() {
                 <CalendarIcon className="w-8 h-8 text-secondary" /> Schemes of Work
               </h1>
               <p className="text-dark/70 mt-1">
-                Generate a full-term scheme of work with custom assessment weeks
+                Generate a full-term scheme of work with custom topics and assessment weeks
               </p>
             </div>
 
             {error && (
-              <div className="max-w-2xl p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm mb-4">
+              <div className="max-w-4xl p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm mb-4">
                 ❌ {error}
               </div>
             )}
 
-            <div className="max-w-2xl bg-white rounded-xl shadow-sm border border-highlight p-6">
+            <div className="max-w-4xl bg-white rounded-xl shadow-sm border border-highlight p-6">
               {/* Basic Info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -227,11 +245,60 @@ export default function SchemesPage() {
                 </div>
               </div>
 
+              {/* Week Topics Section */}
+              <div className="mt-6 border-t border-gray-200 pt-4">
+                <h3 className="text-lg font-semibold text-primary mb-3">📚 Week Topics</h3>
+                <p className="text-sm text-gray-500 mb-3">
+                  Enter the topic for each week. Assessment weeks will be marked automatically.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {Array.from({ length: totalWeeks }, (_, i) => {
+                    const week = i + 1;
+                    const isAssessment = assessmentWeeks.includes(week);
+                    return (
+                      <div key={week} className={`p-3 rounded-lg border ${isAssessment ? 'border-yellow-400 bg-yellow-50' : 'border-gray-200 bg-white'}`}>
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-primary">
+                            Week {week}
+                            {isAssessment && (
+                              <span className="ml-2 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+                                📝 Test
+                              </span>
+                            )}
+                          </span>
+                          {isAssessment && (
+                            <span className="text-xs text-gray-500">(Assessment week)</span>
+                          )}
+                        </div>
+                        {isAssessment ? (
+                          <input
+                            type="text"
+                            value={testTopics[week] || `Assessment - Week ${week}`}
+                            onChange={(e) => updateTestTopic(week, e.target.value)}
+                            placeholder="Enter test topic"
+                            className="mt-1 w-full px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            value={weekTopics[week] || ""}
+                            onChange={(e) => updateWeekTopic(week, e.target.value)}
+                            placeholder={`Enter topic for Week ${week}`}
+                            className="mt-1 w-full px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Assessment Weeks Section */}
               <div className="mt-6 border-t border-gray-200 pt-4">
-                <h3 className="text-lg font-semibold text-primary mb-3">📝 Assessment Weeks</h3>
+                <h3 className="text-lg font-semibold text-primary mb-3">📝 Select Assessment Weeks</h3>
                 <p className="text-sm text-gray-500 mb-3">
-                  Select which weeks will have tests or assessments
+                  Add weeks that will have tests or assessments (these weeks will be highlighted)
                 </p>
 
                 <div className="flex gap-2">
@@ -253,24 +320,17 @@ export default function SchemesPage() {
                 </div>
 
                 {assessmentWeeks.length > 0 && (
-                  <div className="mt-3 space-y-2">
+                  <div className="mt-3 flex flex-wrap gap-2">
                     {assessmentWeeks.map((week) => (
-                      <div key={week} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
-                        <span className="font-medium text-primary w-16">Week {week}</span>
-                        <input
-                          type="text"
-                          value={testTopics[week] || `Assessment - Week ${week}`}
-                          onChange={(e) => updateTestTopic(week, e.target.value)}
-                          placeholder="Enter test/assessment topic"
-                          className="flex-1 px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                        />
+                      <span key={week} className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm flex items-center gap-2">
+                        Week {week}
                         <button
                           onClick={() => removeAssessmentWeek(week)}
                           className="text-red-500 hover:text-red-700"
                         >
-                          <TrashIcon className="w-4 h-4" />
+                          ✕
                         </button>
-                      </div>
+                      </span>
                     ))}
                   </div>
                 )}
@@ -342,8 +402,8 @@ export default function SchemesPage() {
                     <th className="p-2 border border-highlight text-left">TOPIC</th>
                     <th className="p-2 border border-highlight text-left">TYPE</th>
                     <th className="p-2 border border-highlight text-left">SPECIFIC OUTCOME</th>
-                    <th className="p-2 border border-highlight text-left">TEACHING AND LEARNING METHODS</th>
-                    <th className="p-2 border border-highlight text-left">TEACHING AND LEARNING AIDS</th>
+                    <th className="p-2 border border-highlight text-left">METHODS</th>
+                    <th className="p-2 border border-highlight text-left">AIDS</th>
                     <th className="p-2 border border-highlight text-left">KNOWLEDGE</th>
                     <th className="p-2 border border-highlight text-left">SKILLS</th>
                     <th className="p-2 border border-highlight text-left">VALUES</th>
@@ -359,7 +419,7 @@ export default function SchemesPage() {
                       <td className="p-2 border border-highlight text-center">
                         {week.isAssessment ? (
                           <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-semibold">
-                            📝 TEST/ASSESSMENT
+                            📝 TEST
                           </span>
                         ) : (
                           <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">
