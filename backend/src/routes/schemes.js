@@ -23,6 +23,8 @@ router.post('/generate', authenticate, async (req, res) => {
   try {
     const { grade, subject, term, weeks, assessmentWeeks, testTopics, weekTopics } = req.body;
     
+    console.log('📝 Received weekTopics:', weekTopics); // Debug log
+
     if (!grade || !subject) {
       return res.status(400).json({ error: 'Grade and subject are required' });
     }
@@ -37,6 +39,8 @@ router.post('/generate', authenticate, async (req, res) => {
     const assessmentWeekNumbers = assessmentWeeks || [6, 13];
     const testTopicMap = testTopics || {};
     const customWeekTopics = weekTopics || {};
+
+    console.log('📝 Custom weekTopics:', customWeekTopics); // Debug log
 
     const generatedWeeks = [];
     const defaultTopics = [
@@ -62,13 +66,21 @@ router.post('/generate', authenticate, async (req, res) => {
       const weekNum = i + 1;
       const isAssessmentWeek = assessmentWeekNumbers.includes(weekNum);
       
-      // Use custom topic if provided, otherwise use default
-      const topic = customWeekTopics[weekNum] || defaultTopics[i % defaultTopics.length];
-      const testTopic = testTopicMap[weekNum];
+      // ✅ USE CUSTOM TOPIC if provided, otherwise use default
+      let topic;
+      if (isAssessmentWeek) {
+        // For assessment weeks, use the test topic or default
+        topic = testTopicMap[weekNum] || `Assessment - Week ${weekNum}`;
+      } else {
+        // For normal weeks, use custom topic or default
+        topic = customWeekTopics[weekNum] || defaultTopics[i % defaultTopics.length];
+      }
+      
+      console.log(`📝 Week ${weekNum} topic:`, topic); // Debug log
       
       generatedWeeks.push({
         week: weekNum,
-        topic: isAssessmentWeek ? (testTopic || `Assessment - Week ${weekNum}`) : topic,
+        topic: topic, // ✅ This now uses custom topics
         isAssessment: isAssessmentWeek,
         assessmentType: isAssessmentWeek ? 'Test/Assessment' : '',
         specificOutcome: isAssessmentWeek 
@@ -114,7 +126,7 @@ router.post('/generate', authenticate, async (req, res) => {
       totalWeeks: totalWeeks,
       assessmentWeeks: assessmentWeekNumbers,
       testTopics: testTopicMap,
-      weekTopics: customWeekTopics,
+      weekTopics: customWeekTopics, // ✅ Store custom topics
       weeks: generatedWeeks,
       createdAt: new Date().toISOString()
     };
