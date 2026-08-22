@@ -61,7 +61,6 @@ export default function SchemesPage() {
       return;
     }
 
-    // ✅ Check if all weeks have topics
     const missingTopics = [];
     for (let i = 1; i <= totalWeeks; i++) {
       if (!weekTopics[i] && !assessmentWeeks.includes(i)) {
@@ -156,34 +155,29 @@ export default function SchemesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-cream">
-      <header className="bg-primary text-white shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-16">
-          <div className="flex items-center space-x-4">
-            <Link href="/dashboard" className="hover:text-secondary transition-colors">
-              <ArrowLeftIcon className="w-5 h-5" />
-            </Link>
-            <span className="text-2xl font-bold">mytoolbox</span>
+    <div className="min-h-screen bg-white p-6">
+      <div className="max-w-7xl mx-auto">
+        <header className="mb-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Link href="/dashboard" className="text-gray-600 hover:text-gray-800">
+                <ArrowLeftIcon className="w-5 h-5" />
+              </Link>
+              <h1 className="text-2xl font-bold text-gray-800">Schemes of Work</h1>
+            </div>
+            <nav className="flex gap-6 text-sm">
+              <Link href="/dashboard" className="text-gray-600 hover:text-gray-800">Dashboard</Link>
+              <Link href="/generate" className="text-gray-600 hover:text-gray-800">Generate</Link>
+              <Link href="/schemes" className="text-gray-900 font-semibold">Schemes</Link>
+            </nav>
           </div>
-          <nav className="hidden md:flex space-x-6">
-            <Link href="/dashboard" className="hover:text-secondary">Dashboard</Link>
-            <Link href="/generate" className="hover:text-secondary">Generate</Link>
-            <Link href="/schemes" className="text-secondary font-semibold">Schemes</Link>
-          </nav>
-        </div>
-      </header>
+        </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {!generatedScheme ? (
           <>
-            <div className="mb-8">
-              <h1 className="text-3xl font-bold text-primary flex items-center gap-3">
-                <CalendarIcon className="w-8 h-8 text-secondary" /> Schemes of Work
-              </h1>
-              <p className="text-dark/70 mt-1">
-                Generate a full-term scheme of work with custom topics and assessment weeks
-              </p>
-            </div>
+            <p className="text-gray-600 mb-6">
+              Generate a full-term scheme of work with custom topics and assessment weeks
+            </p>
 
             {error && (
               <div className="max-w-4xl p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm mb-4">
@@ -191,15 +185,15 @@ export default function SchemesPage() {
               </div>
             )}
 
-            <div className="max-w-4xl bg-white rounded-xl shadow-sm border border-highlight p-6">
+            <div className="max-w-4xl bg-white border border-gray-200 rounded-lg p-6">
               {/* Basic Info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-dark">Grade</label>
+                  <label className="block text-sm font-medium text-gray-700">Grade</label>
                   <select
                     value={grade}
                     onChange={(e) => setGrade(e.target.value)}
-                    className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400"
                   >
                     <option value="">Select grade</option>
                     {["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"].map((g) => (
@@ -208,12 +202,12 @@ export default function SchemesPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-dark">Subject</label>
+                  <label className="block text-sm font-medium text-gray-700">Subject</label>
                   <input
                     type="text"
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
-                    className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400"
                     placeholder="e.g. Biology"
                   />
                 </div>
@@ -221,11 +215,11 @@ export default function SchemesPage() {
 
               <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-dark">Term</label>
+                  <label className="block text-sm font-medium text-gray-700">Term</label>
                   <select
                     value={term}
                     onChange={(e) => setTerm(e.target.value)}
-                    className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400"
                   >
                     <option value="1">Term 1</option>
                     <option value="2">Term 2</option>
@@ -233,12 +227,12 @@ export default function SchemesPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-dark">Total Weeks</label>
+                  <label className="block text-sm font-medium text-gray-700">Total Weeks</label>
                   <input
                     type="number"
                     value={totalWeeks}
                     onChange={(e) => setTotalWeeks(parseInt(e.target.value) || 13)}
-                    className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400"
                     min="1"
                     max="20"
                   />
@@ -247,7 +241,7 @@ export default function SchemesPage() {
 
               {/* Week Topics Section */}
               <div className="mt-6 border-t border-gray-200 pt-4">
-                <h3 className="text-lg font-semibold text-primary mb-3">📚 Week Topics</h3>
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">Week Topics</h3>
                 <p className="text-sm text-gray-500 mb-3">
                   Enter the topic for each week. Assessment weeks will be marked automatically.
                 </p>
@@ -257,14 +251,12 @@ export default function SchemesPage() {
                     const week = i + 1;
                     const isAssessment = assessmentWeeks.includes(week);
                     return (
-                      <div key={week} className={`p-3 rounded-lg border ${isAssessment ? 'border-yellow-400 bg-yellow-50' : 'border-gray-200 bg-white'}`}>
+                      <div key={week} className="p-3 rounded-lg border border-gray-200 bg-white">
                         <div className="flex items-center justify-between">
-                          <span className="font-medium text-primary">
+                          <span className="font-medium text-gray-700">
                             Week {week}
                             {isAssessment && (
-                              <span className="ml-2 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
-                                📝 Test
-                              </span>
+                              <span className="ml-2 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">Test</span>
                             )}
                           </span>
                           {isAssessment && (
@@ -277,7 +269,7 @@ export default function SchemesPage() {
                             value={testTopics[week] || `Assessment - Week ${week}`}
                             onChange={(e) => updateTestTopic(week, e.target.value)}
                             placeholder="Enter test topic"
-                            className="mt-1 w-full px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                            className="mt-1 w-full px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400 text-sm"
                           />
                         ) : (
                           <input
@@ -285,7 +277,7 @@ export default function SchemesPage() {
                             value={weekTopics[week] || ""}
                             onChange={(e) => updateWeekTopic(week, e.target.value)}
                             placeholder={`Enter topic for Week ${week}`}
-                            className="mt-1 w-full px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                            className="mt-1 w-full px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400 text-sm"
                           />
                         )}
                       </div>
@@ -296,9 +288,9 @@ export default function SchemesPage() {
 
               {/* Assessment Weeks Section */}
               <div className="mt-6 border-t border-gray-200 pt-4">
-                <h3 className="text-lg font-semibold text-primary mb-3">📝 Select Assessment Weeks</h3>
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">Select Assessment Weeks</h3>
                 <p className="text-sm text-gray-500 mb-3">
-                  Add weeks that will have tests or assessments (these weeks will be highlighted)
+                  Add weeks that will have tests or assessments
                 </p>
 
                 <div className="flex gap-2">
@@ -307,13 +299,13 @@ export default function SchemesPage() {
                     value={newAssessmentWeek}
                     onChange={(e) => setNewAssessmentWeek(e.target.value)}
                     placeholder={`Week (1-${totalWeeks})`}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400"
                     min="1"
                     max={totalWeeks}
                   />
                   <button
                     onClick={addAssessmentWeek}
-                    className="bg-secondary text-dark px-4 py-2 rounded-md hover:bg-secondary/80 flex items-center gap-1"
+                    className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 flex items-center gap-1"
                   >
                     <PlusIcon className="w-4 h-4" /> Add
                   </button>
@@ -322,11 +314,11 @@ export default function SchemesPage() {
                 {assessmentWeeks.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {assessmentWeeks.map((week) => (
-                      <span key={week} className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm flex items-center gap-2">
+                      <span key={week} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm flex items-center gap-2">
                         Week {week}
                         <button
                           onClick={() => removeAssessmentWeek(week)}
-                          className="text-red-500 hover:text-red-700"
+                          className="text-gray-400 hover:text-gray-600"
                         >
                           ✕
                         </button>
@@ -336,22 +328,13 @@ export default function SchemesPage() {
                 )}
               </div>
 
-              <div className="mt-6 flex gap-3">
+              <div className="mt-6">
                 <button
                   onClick={generateScheme}
                   disabled={isGenerating}
-                  className="btn-primary flex items-center gap-2 py-3 px-8 disabled:opacity-50"
+                  className="bg-gray-800 text-white px-6 py-2 rounded-md hover:bg-gray-700 disabled:opacity-50"
                 >
-                  {isGenerating ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Generating Scheme...
-                    </>
-                  ) : (
-                    <>
-                      <CalendarIcon className="w-5 h-5" /> Generate Scheme
-                    </>
-                  )}
+                  {isGenerating ? "Generating..." : "Generate Scheme"}
                 </button>
               </div>
             </div>
@@ -362,103 +345,99 @@ export default function SchemesPage() {
               <div>
                 <button
                   onClick={() => setGeneratedScheme(null)}
-                  className="text-primary hover:text-secondary transition-colors flex items-center gap-2 mb-2"
+                  className="text-gray-600 hover:text-gray-800 flex items-center gap-2 mb-2"
                 >
-                  <ArrowLeftIcon className="w-5 h-5" /> New scheme
+                  <ArrowLeftIcon className="w-4 h-4" /> New scheme
                 </button>
-                <h2 className="text-2xl font-bold text-primary">
+                <h2 className="text-2xl font-bold text-gray-800">
                   {generatedScheme.school} — {generatedScheme.subject}
                 </h2>
-                <p className="text-sm text-dark/60">
+                <p className="text-sm text-gray-600">
                   {generatedScheme.grade} · {generatedScheme.term} · {generatedScheme.year}
                 </p>
-                <p className="text-sm text-secondary mt-1">
-                  📝 Assessment Weeks: {generatedScheme.assessmentWeeks?.join(', ') || 'None'}
+                <p className="text-sm text-gray-500 mt-1">
+                  Assessment Weeks: {generatedScheme.assessmentWeeks?.join(', ') || 'None'}
                 </p>
               </div>
               <div className="flex gap-2">
                 <button
                   onClick={() => downloadScheme('word')}
                   disabled={isDownloading}
-                  className="btn-primary flex items-center gap-2 disabled:opacity-50"
+                  className="bg-gray-800 text-white px-4 py-2 rounded-md hover:bg-gray-700 disabled:opacity-50 flex items-center gap-2"
                 >
-                  <ArrowDownTrayIcon className="w-5 h-5" /> Word
+                  <ArrowDownTrayIcon className="w-4 h-4" /> Word
                 </button>
                 <button
                   onClick={() => downloadScheme('pdf')}
                   disabled={isDownloading}
-                  className="btn-primary flex items-center gap-2 disabled:opacity-50"
+                  className="bg-gray-800 text-white px-4 py-2 rounded-md hover:bg-gray-700 disabled:opacity-50 flex items-center gap-2"
                 >
-                  <ArrowDownTrayIcon className="w-5 h-5" /> PDF
+                  <ArrowDownTrayIcon className="w-4 h-4" /> PDF
                 </button>
               </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-highlight overflow-x-auto">
+            <div className="bg-white border border-gray-200 rounded-lg overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-primary text-white">
-                    <th className="p-2 border border-highlight text-center w-12">WEEK</th>
-                    <th className="p-2 border border-highlight text-left">TOPIC</th>
-                    <th className="p-2 border border-highlight text-left">TYPE</th>
-                    <th className="p-2 border border-highlight text-left">SPECIFIC OUTCOME</th>
-                    <th className="p-2 border border-highlight text-left">METHODS</th>
-                    <th className="p-2 border border-highlight text-left">AIDS</th>
-                    <th className="p-2 border border-highlight text-left">KNOWLEDGE</th>
-                    <th className="p-2 border border-highlight text-left">SKILLS</th>
-                    <th className="p-2 border border-highlight text-left">VALUES</th>
+                  <tr className="bg-gray-100">
+                    <th className="p-2 border border-gray-300 text-center font-semibold text-gray-700">WEEK</th>
+                    <th className="p-2 border border-gray-300 text-left font-semibold text-gray-700">TOPIC</th>
+                    <th className="p-2 border border-gray-300 text-left font-semibold text-gray-700">TYPE</th>
+                    <th className="p-2 border border-gray-300 text-left font-semibold text-gray-700">SPECIFIC OUTCOME</th>
+                    <th className="p-2 border border-gray-300 text-left font-semibold text-gray-700">METHODS</th>
+                    <th className="p-2 border border-gray-300 text-left font-semibold text-gray-700">AIDS</th>
+                    <th className="p-2 border border-gray-300 text-left font-semibold text-gray-700">KNOWLEDGE</th>
+                    <th className="p-2 border border-gray-300 text-left font-semibold text-gray-700">SKILLS</th>
+                    <th className="p-2 border border-gray-300 text-left font-semibold text-gray-700">VALUES</th>
                   </tr>
                 </thead>
                 <tbody>
                   {generatedScheme.weeks.map((week: any, idx: number) => (
-                    <tr key={idx} className={`${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'} ${week.isAssessment ? 'bg-yellow-50' : ''}`}>
-                      <td className="p-2 border border-highlight text-center font-bold">{week.week}</td>
-                      <td className="p-2 border border-highlight">
+                    <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="p-2 border border-gray-300 text-center font-bold">{week.week}</td>
+                      <td className="p-2 border border-gray-300">
                         <strong>{week.topic}</strong>
                       </td>
-                      <td className="p-2 border border-highlight text-center">
+                      <td className="p-2 border border-gray-300 text-center">
                         {week.isAssessment ? (
-                          <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-semibold">
-                            📝 TEST
-                          </span>
+                          <span className="px-2 py-1 bg-gray-200 text-gray-700 rounded-full text-xs font-semibold">TEST</span>
                         ) : (
-                          <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">
-                            Lesson
-                          </span>
+                          <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs">Lesson</span>
                         )}
                       </td>
-                      <td className="p-2 border border-highlight text-xs">{week.specificOutcome}</td>
-                      <td className="p-2 border border-highlight text-xs">
+                      <td className="p-2 border border-gray-300 text-xs">{week.specificOutcome}</td>
+                      <td className="p-2 border border-gray-300 text-xs">
                         {week.methods && week.methods.map((m: string, i: number) => (
                           <div key={i}>• {m}</div>
                         ))}
                       </td>
-                      <td className="p-2 border border-highlight text-xs">
+                      <td className="p-2 border border-gray-300 text-xs">
                         {week.aids && week.aids.map((a: string, i: number) => (
                           <div key={i}>• {a}</div>
                         ))}
                       </td>
-                      <td className="p-2 border border-highlight text-xs">{week.knowledge || '-'}</td>
-                      <td className="p-2 border border-highlight text-xs">{week.skills || '-'}</td>
-                      <td className="p-2 border border-highlight text-xs">{week.values || '-'}</td>
+                      <td className="p-2 border border-gray-300 text-xs">{week.knowledge || '-'}</td>
+                      <td className="p-2 border border-gray-300 text-xs">{week.skills || '-'}</td>
+                      <td className="p-2 border border-gray-300 text-xs">{week.values || '-'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            <div className="mt-6 bg-success/10 border border-success/30 rounded-xl p-4 flex flex-wrap items-center gap-3">
-              <span className="text-success font-bold">✓ CDC Mapped</span>
-              <span className="text-sm text-dark/60">|</span>
-              <span className="text-sm text-dark/60">{generatedScheme.totalWeeks} weeks · Full term coverage</span>
-              <span className="text-sm text-dark/60">|</span>
-              <span className="text-sm text-success font-semibold">100% aligned to syllabus</span>
-              <span className="text-sm text-dark/60">|</span>
-              <span className="text-sm text-secondary font-semibold">📝 {generatedScheme.assessmentWeeks?.length || 0} assessment weeks</span>
+            <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4 flex flex-wrap items-center gap-3">
+              <span className="text-gray-700 font-semibold">✓ CDC Mapped</span>
+              <span className="text-sm text-gray-500">|</span>
+              <span className="text-sm text-gray-500">{generatedScheme.totalWeeks} weeks · Full term coverage</span>
+              <span className="text-sm text-gray-500">|</span>
+              <span className="text-sm text-gray-700 font-semibold">100% aligned to syllabus</span>
+              <span className="text-sm text-gray-500">|</span>
+              <span className="text-sm text-gray-600 font-semibold">📝 {generatedScheme.assessmentWeeks?.length || 0} assessment weeks</span>
             </div>
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }
