@@ -18,10 +18,10 @@ const authenticate = (req, res, next) => {
   }
 };
 
-// Generate scheme with custom weeks and topics
+// Generate scheme with custom topics per week
 router.post('/generate', authenticate, async (req, res) => {
   try {
-    const { grade, subject, term, weeks, assessmentWeeks, testTopics } = req.body;
+    const { grade, subject, term, weeks, assessmentWeeks, testTopics, weekTopics } = req.body;
     
     if (!grade || !subject) {
       return res.status(400).json({ error: 'Grade and subject are required' });
@@ -36,9 +36,10 @@ router.post('/generate', authenticate, async (req, res) => {
     const totalWeeks = weeks || 13;
     const assessmentWeekNumbers = assessmentWeeks || [6, 13];
     const testTopicMap = testTopics || {};
+    const customWeekTopics = weekTopics || {};
 
     const generatedWeeks = [];
-    const topics = [
+    const defaultTopics = [
       `Introduction to ${subject}`,
       `Basic concepts in ${subject}`,
       `Core principles of ${subject}`,
@@ -60,16 +61,19 @@ router.post('/generate', authenticate, async (req, res) => {
     for (let i = 0; i < totalWeeks; i++) {
       const weekNum = i + 1;
       const isAssessmentWeek = assessmentWeekNumbers.includes(weekNum);
-      const customTopic = testTopicMap[weekNum];
+      
+      // Use custom topic if provided, otherwise use default
+      const topic = customWeekTopics[weekNum] || defaultTopics[i % defaultTopics.length];
+      const testTopic = testTopicMap[weekNum];
       
       generatedWeeks.push({
         week: weekNum,
-        topic: customTopic || topics[i % topics.length],
+        topic: isAssessmentWeek ? (testTopic || `Assessment - Week ${weekNum}`) : topic,
         isAssessment: isAssessmentWeek,
         assessmentType: isAssessmentWeek ? 'Test/Assessment' : '',
         specificOutcome: isAssessmentWeek 
           ? `Assessment on topics covered in weeks ${Math.max(1, weekNum - 3)} - ${weekNum}`
-          : `By the end of this week, learners will be able to understand and apply ${subject} concepts related to ${topics[i % topics.length]}`,
+          : `By the end of this week, learners will be able to understand and apply ${subject} concepts related to ${topic}`,
         methods: isAssessmentWeek 
           ? ['Assessment', 'Test', 'Evaluation']
           : [
@@ -89,11 +93,11 @@ router.post('/generate', authenticate, async (req, res) => {
               'Show mastery of key concepts'
             ]
           : [
-              `Understand key concepts of ${topics[i % topics.length]}`,
+              `Understand key concepts of ${topic}`,
               `Apply knowledge to solve problems`,
               'Demonstrate understanding through practical tasks'
             ],
-        knowledge: isAssessmentWeek ? 'Assessment of covered topics' : `Key concepts in ${topics[i % topics.length]}`,
+        knowledge: isAssessmentWeek ? 'Assessment of covered topics' : `Key concepts in ${topic}`,
         skills: isAssessmentWeek ? 'Evaluation, Critical thinking' : 'Critical thinking, problem-solving, analysis',
         values: isAssessmentWeek ? 'Honesty, Responsibility' : 'Curiosity, responsibility, collaboration'
       });
@@ -110,6 +114,7 @@ router.post('/generate', authenticate, async (req, res) => {
       totalWeeks: totalWeeks,
       assessmentWeeks: assessmentWeekNumbers,
       testTopics: testTopicMap,
+      weekTopics: customWeekTopics,
       weeks: generatedWeeks,
       createdAt: new Date().toISOString()
     };
