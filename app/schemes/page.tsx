@@ -157,7 +157,8 @@ export default function SchemesPage() {
   return (
     <div className="min-h-screen bg-white p-6">
       <div className="max-w-7xl mx-auto">
-        <header className="mb-8">
+        {/* Header */}
+        <header className="mb-8 border-b-2 border-gray-300 pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Link href="/dashboard" className="text-gray-600 hover:text-gray-800">
@@ -185,7 +186,7 @@ export default function SchemesPage() {
               </div>
             )}
 
-            <div className="max-w-4xl bg-white border border-gray-200 rounded-lg p-6">
+            <div className="max-w-4xl bg-white border border-gray-300 rounded-lg p-6">
               {/* Basic Info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -239,7 +240,7 @@ export default function SchemesPage() {
                 </div>
               </div>
 
-              {/* Week Topics Section */}
+              {/* Week Topics */}
               <div className="mt-6 border-t border-gray-200 pt-4">
                 <h3 className="text-lg font-semibold text-gray-800 mb-3">Week Topics</h3>
                 <p className="text-sm text-gray-500 mb-3">
@@ -256,7 +257,7 @@ export default function SchemesPage() {
                           <span className="font-medium text-gray-700">
                             Week {week}
                             {isAssessment && (
-                              <span className="ml-2 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">Test</span>
+                              <span className="ml-2 text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">Test</span>
                             )}
                           </span>
                           {isAssessment && (
@@ -286,7 +287,7 @@ export default function SchemesPage() {
                 </div>
               </div>
 
-              {/* Assessment Weeks Section */}
+              {/* Assessment Weeks */}
               <div className="mt-6 border-t border-gray-200 pt-4">
                 <h3 className="text-lg font-semibold text-gray-800 mb-3">Select Assessment Weeks</h3>
                 <p className="text-sm text-gray-500 mb-3">
@@ -340,6 +341,9 @@ export default function SchemesPage() {
             </div>
           </>
         ) : (
+          // ============================================
+          // GENERATED SCHEME - DOCUMENT STYLE
+          // ============================================
           <div>
             <div className="flex items-center justify-between mb-6">
               <div>
@@ -377,19 +381,20 @@ export default function SchemesPage() {
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-lg overflow-x-auto">
+            {/* Document-Style Table */}
+            <div className="bg-white border border-gray-300 rounded-lg overflow-x-auto shadow-sm">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-100">
-                    <th className="p-2 border border-gray-300 text-center font-semibold text-gray-700">WEEK</th>
-                    <th className="p-2 border border-gray-300 text-left font-semibold text-gray-700">TOPIC</th>
-                    <th className="p-2 border border-gray-300 text-left font-semibold text-gray-700">TYPE</th>
-                    <th className="p-2 border border-gray-300 text-left font-semibold text-gray-700">SPECIFIC OUTCOME</th>
-                    <th className="p-2 border border-gray-300 text-left font-semibold text-gray-700">METHODS</th>
-                    <th className="p-2 border border-gray-300 text-left font-semibold text-gray-700">AIDS</th>
-                    <th className="p-2 border border-gray-300 text-left font-semibold text-gray-700">KNOWLEDGE</th>
-                    <th className="p-2 border border-gray-300 text-left font-semibold text-gray-700">SKILLS</th>
-                    <th className="p-2 border border-gray-300 text-left font-semibold text-gray-700">VALUES</th>
+                  <tr className="bg-gray-100 border-b-2 border-gray-300">
+                    <th className="p-2 border-r border-gray-300 text-center font-bold text-gray-800">WEEK</th>
+                    <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">TOPIC</th>
+                    <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">TYPE</th>
+                    <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">SPECIFIC OUTCOME</th>
+                    <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">METHODS</th>
+                    <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">AIDS</th>
+                    <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">KNOWLEDGE</th>
+                    <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">SKILLS</th>
+                    <th className="p-2 border-l border-gray-300 text-left font-bold text-gray-800">VALUES</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -426,7 +431,7 @@ export default function SchemesPage() {
               </table>
             </div>
 
-            <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4 flex flex-wrap items-center gap-3">
+            <div className="mt-6 bg-gray-50 border border-gray-300 rounded-lg p-4 flex flex-wrap items-center gap-3">
               <span className="text-gray-700 font-semibold">✓ CDC Mapped</span>
               <span className="text-sm text-gray-500">|</span>
               <span className="text-sm text-gray-500">{generatedScheme.totalWeeks} weeks · Full term coverage</span>
