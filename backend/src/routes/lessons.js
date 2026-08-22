@@ -3,7 +3,7 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 
-// ✅ FORCE MOCK MODE - Bypass DeepSeek for testing
+// ✅ FORCE MOCK MODE - Set to false to use real DeepSeek
 const FORCE_MOCK = false;
 
 const prisma = new PrismaClient();
@@ -488,26 +488,35 @@ router.post('/generate', authenticate, async (req, res) => {
     }
 
     let lessonData;
-    let useMock = true; // Default to mock
+    let useMock = false;
 
-    // ✅ Skip DeepSeek if FORCE_MOCK is true
+    // ✅ Try DeepSeek with better error handling
     if (deepseekClient && !FORCE_MOCK) {
       try {
+        console.log('📝 Calling DeepSeek API...');
+        
         const completion = await deepseekClient.chat.completions.create({
-          model: "deepseek-v4-flash",
+          model: "deepseek-chat",
           messages: [
-            { role: "system", content: "You are an expert Zambian teacher following the Ministry of Education curriculum standards. Always respond with valid JSON only." },
+            { role: "system", content: "You are an expert Zambian teacher. Always respond with valid JSON only." },
             { role: "user", content: prompt }
           ],
           temperature: 0.7,
-          max_tokens: 4096
+          max_tokens: 2048
         });
 
         console.log('📝 DeepSeek response received');
 
         try {
-          lessonData = JSON.parse(completion.choices[0].message.content);
+          const rawContent = completion.choices[0].message.content;
+          // Clean up the response
+          const cleanedContent = rawContent
+            .replace(/```json/g, '')
+            .replace(/```/g, '')
+            .trim();
+          lessonData = JSON.parse(cleanedContent);
           useMock = false;
+          console.log('✅ DeepSeek response parsed successfully');
         } catch (parseError) {
           console.log('⚠️ Failed to parse DeepSeek response:', parseError.message);
           useMock = true;
@@ -517,7 +526,8 @@ router.post('/generate', authenticate, async (req, res) => {
         useMock = true;
       }
     } else {
-      console.log('📝 Using mock mode (FORCE_MOCK = true)');
+      console.log('📝 Using mock mode');
+      useMock = true;
     }
 
     // Use mock if needed
@@ -530,9 +540,15 @@ router.post('/generate', authenticate, async (req, res) => {
       }
     }
 
-    // ✅ Ensure topic is always present
+    // ✅ Ensure all required fields exist
     lessonData.topic = lessonData.topic || topic;
     lessonData.title = lessonData.title || lessonData.topic || topic;
+    lessonData.grade = lessonData.grade || grade;
+    lessonData.subject = lessonData.subject || subject;
+    lessonData.objectives = lessonData.objectives || [];
+    lessonData.development = lessonData.development || [];
+    lessonData.activities = lessonData.activities || [];
+    lessonData.assessment = lessonData.assessment || '';
 
     // ✅ Save to database
     const lesson = {
@@ -548,7 +564,7 @@ router.post('/generate', authenticate, async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    console.log('📝 Saving lesson with topic:', lesson.topic);
+    console.log('📝 Saving lesson...');
 
     await prisma.lesson.create({
       data: {
@@ -559,22 +575,22 @@ router.post('/generate', authenticate, async (req, res) => {
         topic: lesson.topic,
         title: lesson.title || lesson.topic,
         classSize: lesson.classSize,
-        duration: lesson.duration,
+        duration: lesson.duration || '40 min',
         curriculum: lesson.curriculum,
         objectives: lesson.objectives || [],
         development: lesson.development || [],
         activities: lesson.activities || [],
         assessment: lesson.assessment || '',
         curriculumCodes: lesson.curriculumCodes || [],
-        provinceContext: lesson.province,
-        teacherName: lesson.teacherName,
-        school: lesson.school,
-        province: lesson.province,
-        district: lesson.district,
-        date: lesson.date,
-        time: lesson.time,
-        boys: lesson.boys,
-        girls: lesson.girls,
+        provinceContext: lesson.province || '',
+        teacherName: lesson.teacherName || '',
+        school: lesson.school || '',
+        province: lesson.province || '',
+        district: lesson.district || '',
+        date: lesson.date || '',
+        time: lesson.time || '',
+        boys: lesson.boys || 0,
+        girls: lesson.girls || 0,
         generalCompetences: lesson.generalCompetences || [],
         specificCompetence: lesson.specificCompetence || '',
         lessonGoal: lesson.lessonGoal || '',
@@ -607,7 +623,11 @@ router.post('/generate', authenticate, async (req, res) => {
 
   } catch (error) {
     console.error('❌ Generation error:', error);
-    res.status(500).json({ error: 'Failed to generate lesson', details: error.message });
+    res.status(500).json({ 
+      error: 'Failed to generate lesson', 
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
@@ -625,5 +645,5 @@ router.get('/mine', authenticate, async (req, res) => {
   }
 });
 
-// ✅ THIS IS REQUIRED - Export the router
+// ✅ Export the router
 module.exports = router;
