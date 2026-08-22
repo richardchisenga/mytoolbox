@@ -96,62 +96,171 @@ export default function GeneratePage() {
     URL.revokeObjectURL(url);
   };
 
-  // THIS IS THE FUNCTION THAT WAS CAUSING THE ERROR
   const generateHTMLContent = (lesson: any) => {
     const isOBC = lesson.curriculum === "obc";
 
     if (isOBC) {
-      // Return minimal OBC template
-      return `<!DOCTYPE html><html><head><title>Lesson Plan</title>
-      <style>body{font-family:Times New Roman;margin:40px}.header{text-align:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:20px}.header h1{margin:0}.header p{margin:5px 0}table{width:100%;border-collapse:collapse;margin:20px 0}th,td{border:1px solid #000;padding:8px 10px;text-align:left}th{background:#e0e0e0}.section{margin:20px 0}.section h4{border-bottom:1px solid #000;padding-bottom:5px}ul,ol{margin:5px 0;padding-left:25px}.footer{text-align:center;border-top:2px solid #000;padding-top:10px;margin-top:20px}</style>
-      </head><body>
-      <div class="header"><h1>MINISTRY OF EDUCATION</h1><h2>${lesson.school || "KASHINAKAZHI SECONDARY SCHOOL"}</h2><h3>LESSON PLAN</h3><p>DEPARTMENT OF NATURAL SCIENCES</p></div>
-      <div><p><strong>NAME OF TEACHER:</strong> ${lesson.teacherName || "_________________"}</p>
-      <p><strong>SUBJECT:</strong> ${lesson.subject || ""}</p>
-      <p><strong>TOPIC:</strong> ${lesson.title || lesson.topic || ""}</p>
-      <p><strong>SUBTOPIC:</strong> ${lesson.subtopic || "_________________"}</p>
-      <p><strong>DATE:</strong> ${lesson.date || "_________________"}</p>
-      <p><strong>DURATION:</strong> ${lesson.duration || "80 MINUTES"}</p>
-      <p><strong>CLASS:</strong> ${lesson.grade || ""}</p>
-      <p><strong>NO. OF BOYS:</strong> ${lesson.boys || "___"}</p>
-      <p><strong>NO. OF GIRLS:</strong> ${lesson.girls || "___"}</p></div>
-      <div class="section"><h4>REFERENCES:</h4><ul>${(lesson.references || ["_________________"]).map((r: string) => `<li>${r}</li>`).join("")}</ul></div>
-      <div class="section"><h4>TEACHING &amp; LEARNING AIDS:</h4><ul>${(lesson.teachingAids || ["_________________"]).map((a: string) => `<li>${a}</li>`).join("")}</ul></div>
-      <div class="section"><h4>RATIONALE:</h4><p>${lesson.rationale || "_________________"}</p></div>
-      <div class="section"><h4>LEARNING OUTCOMES:</h4><ol>${(lesson.learningOutcomes || ["_________________"]).map((o: string) => `<li>${o}</li>`).join("")}</ol></div>
-      <div class="section"><h4>LESSON DEVELOPMENT</h4><table><thead><tr><th>TIME</th><th>LEARNING POINTS</th><th>TEACHER'S ACTIVITIES</th><th>PUPIL'S ACTIVITIES</th></tr></thead><tbody>${(lesson.lessonDevelopment || []).map((item: any) => `<tr><td>${item.time || ""}</td><td>${item.learningPoints || ""}</td><td>${item.teacherActivities || ""}</td><td>${item.pupilActivities || ""}</td></tr>`).join("")}</tbody></table></div>
-      <div class="section"><h4>LEARNERS' EVALUATION</h4><ol>${(lesson.learnersEvaluation || ["_________________"]).map((q: string) => `<li>${q}</li>`).join("")}</ol></div>
-      <div class="section"><h4>TEACHER'S EVALUATION</h4><p>${lesson.teacherEvaluation || "Space for teacher's reflections"}</p></div>
-      <div class="footer">© 2026 mytoolbox</div>
-      </body></html>`;
+      return `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Lesson Plan</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; }
+    .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
+    .header h1 { margin: 0; }
+    .header p { margin: 5px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+    th { background-color: #e0e0e0; font-weight: bold; }
+    .section { margin: 20px 0; }
+    .section h4 { border-bottom: 1px solid #000; padding-bottom: 5px; }
+    ul, ol { margin: 5px 0; padding-left: 20px; }
+    .footer { text-align: center; border-top: 2px solid #000; padding-top: 10px; margin-top: 20px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>MINISTRY OF EDUCATION</h1>
+    <h2>${lesson.school || "KASHINAKAZHI SECONDARY SCHOOL"}</h2>
+    <h3>LESSON PLAN</h3>
+    <p>DEPARTMENT OF NATURAL SCIENCES</p>
+  </div>
+  <div>
+    <p><strong>NAME OF TEACHER:</strong> ${lesson.teacherName || "_________________"}</p>
+    <p><strong>SUBJECT:</strong> ${lesson.subject || ""}</p>
+    <p><strong>TOPIC:</strong> ${lesson.title || lesson.topic || ""}</p>
+    <p><strong>SUBTOPIC:</strong> ${lesson.subtopic || "_________________"}</p>
+    <p><strong>DATE:</strong> ${lesson.date || "_________________"}</p>
+    <p><strong>DURATION:</strong> ${lesson.duration || "80 MINUTES"}</p>
+    <p><strong>CLASS:</strong> ${lesson.grade || ""}</p>
+    <p><strong>NO. OF BOYS:</strong> ${lesson.boys || "___"}</p>
+    <p><strong>NO. OF GIRLS:</strong> ${lesson.girls || "___"}</p>
+  </div>
+  <div class="section">
+    <h4>REFERENCES:</h4>
+    <ul>${(lesson.references || ["_________________"]).map((r: string) => `<li>${r}</li>`).join("")}</ul>
+  </div>
+  <div class="section">
+    <h4>TEACHING &amp; LEARNING AIDS:</h4>
+    <ul>${(lesson.teachingAids || ["_________________"]).map((a: string) => `<li>${a}</li>`).join("")}</ul>
+  </div>
+  <div class="section">
+    <h4>RATIONALE:</h4>
+    <p>${lesson.rationale || "_________________"}</p>
+  </div>
+  <div class="section">
+    <h4>LEARNING OUTCOMES:</h4>
+    <ol>${(lesson.learningOutcomes || ["_________________"]).map((o: string) => `<li>${o}</li>`).join("")}</ol>
+  </div>
+  <div class="section">
+    <h4>LESSON DEVELOPMENT</h4>
+    <table>
+      <thead><tr><th>TIME</th><th>LEARNING POINTS</th><th>TEACHER'S ACTIVITIES</th><th>PUPIL'S ACTIVITIES</th></tr></thead>
+      <tbody>${(lesson.lessonDevelopment || []).map((item: any) => `<tr><td>${item.time || ""}</td><td>${item.learningPoints || ""}</td><td>${item.teacherActivities || ""}</td><td>${item.pupilActivities || ""}</td></tr>`).join("")}</tbody>
+    </table>
+  </div>
+  <div class="section">
+    <h4>LEARNERS' EVALUATION</h4>
+    <ol>${(lesson.learnersEvaluation || ["_________________"]).map((q: string) => `<li>${q}</li>`).join("")}</ol>
+  </div>
+  <div class="section">
+    <h4>TEACHER'S EVALUATION</h4>
+    <p>${lesson.teacherEvaluation || "Space for teacher's reflections"}</p>
+  </div>
+  <div class="footer">© 2026 mytoolbox - Made for teachers in Zambia</div>
+</body>
+</html>
+      `;
     }
 
-    // CBC Format
-    return `<!DOCTYPE html><html><head><title>Lesson Plan</title>
-    <style>body{font-family:Arial;margin:40px}.header{text-align:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:20px}.header h1{margin:0}.header p{margin:5px 0}table{width:100%;border-collapse:collapse;margin:20px 0}th,td{border:1px solid #000;padding:8px 10px;text-align:left}th{background:#e0e0e0}.section{margin:20px 0}.section h3{border-bottom:1px solid #000;padding-bottom:5px}ul,ol{margin:5px 0;padding-left:25px}.footer{text-align:center;border-top:2px solid #000;padding-top:10px;margin-top:20px}</style>
-    </head><body>
-    <div class="header"><h1>MINISTRY OF EDUCATION</h1><h2>${lesson.subject || ""} LESSON PLAN</h2>
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Lesson Plan</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; }
+    .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
+    .header h1 { margin: 0; }
+    .header p { margin: 5px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+    th { background-color: #e0e0e0; font-weight: bold; }
+    .section { margin: 20px 0; }
+    .section h3 { border-bottom: 1px solid #000; padding-bottom: 5px; }
+    ul { margin: 5px 0; padding-left: 20px; }
+    .footer { text-align: center; border-top: 2px solid #000; padding-top: 10px; margin-top: 20px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>MINISTRY OF EDUCATION</h1>
+    <h2>${lesson.subject || ""} LESSON PLAN</h2>
     <p><strong>NAME OF TEACHER:</strong> ${lesson.teacherName || "_________________"}</p>
     <p><strong>DATE:</strong> ${lesson.date || new Date().toLocaleDateString()}</p>
     <p><strong>DURATION:</strong> ${lesson.duration || "40 min"}</p>
     <p><strong>CLASS:</strong> ${lesson.grade || ""}</p>
     <p><strong>TOPIC:</strong> ${lesson.title || lesson.topic || ""}</p>
     <p><strong>SUB-TOPIC:</strong> ${lesson.subtopic || "_________________"}</p>
-    <p><strong>NO. OF PUPILS:</strong> ${lesson.classSize || 40} <strong>BOYS:</strong> ${lesson.boys || "___"} <strong>GIRLS:</strong> ${lesson.girls || "___"}</p></div>
-    <div class="section"><h3>GENERAL COMPETENCES</h3><ul>${(lesson.generalCompetences || ["Analytical thinking", "Collaboration", "Communication", "Critical thinking"]).map((c: string) => `<li>${c}</li>`).join("")}</ul></div>
-    <div class="section"><h3>SPECIFIC COMPETENCE</h3><p>${lesson.specificCompetence || "_________________"}</p></div>
-    <div class="section"><h3>LESSON GOAL</h3><p>${lesson.lessonGoal || "_________________"}</p></div>
-    <div class="section"><h3>RATIONALE</h3><p>${lesson.rationale || "_________________"}</p></div>
-    <div class="section"><h3>PRIOR KNOWLEDGE</h3><p>${lesson.priorKnowledge || "_________________"}</p></div>
-    <div class="section"><h3>REFERENCES</h3><ul>${(lesson.references || ["_________________"]).map((r: string) => `<li>${r}</li>`).join("")}</ul></div>
-    <div class="section"><h3>LEARNING ENVIRONMENT</h3><p>${lesson.learningEnvironment || "Classroom, laboratory"}</p></div>
-    <div class="section"><h3>MATERIALS/RESOURCES</h3><ul>${(lesson.materials || ["_________________"]).map((m: string) => `<li>${m}</li>`).join("")}</ul></div>
-    <div class="section"><h3>EXPECTED STANDARD</h3><p>${lesson.expectedStandard || "_________________"}</p></div>
-    <div class="section"><h3>LESSON PROGRESSION</h3><table><thead><tr><th>STAGE/TIME</th><th>TEACHER'S ROLE</th><th>LEARNERS' ROLE</th><th>ASSESSMENT CRITERIA</th></tr></thead><tbody>${(lesson.lessonProgression || []).map((item: any) => `<tr><td><strong>${item.stage || "Stage"}</strong><br>${item.time || ""}</td><td>${item.teacherRole || ""}</td><td>${item.learnerRole || ""}</td><td>${item.assessmentCriteria || ""}</td></tr>`).join("")}</tbody></table></div>
-    <div class="section"><h3>HOMEWORK</h3><p>${lesson.homework || "_________________"}</p></div>
-    <div class="section"><h3>LESSON EVALUATION</h3><p>${lesson.lessonEvaluation || "_________________"}</p></div>
-    <div class="footer">© 2026 mytoolbox</div>
-    </body></html>`;
+    <p><strong>NO. OF PUPILS:</strong> ${lesson.classSize || 40}</p>
+    <p><strong>BOYS:</strong> ${lesson.boys || "___"} <strong>GIRLS:</strong> ${lesson.girls || "___"}</p>
+  </div>
+  <div class="section">
+    <h3>GENERAL COMPETENCES</h3>
+    <ul>${(lesson.generalCompetences || ["Analytical thinking", "Collaboration", "Communication", "Critical thinking"]).map((c: string) => `<li>${c}</li>`).join("")}</ul>
+  </div>
+  <div class="section">
+    <h3>SPECIFIC COMPETENCE</h3>
+    <p>${lesson.specificCompetence || "_________________"}</p>
+  </div>
+  <div class="section">
+    <h3>LESSON GOAL</h3>
+    <p>${lesson.lessonGoal || "_________________"}</p>
+  </div>
+  <div class="section">
+    <h3>RATIONALE</h3>
+    <p>${lesson.rationale || "_________________"}</p>
+  </div>
+  <div class="section">
+    <h3>PRIOR KNOWLEDGE</h3>
+    <p>${lesson.priorKnowledge || "_________________"}</p>
+  </div>
+  <div class="section">
+    <h3>REFERENCES</h3>
+    <ul>${(lesson.references || ["_________________"]).map((r: string) => `<li>${r}</li>`).join("")}</ul>
+  </div>
+  <div class="section">
+    <h3>LEARNING ENVIRONMENT</h3>
+    <p>${lesson.learningEnvironment || "Classroom, laboratory"}</p>
+  </div>
+  <div class="section">
+    <h3>MATERIALS/RESOURCES</h3>
+    <ul>${(lesson.materials || ["_________________"]).map((m: string) => `<li>${m}</li>`).join("")}</ul>
+  </div>
+  <div class="section">
+    <h3>EXPECTED STANDARD</h3>
+    <p>${lesson.expectedStandard || "_________________"}</p>
+  </div>
+  <div class="section">
+    <h3>LESSON PROGRESSION</h3>
+    <table>
+      <thead><tr><th>STAGE/TIME</th><th>TEACHER'S ROLE</th><th>LEARNERS' ROLE</th><th>ASSESSMENT CRITERIA</th></tr></thead>
+      <tbody>${(lesson.lessonProgression || []).map((item: any) => `<tr><td><strong>${item.stage || "Stage"}</strong><br>${item.time || ""}</td><td>${item.teacherRole || ""}</td><td>${item.learnerRole || ""}</td><td>${item.assessmentCriteria || ""}</td></tr>`).join("")}</tbody>
+    </table>
+  </div>
+  <div class="section">
+    <h3>HOMEWORK</h3>
+    <p>${lesson.homework || "_________________"}</p>
+  </div>
+  <div class="section">
+    <h3>LESSON EVALUATION</h3>
+    <p>${lesson.lessonEvaluation || "_________________"}</p>
+  </div>
+  <div class="footer">© 2026 mytoolbox - Made for teachers in Zambia</div>
+</body>
+</html>
+    `;
   };
 
   return (
@@ -195,8 +304,8 @@ export default function GeneratePage() {
                   onChange={(e) => setCurriculum(e.target.value)}
                   className="mt-1 w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400"
                 >
-                  <option value="cbc">CBC (Competency-Based Curriculum)</option>
-                  <option value="obc">OBC (Objective-Based Curriculum)</option>
+                  <option value="cbc">CBC</option>
+                  <option value="obc">OBC</option>
                 </select>
               </div>
 
@@ -259,7 +368,9 @@ export default function GeneratePage() {
           <div className="bg-white p-6 rounded-lg shadow-sm mt-6 border border-gray-200">
             <div className="flex justify-between items-start mb-4">
               <div>
-                <h2 className="text-2xl font-bold text-gray-800">{generatedLesson.title || generatedLesson.topic}</h2>
+                <h2 className="text-2xl font-bold text-gray-800">
+                  {generatedLesson.title || generatedLesson.topic}
+                </h2>
                 <p className="text-gray-600">{generatedLesson.grade} · {generatedLesson.subject}</p>
                 <p className="text-sm text-gray-500">⏱️ {generatedLesson.duration || "40 min"}</p>
                 {generatedLesson.curriculum && (
@@ -270,10 +381,10 @@ export default function GeneratePage() {
               </div>
               <div className="flex gap-2">
                 <button onClick={exportToPDF} className="bg-gray-700 text-white px-3 py-1 rounded-md text-sm hover:bg-gray-600">
-                  📄 PDF
+                  PDF
                 </button>
                 <button onClick={exportToWord} className="bg-gray-700 text-white px-3 py-1 rounded-md text-sm hover:bg-gray-600">
-                  📝 Word
+                  Word
                 </button>
               </div>
             </div>
