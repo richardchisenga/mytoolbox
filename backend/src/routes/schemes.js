@@ -23,7 +23,7 @@ router.post('/generate', authenticate, async (req, res) => {
   try {
     const { grade, subject, term, weeks, assessmentWeeks, testTopics, weekTopics } = req.body;
     
-    console.log('📝 Received weekTopics:', weekTopics); // Debug log
+    console.log('📝 Received weekTopics:', weekTopics);
 
     if (!grade || !subject) {
       return res.status(400).json({ error: 'Grade and subject are required' });
@@ -40,24 +40,7 @@ router.post('/generate', authenticate, async (req, res) => {
     const testTopicMap = testTopics || {};
     const customWeekTopics = weekTopics || {};
 
-    console.log('📝 Custom weekTopics:', customWeekTopics); // Debug log
-
     const generatedWeeks = [];
-    const defaultTopics = [
-      `Introduction to ${subject}`,
-      `Basic concepts in ${subject}`,
-      `Core principles of ${subject}`,
-      `Practical applications of ${subject}`,
-      `Advanced topics in ${subject}`,
-      `Review and consolidation`,
-      `Assessment preparation`,
-      `Mid-term assessment`,
-      `${subject} in action`,
-      `Real-world examples in ${subject}`,
-      `Critical thinking in ${subject}`,
-      `Group projects in ${subject}`,
-      `Revision and final assessment`
-    ];
 
     const methods = ['Group work', 'Question and answer', 'Demonstrations', 'Discussion', 'Practical activities'];
     const aids = ['Worksheets', 'Charts', 'Textbooks', 'Lab equipment', 'Multimedia'];
@@ -66,21 +49,20 @@ router.post('/generate', authenticate, async (req, res) => {
       const weekNum = i + 1;
       const isAssessmentWeek = assessmentWeekNumbers.includes(weekNum);
       
-      // ✅ USE CUSTOM TOPIC if provided, otherwise use default
+      // ✅ USE CUSTOM TOPIC if provided
       let topic;
       if (isAssessmentWeek) {
-        // For assessment weeks, use the test topic or default
         topic = testTopicMap[weekNum] || `Assessment - Week ${weekNum}`;
       } else {
-        // For normal weeks, use custom topic or default
-        topic = customWeekTopics[weekNum] || defaultTopics[i % defaultTopics.length];
+        // ✅ Use the custom topic from frontend
+        topic = customWeekTopics[weekNum] || `Topic for Week ${weekNum}`;
       }
       
-      console.log(`📝 Week ${weekNum} topic:`, topic); // Debug log
+      console.log(`📝 Week ${weekNum}:`, topic);
       
       generatedWeeks.push({
         week: weekNum,
-        topic: topic, // ✅ This now uses custom topics
+        topic: topic,
         isAssessment: isAssessmentWeek,
         assessmentType: isAssessmentWeek ? 'Test/Assessment' : '',
         specificOutcome: isAssessmentWeek 
@@ -126,7 +108,7 @@ router.post('/generate', authenticate, async (req, res) => {
       totalWeeks: totalWeeks,
       assessmentWeeks: assessmentWeekNumbers,
       testTopics: testTopicMap,
-      weekTopics: customWeekTopics, // ✅ Store custom topics
+      weekTopics: customWeekTopics,
       weeks: generatedWeeks,
       createdAt: new Date().toISOString()
     };
