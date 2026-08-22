@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 
 // ✅ FORCE MOCK MODE - Bypass DeepSeek for testing
-const FORCE_MOCK = true;
+const FORCE_MOCK = false;
 
 const prisma = new PrismaClient();
 
