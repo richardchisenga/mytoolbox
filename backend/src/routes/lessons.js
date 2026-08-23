@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const jwt = require('jsonwebtoken');  // ✅ Add this
+const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 
-// ✅ FORCE MOCK MODE - Set to false to use real DeepSeek
-const ALLOW_MOCK_GENERATION = process.env.ALLOW_MOCK_MODE === 'true' || true; 
+// ✅ FORCE MOCK MODE
+const ALLOW_MOCK_GENERATION = true;
 
 const prisma = new PrismaClient();
 
@@ -28,7 +28,7 @@ if (OpenAI && process.env.DEEPSEEK_API_KEY) {
   console.log('⚠️ DeepSeek not configured');
 }
 
-// ✅ Authentication middleware - defined in-file
+// Authentication middleware
 const authenticate = (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -124,6 +124,7 @@ Return ONLY valid JSON with this exact structure:
   "classSize": ${size},
   "boys": ${boys},
   "girls": ${girls},
+  "subtopic": "",
   "generalCompetences": ["Critical thinking", "Creativity", "Communication", "Collaboration"],
   "specificCompetence": "Specific competence statement",
   "lessonGoal": "By the end of this lesson, learners will be able to...",
@@ -184,7 +185,7 @@ Return ONLY valid JSON with this exact structure:
 }
 
 // ============================================
-// OBC PROMPT BUILDER - Ministry of Education Format
+// OBC PROMPT BUILDER
 // ============================================
 
 function buildOBCPrompt(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district) {
@@ -196,7 +197,7 @@ School: ${schoolName}
 Province: ${province}
 District: ${district}
 
-Follow the Ministry of Education OBC lesson plan template exactly as shown below.
+Follow the Ministry of Education OBC lesson plan template exactly.
 
 Return ONLY valid JSON with this exact structure:
 
@@ -214,65 +215,60 @@ Return ONLY valid JSON with this exact structure:
   "boys": ${boys},
   "girls": ${girls},
   "subtopic": "",
-  "references": [
-    "Biological Science by Lisuba Bornface",
-    "Simply Biology by Xavier (Page 80-81)",
-    "Biology 12 Golden Tips"
-  ],
-  "teachingAids": ["Chart of excretory organs", "Images of metabolic wastes", "Video on deamination", "PowerPoint slides", "Worksheet"],
-  "rationale": "Excretion is the removal of metabolic wastes that would otherwise become toxic. This lesson introduces the concept of excretion and distinguishes it from egestion and secretion. Understanding which wastes are produced and which organs remove them is essential for later topics on kidney function, osmoregulation, and homeostasis.",
+  "references": ["Reference 1", "Reference 2", "Reference 3"],
+  "teachingAids": ["Chart", "Images", "Video", "PowerPoint slides", "Worksheet"],
+  "rationale": "Why this topic is important for learners",
   "learningOutcomes": [
-    "Define excretion and differentiate it from egestion and secretion.",
-    "Name the main metabolic waste products (CO₂, urea, water, salts, bile pigments).",
-    "List the principal excretory organs (lungs, kidneys, skin, liver) and state what each excretes.",
-    "Explain how the liver produces urea (deamination of amino acids)."
+    "Outcome 1",
+    "Outcome 2",
+    "Outcome 3",
+    "Outcome 4"
   ],
   "lessonDevelopment": [
     {
-      "time": "10 MIN",
-      "learningPoints": "INTRODUCTION: What is Excretion? – Removal of metabolic wastes. Distinguish from egestion (undigested food) and secretion (useful substances).",
-      "teacherActivities": "Teacher asks: 'What is the difference between faeces and urine?' Writes definitions on board.",
-      "pupilActivities": "Pupils define excretion in their own words."
+      "time": "10 min",
+      "learningPoints": "Introduction: What is the topic?",
+      "teacherActivities": "Ask questions, write definitions on board",
+      "pupilActivities": "Define in their own words, participate"
     },
     {
-      "time": "20 MIN",
-      "learningPoints": "Metabolic wastes and their sources – CO₂ (respiration), urea (protein breakdown in liver), bile pigments (haemoglobin breakdown), excess water and salts.",
-      "teacherActivities": "Teacher lists wastes on board with their sources. Uses a diagram of the liver's role in deamination.",
-      "pupilActivities": "Pupils complete a table: waste → source → excretory organ."
+      "time": "20 min",
+      "learningPoints": "Key concepts and their sources",
+      "teacherActivities": "List key points with sources, use diagrams",
+      "pupilActivities": "Complete tables, take notes"
     },
     {
-      "time": "20 MIN",
-      "learningPoints": "Excretory organs – Lungs (CO₂, water), Kidneys (urea, excess water/salts, toxins), Skin (water, salts, trace urea), Liver (converts amino acids to urea; excretes bile pigments into gut).",
-      "teacherActivities": "Teacher uses a body chart to point out each organ. Explains deamination simply.",
-      "pupilActivities": "Pupils label organs on a diagram and write one waste product for each."
+      "time": "20 min",
+      "learningPoints": "Main content and examples",
+      "teacherActivities": "Use charts and diagrams to explain",
+      "pupilActivities": "Label diagrams, write examples"
     },
     {
-      "time": "15 MIN",
-      "learningPoints": "Distinctions – Excretion vs. egestion vs. secretion.",
-      "teacherActivities": "Teacher gives contrasting examples (e.g., sweating vs. passing faeces).",
-      "pupilActivities": "Pupils classify given processes as excretion, egestion, or secretion."
+      "time": "15 min",
+      "learningPoints": "Distinctions and applications",
+      "teacherActivities": "Give contrasting examples",
+      "pupilActivities": "Classify given processes"
     },
     {
-      "time": "15 MIN",
-      "learningPoints": "CONCLUSION: Summary – Recap of wastes, organs, and distinctions.",
-      "teacherActivities": "Teacher leads oral quiz: 'Which organ removes CO₂?' 'What is deamination?'",
-      "pupilActivities": "Pupils answer worksheet questions."
+      "time": "15 min",
+      "learningPoints": "Conclusion and summary",
+      "teacherActivities": "Lead oral quiz and recap",
+      "pupilActivities": "Answer worksheet questions"
     }
   ],
   "learnersEvaluation": [
-    "Define excretion.",
-    "Name three metabolic waste products.",
-    "Which organ excretes carbon dioxide?",
-    "What is the difference between excretion and egestion?",
-    "Why is the liver considered an excretory organ even though it does not directly expel waste?"
-  ],
-  "teacherEvaluation": "Space for teacher's reflections"
+    "Question 1",
+    "Question 2",
+    "Question 3",
+    "Question 4",
+    "Question 5"
+  ]
 }
 `;
 }
 
 // ============================================
-// CBC MOCK LESSON
+// CBC MOCK LESSON - WITH SUBTOPIC
 // ============================================
 
 function generateCBCMockLesson(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district) {
@@ -283,6 +279,7 @@ function generateCBCMockLesson(grade, subject, topic, size, boys, girls, teacher
     grade,
     subject,
     topic: topic,
+    subtopic: '',  // ✅ ADDED
     teacherName: teacherName,
     school: schoolName,
     province: province,
@@ -339,7 +336,7 @@ function generateCBCMockLesson(grade, subject, topic, size, boys, girls, teacher
 }
 
 // ============================================
-// OBC MOCK LESSON - Ministry of Education Format
+// OBC MOCK LESSON - WITH SUBTOPIC
 // ============================================
 
 function generateOBCMockLesson(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district) {
@@ -350,6 +347,7 @@ function generateOBCMockLesson(grade, subject, topic, size, boys, girls, teacher
     grade,
     subject,
     topic: topic,
+    subtopic: '',  // ✅ ADDED
     teacherName: teacherName,
     school: schoolName,
     province: province,
@@ -359,7 +357,6 @@ function generateOBCMockLesson(grade, subject, topic, size, boys, girls, teacher
     classSize: size,
     boys: boys,
     girls: girls,
-    subtopic: "",
     references: [
       "Biological Science by Lisuba Bornface",
       "Simply Biology by Xavier (Page 80-81)",
@@ -488,10 +485,10 @@ router.post('/generate', authenticate, async (req, res) => {
     }
 
     let lessonData;
-    let useMock = false;
+    let useMock = true;
 
-    // ✅ Try DeepSeek with better error handling
-    if (deepseekClient) {
+    // ✅ Try DeepSeek
+    if (deepseekClient && !ALLOW_MOCK_GENERATION) {
       try {
         console.log('📝 Calling DeepSeek API...');
         
@@ -518,24 +515,18 @@ router.post('/generate', authenticate, async (req, res) => {
           console.log('✅ DeepSeek response parsed successfully');
         } catch (parseError) {
           console.log('⚠️ Failed to parse DeepSeek response:', parseError.message);
-          useMock = ALLOW_MOCK_GENERATION;
+          useMock = true;
         }
       } catch (error) {
         console.error('❌ DeepSeek API error:', error.message);
-        useMock = ALLOW_MOCK_GENERATION;
+        useMock = true;
       }
-    } else if (ALLOW_MOCK_GENERATION) {
-      console.warn('Using explicitly enabled mock lesson generation');
-      useMock = true;
     } else {
-      return res.status(503).json({ error: 'AI generation is temporarily unavailable. Please try again later.' });
+      console.log('📝 Using mock mode');
+      useMock = true;
     }
 
-    if (useMock && !ALLOW_MOCK_GENERATION) {
-      return res.status(503).json({ error: 'AI generation is temporarily unavailable. Please try again later.' });
-    }
-
-    // Use mock only when explicitly enabled
+    // Use mock if needed
     if (useMock) {
       console.log('📝 Generating mock lesson');
       if (curriculumType === 'obc') {
@@ -550,10 +541,16 @@ router.post('/generate', authenticate, async (req, res) => {
     lessonData.title = lessonData.title || lessonData.topic || topic;
     lessonData.grade = lessonData.grade || grade;
     lessonData.subject = lessonData.subject || subject;
+    lessonData.subtopic = lessonData.subtopic || '';
     lessonData.objectives = lessonData.objectives || [];
     lessonData.development = lessonData.development || [];
     lessonData.activities = lessonData.activities || [];
     lessonData.assessment = lessonData.assessment || '';
+    lessonData.teacherEvaluation = lessonData.teacherEvaluation || '';
+    lessonData.learningOutcomes = lessonData.learningOutcomes || [];
+    lessonData.lessonDevelopment = lessonData.lessonDevelopment || [];
+    lessonData.learnersEvaluation = lessonData.learnersEvaluation || [];
+    lessonData.teachingAids = lessonData.teachingAids || [];
 
     // ✅ Save to database
     const lesson = {
@@ -630,8 +627,7 @@ router.post('/generate', authenticate, async (req, res) => {
     console.error('❌ Generation error:', error);
     res.status(500).json({ 
       error: 'Failed to generate lesson', 
-      details: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      details: error.message
     });
   }
 });
