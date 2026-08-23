@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const jwt = require('jsonwebtoken');  // ✅ Add this
 const { PrismaClient } = require('@prisma/client');
-const { authenticate } = require('../utils/auth');
 
 // ✅ FORCE MOCK MODE - Set to false to use real DeepSeek
-const ALLOW_MOCK_GENERATION = process.env.ALLOW_MOCK_MODE === 'true'; 
+const ALLOW_MOCK_GENERATION = process.env.ALLOW_MOCK_MODE === 'true' || true; 
 
 const prisma = new PrismaClient();
 
@@ -28,7 +28,20 @@ if (OpenAI && process.env.DEEPSEEK_API_KEY) {
   console.log('⚠️ DeepSeek not configured');
 }
 
-// Authentication middleware
+// ✅ Authentication middleware - defined in-file
+const authenticate = (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.userId = decoded.id;
+    next();
+  } catch (error) {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+};
 
 // Check lesson limit for freemium
 const checkLessonLimit = async (userId) => {
@@ -496,7 +509,6 @@ router.post('/generate', authenticate, async (req, res) => {
 
         try {
           const rawContent = completion.choices[0].message.content;
-          // Clean up the response
           const cleanedContent = rawContent
             .replace(/```json/g, '')
             .replace(/```/g, '')
@@ -561,14 +573,16 @@ router.post('/generate', authenticate, async (req, res) => {
 
     await prisma.lesson.create({
       data: {
+        id: lesson.id,
         userId: lesson.userId,
-        grade: lesson.grade,
-        subject: lesson.subject,
-        topic: lesson.topic,
-        title: lesson.title || lesson.topic,
-        classSize: lesson.classSize,
+        grade: lesson.grade || '',
+        subject: lesson.subject || '',
+        topic: lesson.topic || '',
+        subtopic: lesson.subtopic || '',
+        title: lesson.title || lesson.topic || '',
+        classSize: lesson.classSize || 40,
         duration: lesson.duration || '40 min',
-        curriculum: lesson.curriculum,
+        curriculum: lesson.curriculum || 'cbc',
         objectives: lesson.objectives || [],
         development: lesson.development || [],
         activities: lesson.activities || [],
@@ -599,7 +613,6 @@ router.post('/generate', authenticate, async (req, res) => {
         lessonDevelopment: lesson.lessonDevelopment || [],
         learnersEvaluation: lesson.learnersEvaluation || [],
         teachingAids: lesson.teachingAids || [],
-        subtopic: lesson.subtopic || '',
         teacherEvaluation: lesson.teacherEvaluation || '',
       }
     });
