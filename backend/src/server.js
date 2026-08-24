@@ -152,12 +152,11 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// ============ GET CURRENT USER (FIXED - WITHOUT INCLUDE) ============
+// Get current user (FIXED - removed problematic include)
 app.get('/api/auth/me', authenticate, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.userId }
-      // INCLUDE REMOVED - Fixes the 500 error
     });
 
     if (!user) {
@@ -172,18 +171,17 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE ============
+// ============ LESSON ROUTES ============
 
+// Generate lesson
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
     const { topic, grade, subject, classSize, curriculum } = req.body;
     
-    // Validate input
     if (!topic || !grade || !subject) {
       return res.status(400).json({ error: 'Missing required fields: topic, grade, subject' });
     }
 
-    // Check user's lesson limit
     const user = await prisma.user.findUnique({
       where: { id: req.userId }
     });
@@ -192,14 +190,12 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Check if user has reached their lesson limit
     if (user.lessonsUsed >= user.lessonsLimit) {
       return res.status(403).json({ 
         error: 'Lesson limit reached. Please upgrade your plan to generate more lessons.' 
       });
     }
 
-    // Generate lesson content
     const generatedLesson = {
       title: topic,
       topic: topic,
@@ -212,7 +208,6 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       province: user.province || '',
       district: user.district || '',
       teacherName: user.fullName || '',
-      // OBC-specific fields
       learningOutcomes: [
         `Define and identify ${topic}`,
         `Apply ${topic} concepts to solve problems`,
@@ -244,7 +239,6 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
         `Solve a ${topic} problem`
       ],
       teacherEvaluation: 'To be filled after lesson',
-      // CBC-specific fields
       generalCompetences: ['Critical thinking', 'Communication', 'Collaboration'],
       specificCompetence: `Demonstrate understanding of ${topic}`,
       lessonGoal: `By the end of the lesson, learners will be able to apply ${topic} in real-world contexts`,
@@ -281,7 +275,6 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       lessonEvaluation: `Learners demonstrated good understanding of ${topic}`
     };
 
-    // Save lesson to database
     const lesson = await prisma.lesson.create({
       data: {
         userId: req.userId,
@@ -303,13 +296,11 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       }
     });
 
-    // Update user's lesson count
     await prisma.user.update({
       where: { id: req.userId },
       data: { lessonsUsed: user.lessonsUsed + 1 }
     });
 
-    // Return the generated lesson
     res.status(201).json({
       ...generatedLesson,
       id: lesson.id,
@@ -322,18 +313,47 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
   }
 });
 
-// ============ SCHEME OF WORK GENERATION ROUTE ============
+// Get user's lessons
+app.get('/api/lessons', authenticate, async (req, res) => {
+  try {
+    const lessons = await prisma.lesson.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+    res.json(lessons);
+  } catch (error) {
+    console.error('Error fetching lessons:', error);
+    res.status(500).json({ error: 'Failed to fetch lessons' });
+  }
+});
 
+// Get user's lessons (alias for /mine)
+app.get('/api/lessons/mine', authenticate, async (req, res) => {
+  try {
+    const lessons = await prisma.lesson.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+    res.json(lessons);
+  } catch (error) {
+    console.error('Error fetching lessons:', error);
+    res.status(500).json({ error: 'Failed to fetch lessons' });
+  }
+});
+
+// ============ SCHEME ROUTES ============
+
+// Generate scheme
 app.post('/api/schemes/generate', authenticate, async (req, res) => {
   try {
     const { grade, subject, term, year, school } = req.body;
     
-    // Validate input
     if (!grade || !subject) {
       return res.status(400).json({ error: 'Missing required fields: grade, subject' });
     }
 
-    // Check user's scheme limit
     const user = await prisma.user.findUnique({
       where: { id: req.userId }
     });
@@ -342,14 +362,12 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Check if user has reached their scheme limit
     if (user.schemesUsed >= user.schemesLimit) {
       return res.status(403).json({ 
         error: 'Scheme limit reached. Please upgrade your plan to generate more schemes.' 
       });
     }
 
-    // Generate scheme of work content
     const weeks = [];
     const totalWeeks = 13;
     const topics = [
@@ -360,10 +378,8 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       `Review and assessment of ${subject}`
     ];
 
-    // Generate 13 weeks of content
     for (let i = 1; i <= totalWeeks; i++) {
       const weekTopics = [];
-      // Each week has 3-5 topics
       const numTopics = 3 + Math.floor(Math.random() * 3);
       for (let j = 0; j < numTopics; j++) {
         const topicIndex = (i + j) % topics.length;
@@ -399,7 +415,6 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    // Save scheme to database
     const scheme = await prisma.scheme.create({
       data: {
         userId: req.userId,
@@ -415,13 +430,11 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       }
     });
 
-    // Update user's scheme count
     await prisma.user.update({
       where: { id: req.userId },
       data: { schemesUsed: user.schemesUsed + 1 }
     });
 
-    // Return the generated scheme
     res.status(201).json({
       ...generatedScheme,
       id: scheme.id,
@@ -434,25 +447,23 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
   }
 });
 
-// ============ GET USER'S LESSONS ============
-
-app.get('/api/lessons', authenticate, async (req, res) => {
+// Get user's schemes
+app.get('/api/schemes', authenticate, async (req, res) => {
   try {
-    const lessons = await prisma.lesson.findMany({
+    const schemes = await prisma.scheme.findMany({
       where: { userId: req.userId },
       orderBy: { createdAt: 'desc' },
-      take: 20
+      take: 10
     });
-    res.json(lessons);
+    res.json(schemes);
   } catch (error) {
-    console.error('Error fetching lessons:', error);
-    res.status(500).json({ error: 'Failed to fetch lessons' });
+    console.error('Error fetching schemes:', error);
+    res.status(500).json({ error: 'Failed to fetch schemes' });
   }
 });
 
-// ============ GET USER'S SCHEMES ============
-
-app.get('/api/schemes', authenticate, async (req, res) => {
+// Get user's schemes (alias for /mine)
+app.get('/api/schemes/mine', authenticate, async (req, res) => {
   try {
     const schemes = await prisma.scheme.findMany({
       where: { userId: req.userId },
@@ -475,6 +486,8 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Scheme generation available at /api/schemes/generate`);
   console.log(`✅ Get lessons at /api/lessons`);
   console.log(`✅ Get schemes at /api/schemes`);
+  console.log(`✅ Get lessons (alias) at /api/lessons/mine`);
+  console.log(`✅ Get schemes (alias) at /api/schemes/mine`);
   console.log(`✅ CORS enabled for Vercel and Render frontend`);
 });
 
