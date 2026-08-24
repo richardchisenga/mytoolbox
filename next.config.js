@@ -1,12 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
-    domains: ['localhost', 'mytoolbox.vercel.app'],
+    domains: ['localhost', 'mytoolbox.vercel.app', 'mytoolbox-production.up.railway.app'],
   },
-  // Remove experimental.appDir - it's now default
   reactStrictMode: true,
   swcMinify: true,
-  // If you need API rewrites
   async rewrites() {
     return [
       {
@@ -17,6 +15,6 @@ const nextConfig = {
       },
     ];
   },
-}
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;
