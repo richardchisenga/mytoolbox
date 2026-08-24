@@ -1,8 +1,12 @@
 services:
-  - type: static
+  - type: web
     name: mytoolbox-frontend
+    runtime: node
+    plan: free
     buildCommand: npm run build
-    staticPublishPath: ./dist  # Change to your build output folder
+    startCommand: npm start
     envVars:
-      - key: VITE_API_URL
+      - key: NODE_VERSION
+        value: 18.17.0
+      - key: NEXT_PUBLIC_API_URL
         value: https://mytoolbox-production.up.railway.app
