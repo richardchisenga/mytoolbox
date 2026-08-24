@@ -1,80 +1,123 @@
 const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
+const router = express.Router();
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
-require('dotenv').config();
 
-const app = express();
-const PORT = Number(process.env.PORT || 8080);
 const prisma = new PrismaClient();
-const isProduction = process.env.NODE_ENV === 'production';
 
-if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
-  throw new Error('JWT_SECRET must be configured and be at least 32 characters');
-}
-if (isProduction && process.env.ALLOW_MOCK_MODE === 'true') {
-  throw new Error('ALLOW_MOCK_MODE cannot be enabled in production');
-}
-
-if (isProduction) {
-  const requiredProductionEnv = ['DATABASE_URL','DEEPSEEK_API_KEY','LIPILA_API_KEY','LIPILA_WEBHOOK_SECRET','BACKEND_URL','ADMIN_EMAILS','RESEND_API_KEY','RESEND_FROM'];
-  const missing = requiredProductionEnv.filter(key => !process.env[key]);
-  if (missing.length) throw new Error(`Missing required production environment variables: ${missing.join(', ')}`);
-}
-
-const allowedOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || '')
-  .split(',').map(v => v.trim()).filter(Boolean);
-if (isProduction && !allowedOrigins.length) throw new Error('FRONTEND_URL(S) must be configured in production');
-
-app.set('trust proxy', 1);
-app.disable('x-powered-by');
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || !isProduction) return callback(null, true);
-    return callback(null, allowedOrigins.includes(origin));
-  },
-  credentials: true,
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization','X-Requested-With']
-}));
-app.use(express.json({ limit: '1mb' }));
-
-const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many requests. Please try again later.' } });
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many authentication attempts. Please try again later.' } });
-app.use('/api', apiLimiter);
-
-app.get('/api/health', async (req, res) => {
+// ✅ Authentication middleware
+const authenticate = (req, res, next) => {
   try {
-    await prisma.$queryRaw`SELECT 1`;
-    res.json({ status:'ok', database:'ok', timestamp:new Date().toISOString(), version:process.env.APP_VERSION || '1.0.0' });
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.userId = decoded.id;
+    next();
   } catch (error) {
-    res.status(503).json({ status:'degraded', database:'unavailable' });
+    res.status(401).json({ error: 'Invalid token' });
+  }
+};
+
+// ✅ Register
+router.post('/register', async (req, res) => {
+  try {
+    const { fullName, email, password, school, province, district, grades, subjects } = req.body;
+    
+    // Check if user exists
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      return res.status(409).json({ error: 'User already exists' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    const user = await prisma.user.create({
+      data: {
+        fullName,
+        email,
+        passwordHash: hashedPassword,
+        school,
+        province,
+        district,
+        grades: grades || [],
+        subjects: subjects || [],
+        role: 'FREE',
+        lastActive: new Date(),
+      }
+    });
+
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+
+    const { passwordHash, ...userWithoutPassword } = user;
+    res.status(201).json({ user: userWithoutPassword, token });
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({ error: 'Registration failed' });
   }
 });
-app.get('/', (req,res) => res.json({ service:'mytoolbox-api', status:'ok' }));
 
-app.use('/api/auth', authLimiter, require('./routes/auth'));
-app.use('/api/lessons', require('./routes/lessons'));
-app.use('/api/schemes', require('./routes/schemes'));
-app.use('/api/subscription', require('./routes/subscription'));
-app.use('/api/payments', require('./routes/payments'));
-app.use('/api/admin', require('./routes/admin'));
+// ✅ Login
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
-app.use((req,res) => res.status(404).json({ error:'Not found' }));
-app.use((err,req,res,next) => {
-  console.error(err);
-  const status = Number(err.status || err.statusCode || 500);
-  res.status(status).json({ error: status >= 500 ? 'Internal server error' : err.message });
+    const isValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastActive: new Date() }
+    });
+
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+
+    const { passwordHash, ...userWithoutPassword } = user;
+    res.json({ user: userWithoutPassword, token });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Login failed' });
+  }
 });
 
-const server = app.listen(PORT, '0.0.0.0', () => console.log(`mytoolbox API listening on ${PORT}`));
-async function shutdown(signal) {
-  console.log(`${signal} received, shutting down`);
-  server.close(async () => { await prisma.$disconnect(); process.exit(0); });
-}
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('unhandledRejection', err => console.error('Unhandled rejection', err));
-process.on('uncaughtException', err => { console.error('Uncaught exception', err); process.exit(1); });
+// ✅ Get current user
+router.get('/me', authenticate, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      include: {
+        lessons: { take: 5, orderBy: { createdAt: 'desc' } },
+        schemes: { take: 3, orderBy: { createdAt: 'desc' } },
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const { passwordHash, ...userWithoutPassword } = user;
+    res.json(userWithoutPassword);
+  } catch (error) {
+    console.error('Error fetching user:', error);
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
+module.exports = router;
