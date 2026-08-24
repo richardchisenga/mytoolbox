@@ -1,4 +1,4 @@
-// src/server.js - Complete application with all routes
+// src/server.js - Complete application with all routes and CORS configured for Vercel
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -12,9 +12,25 @@ const PORT = process.env.PORT || 3000;
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET;
 
+// ============ CORS CONFIGURATION ============
+const corsOptions = {
+  origin: [
+    'https://mytoolbox-nine.vercel.app',
+    'https://mytoolbox-0e80w147vy-ryichietechn.vercel.app',
+    /\.vercel\.app$/,  // Allows all Vercel preview deployments
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:8080'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+
 // ============ MIDDLEWARE ============
 app.use(helmet());
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // ============ AUTHENTICATION MIDDLEWARE ============
@@ -152,6 +168,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`✅ Health check: http://localhost:${PORT}/health`);
   console.log(`✅ Auth routes available at /api/auth/*`);
+  console.log(`✅ CORS enabled for Vercel frontend`);
 });
 
 // Graceful shutdown
