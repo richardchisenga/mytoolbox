@@ -1,34 +1,32 @@
-FROM node:20-bookworm-slim
+FROM node:18-alpine AS base
 
+# Dependencies
+FROM base AS deps
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+
+# Builder
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npm run build
+
+# Runner
+FROM base AS runner
 WORKDIR /app
 
-# Prisma requires OpenSSL
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends openssl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy package files
-COPY package*.json ./
-
-# IMPORTANT:
-# Copy Prisma schema before npm install because
-# npm install runs the postinstall script.
-COPY prisma ./prisma
-
-# Install production dependencies and generate Prisma Client
-RUN npm install --omit=dev --no-audit --no-fund
-
-# Copy application source
-COPY src ./src
-
-# If your backend has other required files, copy them here
-# COPY uploads ./uploads
-# COPY public ./public
-
 ENV NODE_ENV=production
+ENV PORT=3000
 
-EXPOSE 8080
+# Create public folder to avoid error
+RUN mkdir -p ./public
 
-USER node
+# Copy from builder
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node src/server.js"]
+EXPOSE 3000
+CMD ["npm", "start"]
