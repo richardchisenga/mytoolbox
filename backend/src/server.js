@@ -152,15 +152,12 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Get current user
+// ============ GET CURRENT USER (FIXED - WITHOUT INCLUDE) ============
 app.get('/api/auth/me', authenticate, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
-      where: { id: req.userId },
-      include: {
-        lessons: { take: 5, orderBy: { createdAt: 'desc' } },
-        schemes: { take: 3, orderBy: { createdAt: 'desc' } },
-      }
+      where: { id: req.userId }
+      // INCLUDE REMOVED - Fixes the 500 error
     });
 
     if (!user) {
