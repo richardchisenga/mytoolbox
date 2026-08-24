@@ -1,4 +1,4 @@
-// src/server.js - Complete application with all routes and CORS configured for Vercel
+// src/server.js - Complete application with all routes and CORS configured for both Vercel and Render
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -15,12 +15,24 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // ============ CORS CONFIGURATION ============
 const corsOptions = {
   origin: [
+    // Render frontend URLs
+    'https://mytoolbox-1.onrender.com',
+    'https://mytoolbox.onrender.com',
+    /\.onrender\.com$/,  // Allows all Render subdomains
+    
+    // Vercel frontend URLs
     'https://mytoolbox-nine.vercel.app',
     'https://mytoolbox-0e80w147vy-ryichietechn.vercel.app',
     /\.vercel\.app$/,  // Allows all Vercel preview deployments
+    
+    // Backend URLs
+    'https://mytoolbox-production.up.railway.app',
+    
+    // Local development
     'http://localhost:3000',
     'http://localhost:5173',
-    'http://localhost:8080'
+    'http://localhost:8080',
+    'http://localhost:5000'
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
@@ -168,7 +180,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`✅ Health check: http://localhost:${PORT}/health`);
   console.log(`✅ Auth routes available at /api/auth/*`);
-  console.log(`✅ CORS enabled for Vercel frontend`);
+  console.log(`✅ CORS enabled for Vercel and Render frontend`);
 });
 
 // Graceful shutdown
