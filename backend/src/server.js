@@ -15,20 +15,13 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // ============ CORS CONFIGURATION ============
 const corsOptions = {
   origin: [
-    // Render frontend URLs
     'https://mytoolbox-1.onrender.com',
     'https://mytoolbox.onrender.com',
-    /\.onrender\.com$/,  // Allows all Render subdomains
-    
-    // Vercel frontend URLs
+    /\.onrender\.com$/,
     'https://mytoolbox-nine.vercel.app',
     'https://mytoolbox-0e80w147vy-ryichietechn.vercel.app',
-    /\.vercel\.app$/,  // Allows all Vercel preview deployments
-    
-    // Backend URLs
+    /\.vercel\.app$/,
     'https://mytoolbox-production.up.railway.app',
-    
-    // Local development
     'http://localhost:3000',
     'http://localhost:5173',
     'http://localhost:8080',
@@ -76,12 +69,10 @@ app.get('/', (req, res) => {
 
 // ============ AUTH ROUTES ============
 
-// Register
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { fullName, email, password, school, province, district, grades, subjects } = req.body;
     
-    // Check if user exists
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
       return res.status(409).json({ error: 'User already exists' });
@@ -118,7 +109,6 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// Login
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -152,7 +142,6 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Get current user (FIXED - removed problematic include)
 app.get('/api/auth/me', authenticate, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
@@ -173,7 +162,6 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
 
 // ============ LESSON ROUTES ============
 
-// Generate lesson
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
     const { topic, grade, subject, classSize, curriculum } = req.body;
@@ -313,7 +301,6 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
   }
 });
 
-// Get user's lessons
 app.get('/api/lessons', authenticate, async (req, res) => {
   try {
     const lessons = await prisma.lesson.findMany({
@@ -328,7 +315,7 @@ app.get('/api/lessons', authenticate, async (req, res) => {
   }
 });
 
-// Get user's lessons (alias for /mine)
+// ============ NEW: /mine ALIAS FOR LESSONS ============
 app.get('/api/lessons/mine', authenticate, async (req, res) => {
   try {
     const lessons = await prisma.lesson.findMany({
@@ -345,7 +332,6 @@ app.get('/api/lessons/mine', authenticate, async (req, res) => {
 
 // ============ SCHEME ROUTES ============
 
-// Generate scheme
 app.post('/api/schemes/generate', authenticate, async (req, res) => {
   try {
     const { grade, subject, term, year, school } = req.body;
@@ -447,7 +433,6 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
   }
 });
 
-// Get user's schemes
 app.get('/api/schemes', authenticate, async (req, res) => {
   try {
     const schemes = await prisma.scheme.findMany({
@@ -462,7 +447,7 @@ app.get('/api/schemes', authenticate, async (req, res) => {
   }
 });
 
-// Get user's schemes (alias for /mine)
+// ============ NEW: /mine ALIAS FOR SCHEMES ============
 app.get('/api/schemes/mine', authenticate, async (req, res) => {
   try {
     const schemes = await prisma.scheme.findMany({
