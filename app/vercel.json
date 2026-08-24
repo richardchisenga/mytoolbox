@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "*.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "**/*",
+      "use": "@vercel/static"
+    }
+  ],
+  "env": {
+    "NEXT_PUBLIC_API_URL": "https://mytoolbox-production.up.railway.app"
+  }
+}
