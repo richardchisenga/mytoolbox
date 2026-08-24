@@ -325,12 +325,159 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
   }
 });
 
+// ============ SCHEME OF WORK GENERATION ROUTE ============
+
+app.post('/api/schemes/generate', authenticate, async (req, res) => {
+  try {
+    const { grade, subject, term, year, school } = req.body;
+    
+    // Validate input
+    if (!grade || !subject) {
+      return res.status(400).json({ error: 'Missing required fields: grade, subject' });
+    }
+
+    // Check user's scheme limit
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Check if user has reached their scheme limit
+    if (user.schemesUsed >= user.schemesLimit) {
+      return res.status(403).json({ 
+        error: 'Scheme limit reached. Please upgrade your plan to generate more schemes.' 
+      });
+    }
+
+    // Generate scheme of work content
+    const weeks = [];
+    const totalWeeks = 13;
+    const topics = [
+      `Introduction to ${subject}`,
+      `Basic concepts of ${subject}`,
+      `Advanced ${subject} topics`,
+      `Practical applications of ${subject}`,
+      `Review and assessment of ${subject}`
+    ];
+
+    // Generate 13 weeks of content
+    for (let i = 1; i <= totalWeeks; i++) {
+      const weekTopics = [];
+      // Each week has 3-5 topics
+      const numTopics = 3 + Math.floor(Math.random() * 3);
+      for (let j = 0; j < numTopics; j++) {
+        const topicIndex = (i + j) % topics.length;
+        weekTopics.push({
+          topic: topics[topicIndex],
+          subTopics: [
+            `Subtopic ${j+1}.1 of ${topics[topicIndex]}`,
+            `Subtopic ${j+1}.2 of ${topics[topicIndex]}`
+          ]
+        });
+      }
+      weeks.push({
+        week: i,
+        topics: weekTopics,
+        assessment: i % 3 === 0 ? `End of Week ${i} Assessment` : null
+      });
+    }
+
+    const generatedScheme = {
+      grade: grade,
+      subject: subject,
+      term: term || 'Term 1',
+      year: year || new Date().getFullYear().toString(),
+      totalWeeks: totalWeeks,
+      school: school || user.school || 'School Name',
+      teacherName: user.fullName || '',
+      weeks: weeks,
+      assessmentWeeks: [3, 6, 9, 12],
+      testTopics: [
+        `Mid-term test on ${subject}`,
+        `End of term test on ${subject}`
+      ],
+      createdAt: new Date().toISOString()
+    };
+
+    // Save scheme to database
+    const scheme = await prisma.scheme.create({
+      data: {
+        userId: req.userId,
+        grade: grade,
+        subject: subject,
+        term: term || 'Term 1',
+        year: year || new Date().getFullYear().toString(),
+        totalWeeks: totalWeeks,
+        weeks: weeks,
+        assessmentWeeks: [3, 6, 9, 12],
+        school: school || user.school || 'School Name',
+        testTopics: [`Mid-term test on ${subject}`, `End of term test on ${subject}`]
+      }
+    });
+
+    // Update user's scheme count
+    await prisma.user.update({
+      where: { id: req.userId },
+      data: { schemesUsed: user.schemesUsed + 1 }
+    });
+
+    // Return the generated scheme
+    res.status(201).json({
+      ...generatedScheme,
+      id: scheme.id,
+      createdAt: scheme.createdAt
+    });
+
+  } catch (error) {
+    console.error('Scheme generation error:', error);
+    res.status(500).json({ error: 'Failed to generate scheme of work' });
+  }
+});
+
+// ============ GET USER'S LESSONS ============
+
+app.get('/api/lessons', authenticate, async (req, res) => {
+  try {
+    const lessons = await prisma.lesson.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+    res.json(lessons);
+  } catch (error) {
+    console.error('Error fetching lessons:', error);
+    res.status(500).json({ error: 'Failed to fetch lessons' });
+  }
+});
+
+// ============ GET USER'S SCHEMES ============
+
+app.get('/api/schemes', authenticate, async (req, res) => {
+  try {
+    const schemes = await prisma.scheme.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 10
+    });
+    res.json(schemes);
+  } catch (error) {
+    console.error('Error fetching schemes:', error);
+    res.status(500).json({ error: 'Failed to fetch schemes' });
+  }
+});
+
 // ============ START SERVER ============
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`✅ Health check: http://localhost:${PORT}/health`);
   console.log(`✅ Auth routes available at /api/auth/*`);
   console.log(`✅ Lesson generation available at /api/lessons/generate`);
+  console.log(`✅ Scheme generation available at /api/schemes/generate`);
+  console.log(`✅ Get lessons at /api/lessons`);
+  console.log(`✅ Get schemes at /api/schemes`);
   console.log(`✅ CORS enabled for Vercel and Render frontend`);
 });
 
