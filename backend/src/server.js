@@ -133,32 +133,41 @@ app.get('/', (req, res) => {
   res.json({ message: 'MyToolbox API is running' });
 });
 
-// ============ JSON PARSING HELPER ============
+// ============ IMPROVED JSON PARSING HELPER ============
 
 function safeParseJSON(content) {
   try {
     if (!content) return null;
     
+    // Remove markdown code blocks
     let cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
     
+    // Try to find JSON object
     let jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       cleaned = jsonMatch[0];
     }
     
+    // Fix common JSON issues
     cleaned = cleaned.replace(/,\s*([}\]])/g, '$1');
     cleaned = cleaned.replace(/'/g, '"');
     cleaned = cleaned.replace(/\\n/g, ' ');
     cleaned = cleaned.replace(/\\r/g, ' ');
     cleaned = cleaned.replace(/\\t/g, ' ');
+    
+    // Remove trailing commas
     cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
+    
+    // Fix unquoted property names
     cleaned = cleaned.replace(/(\{|\,)\s*([a-zA-Z0-9_]+)\s*:/g, '$1"$2":');
     
+    // Handle incomplete JSON - count brackets and add missing ones
     let openBraces = (cleaned.match(/\{/g) || []).length;
     let closeBraces = (cleaned.match(/\}/g) || []).length;
     let openBrackets = (cleaned.match(/\[/g) || []).length;
     let closeBrackets = (cleaned.match(/\]/g) || []).length;
     
+    // Add missing closing brackets
     while (closeBraces < openBraces) {
       cleaned += '}';
       closeBraces++;
@@ -170,9 +179,197 @@ function safeParseJSON(content) {
     
     return JSON.parse(cleaned);
   } catch (error) {
-    console.log('⚠️ JSON parse failed, using fallback');
+    console.log('⚠️ JSON parse failed:', error.message);
     return null;
   }
+}
+
+// ============ ENHANCED FALLBACK LESSON GENERATOR ============
+
+function generateFallbackLesson(topic, grade, subject, classSize, curriculumType, user) {
+  const size = parseInt(classSize) || 40;
+  const boys = Math.floor(size / 2) || 18;
+  const girls = Math.ceil(size / 2) || 22;
+  
+  if (curriculumType === 'obc') {
+    return {
+      title: topic,
+      grade: grade,
+      subject: subject,
+      teacherName: user?.fullName || 'MR/MRS',
+      school: user?.school || 'KASHINAKAZHI SECONDARY SCHOOL',
+      date: new Date().toISOString().split('T')[0],
+      duration: '80 MINUTES',
+      classSize: size,
+      boys: boys,
+      girls: girls,
+      subtopic: '',
+      references: [
+        `Progress in ${subject} Grade ${grade} pg 78`,
+        `${subject} Grade ${grade} Textbook`,
+        "Teacher's Guide"
+      ],
+      teachingAids: ["Learners book", "Chalk board", "Chart", "Diagrams"],
+      rationale: `This lesson is on ${topic}. Teacher Exposition, Demonstration, Question and answer and group or class discussion methods will be used. This lesson will develop learners knowledge of ${topic}. The skill of identification and application of ${topic} methods. The value of logical thinking and accuracy in computing ${topic}.`,
+      learningOutcomes: [
+        "By the end of this lesson, learners should be able to:",
+        `Define ${topic}`,
+        `Explain the concept of ${topic}`,
+        `Apply ${topic} to solve problems`,
+        `Analyze real-world applications of ${topic}`
+      ],
+      prerequisiteKnowledge: "Learners have ideas about the topic being taught.",
+      lessonIntroduction: "Teacher revises through the previous lesson",
+      lessonDevelopment: [
+        {
+          content: `Introduction to ${topic} and key concepts`,
+          teacherActivity: `Teacher writes the example on the board and explains the concept of ${topic}`,
+          pupilActivity: "Learners to write the example in their exercise books and listen attentively",
+          methods: "Teacher Exposition, Demonstration"
+        },
+        {
+          content: `Main content and examples of ${topic}`,
+          teacherActivity: `Teacher solves ${topic} problems on the board and allows learners to ask questions`,
+          pupilActivity: "Learners to listen attentively and volunteer learners to go and solve on the board",
+          methods: "Question and answer, group discussion"
+        },
+        {
+          content: `Practice problems on ${topic}`,
+          teacherActivity: `Teacher writes ${topic} exercise on the board and asks volunteer learners to go and solve`,
+          pupilActivity: "Learners to write the exercise in their exercise books and volunteer to solve on the board",
+          methods: "Group work, individual practice"
+        },
+        {
+          content: `Summary and conclusion of ${topic}`,
+          teacherActivity: "Teacher consolidates learners responses and writes the summary on the board",
+          pupilActivity: "Learners to listen attentively and write the summary",
+          methods: "Review and consolidation"
+        }
+      ],
+      learnersEvaluation: [
+        `Define ${topic} in your own words`,
+        `Give two examples of ${topic}`,
+        `Solve a ${topic} problem: Determine the key features of ${topic}`,
+        `Explain the importance of ${topic}`
+      ],
+      expectedAnswers: [
+        `Correct definition of ${topic}`,
+        `Two valid examples of ${topic}`,
+        `Correct solution to the ${topic} problem`,
+        `Clear explanation of the importance of ${topic}`
+      ],
+      lessonConclusion: "Teacher concludes lesson by revising through the lesson with learners to help remedial learners",
+      learnersEvaluationText: "Space for teacher's assessment of learner performance",
+      teacherEvaluation: `The lesson was well delivered. The majority of the learners were able to grasp the concept and could work out problems involving ${topic}. Remedial work was given to those who had challenges.`,
+      curriculum: 'obc'
+    };
+  } else {
+    return {
+      title: topic,
+      grade: grade,
+      subject: subject,
+      teacherName: user?.fullName || 'MR/MRS',
+      school: user?.school || 'KASHINAKAZHI SECONDARY SCHOOL',
+      province: user?.province || 'Southern',
+      district: user?.district || 'Itezhi-Tezhi',
+      date: new Date().toISOString().split('T')[0],
+      time: "08:00-08:40",
+      duration: "40 min",
+      classSize: size,
+      boys: boys,
+      girls: girls,
+      subtopic: '',
+      generalCompetences: ["Analytical thinking", "Collaboration", "Communication", "Critical thinking"],
+      specificCompetence: `By the end of this lesson, learners will be able to understand and explain ${topic}`,
+      lessonGoal: `By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}`,
+      rationale: `Understanding ${topic} is essential for learners to develop critical thinking skills and make informed decisions.`,
+      priorKnowledge: "Learners have basic knowledge of the topic from previous lessons",
+      references: ["2026 Teaching Module", "Curriculum Guide", `${subject} Grade ${grade} Textbook`],
+      learningEnvironment: "Classroom with adequate resources",
+      materials: ["Manila paper", "Markers", "Charts", "Worksheet", "Real objects"],
+      expectedStandard: "Topic concepts explained correctly",
+      lessonProgression: [
+        { stage: "INTRODUCTION", time: "5 min", teacherRole: "Ask engaging questions to introduce the topic", learnerRole: "Listen, participate, give examples", assessmentCriteria: "Observation of participation" },
+        { stage: "LESSON DEVELOPMENT", time: "10 min", teacherRole: "Explain key concepts and demonstrate", learnerRole: "Take notes, ask questions, discuss", assessmentCriteria: "Correct understanding of concepts" },
+        { stage: "ACTIVITY 1", time: "11 min", teacherRole: "Guide group work and provide materials", learnerRole: "Work in groups, complete tasks", assessmentCriteria: "Group collaboration and task completion" },
+        { stage: "ACTIVITY 2", time: "16 min", teacherRole: "Facilitate presentations and consolidate", learnerRole: "Present findings and correct own work", assessmentCriteria: "Accurate presentation" },
+        { stage: "EXERCISE", time: "20 min", teacherRole: "Give assessment and monitor", learnerRole: "Complete assessment individually", assessmentCriteria: "Correct responses" },
+        { stage: "CONCLUSION", time: "10 min", teacherRole: "Summarize key points", learnerRole: "Share what they learned", assessmentCriteria: "Verbal explanation" }
+      ],
+      homework: `Research and list examples of ${topic}`,
+      lessonEvaluation: "Lesson was successful, key competences were acquired",
+      teacherEvaluation: "Space for teacher's reflections",
+      learningOutcomes: [`Understand ${topic}`, `Apply ${topic}`, `Analyze ${topic}`],
+      learnersEvaluation: [`Define ${topic}`, `Give examples of ${topic}`, `Explain the importance of ${topic}`],
+      lessonDevelopment: [
+        { content: `Introduction to ${topic}`, teacherActivity: "Explain the concept", pupilActivity: "Listen and take notes", methods: "Lecture" },
+        { content: `Practice ${topic}`, teacherActivity: "Guide students", pupilActivity: "Work in groups", methods: "Group work" }
+      ],
+      teachingAids: ["Whiteboard", "Charts", "Diagrams"],
+      curriculum: 'cbc'
+    };
+  }
+}
+
+// ============ ENHANCED FALLBACK SCHEME GENERATOR ============
+
+function generateFallbackScheme(grade, subject, term, user, customTopics = {}) {
+  const weeks = [];
+  const totalWeeks = 13;
+  
+  const defaultTopics = [
+    `Introduction to ${subject}`,
+    `Basic concepts of ${subject}`,
+    `Advanced ${subject} topics`,
+    `Practical applications of ${subject}`,
+    `Review and assessment of ${subject}`
+  ];
+
+  for (let i = 1; i <= totalWeeks; i++) {
+    const weekTopics = [];
+    const weekNumber = i;
+    const customTopic = customTopics[weekNumber];
+    
+    if (customTopic) {
+      weekTopics.push({
+        topic: customTopic,
+        specificOutcome: `By the end of this lesson, learners will be able to understand and apply knowledge of ${customTopic}`,
+        methods: "Lecture, discussion, group work, question and answer",
+        aids: "Whiteboard, charts, textbooks, diagrams",
+        references: "Textbook, Teacher's Guide",
+        knowledge: `Comprehensive knowledge of ${customTopic}`,
+        skills: "Critical thinking, analysis, collaboration",
+        values: "Responsibility, teamwork, curiosity"
+      });
+    } else {
+      const numTopics = 3 + Math.floor(Math.random() * 2);
+      for (let j = 0; j < numTopics; j++) {
+        const topicIndex = (i + j) % defaultTopics.length;
+        weekTopics.push({
+          topic: defaultTopics[topicIndex],
+          specificOutcome: `By the end of this lesson, learners will be able to understand ${defaultTopics[topicIndex]}`,
+          methods: "Lecture, discussion, group work, question and answer",
+          aids: "Whiteboard, charts, textbooks, diagrams",
+          references: "Textbook, Teacher's Guide",
+          knowledge: `Knowledge of ${defaultTopics[topicIndex]}`,
+          skills: "Critical thinking, analysis, collaboration",
+          values: "Responsibility, teamwork, curiosity"
+        });
+      }
+    }
+    
+    weeks.push({
+      week: i,
+      topics: weekTopics,
+      assessment: i % 3 === 0 ? `End of Week ${i} Assessment` : null
+    });
+  }
+
+  return {
+    weeks: weeks,
+    assessmentWeeks: [3, 6, 9, 12],
+    testTopics: [`Mid-term test on ${subject}`, `End of term test on ${subject}`]
+  };
 }
 
 // ============ AUTH ROUTES ============
@@ -268,136 +465,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ ENHANCED FALLBACK LESSON GENERATOR (CBC & OBC) ============
-
-function generateFallbackLesson(topic, grade, subject, classSize, curriculumType, user) {
-  const size = parseInt(classSize) || 40;
-  const boys = Math.floor(size / 2) || 18;
-  const girls = Math.ceil(size / 2) || 22;
-  
-  if (curriculumType === 'obc') {
-    // ============ OBC FALLBACK (FIXED FORMATTING) ============
-    return {
-      title: topic,
-      grade: grade,
-      subject: subject,
-      teacherName: user?.fullName || 'MR/MRS',
-      school: user?.school || 'KASHINAKAZHI SECONDARY SCHOOL',
-      date: new Date().toISOString().split('T')[0],
-      duration: '80 MINUTES',
-      classSize: size,
-      boys: boys,
-      girls: girls,
-      subtopic: '',
-      references: [
-        `Progress in ${subject} Grade ${grade} pg 78`,
-        `${subject} Grade ${grade} Textbook`,
-        "Teacher's Guide"
-      ],
-      teachingAids: ["Learners book", "Chalk board", "Chart", "Diagrams"],
-      rationale: `This lesson is on ${topic}. Teacher Exposition, Demonstration, Question and answer and group or class discussion methods will be used. This lesson will develop learners knowledge of ${topic}. The skill of identification and application of ${topic} methods. The value of logical thinking and accuracy in computing ${topic}.`,
-      learningOutcomes: [
-        "By the end of this lesson, learners should be able to:",
-        `Define ${topic}`,
-        `Explain the concept of ${topic}`,
-        `Apply ${topic} to solve problems`,
-        `Analyze real-world applications of ${topic}`
-      ],
-      prerequisiteKnowledge: "Learners have ideas about the topic being taught.",
-      lessonIntroduction: "Teacher revises through the previous lesson",
-      lessonDevelopment: [
-        {
-          content: `Introduction to ${topic} and key concepts`,
-          teacherActivity: `Teacher writes the example on the board and explains the concept of ${topic}`,
-          pupilActivity: "Learners to write the example in their exercise books and listen attentively",
-          methods: "Teacher Exposition, Demonstration"
-        },
-        {
-          content: `Main content and examples of ${topic}`,
-          teacherActivity: `Teacher solves ${topic} problems on the board and allows learners to ask questions`,
-          pupilActivity: "Learners to listen attentively and volunteer learners to go and solve on the board",
-          methods: "Question and answer, group discussion"
-        },
-        {
-          content: `Practice problems on ${topic}`,
-          teacherActivity: `Teacher writes ${topic} exercise on the board and asks volunteer learners to go and solve`,
-          pupilActivity: "Learners to write the exercise in their exercise books and volunteer to solve on the board",
-          methods: "Group work, individual practice"
-        },
-        {
-          content: `Summary and conclusion of ${topic}`,
-          teacherActivity: "Teacher consolidates learners responses and writes the summary on the board",
-          pupilActivity: "Learners to listen attentively and write the summary",
-          methods: "Review and consolidation"
-        }
-      ],
-      learnersEvaluation: [
-        `Define ${topic} in your own words`,
-        `Give two examples of ${topic}`,
-        `Solve a ${topic} problem: Determine the key features of ${topic}`,
-        `Explain the importance of ${topic}`
-      ],
-      expectedAnswers: [
-        `Correct definition of ${topic}`,
-        `Two valid examples of ${topic}`,
-        `Correct solution to the ${topic} problem`,
-        `Clear explanation of the importance of ${topic}`
-      ],
-      lessonConclusion: "Teacher concludes lesson by revising through the lesson with learners to help remedial learners",
-      learnersEvaluationText: "Space for teacher's assessment of learner performance",
-      teacherEvaluation: `The lesson was well delivered. The majority of the learners were able to grasp the concept and could work out problems involving ${topic}. Remedial work was given to those who had challenges.`,
-      curriculum: 'obc'
-    };
-  } else {
-    // ============ CBC FALLBACK ============
-    return {
-      title: topic,
-      grade: grade,
-      subject: subject,
-      teacherName: user?.fullName || 'MR/MRS',
-      school: user?.school || 'KASHINAKAZHI SECONDARY SCHOOL',
-      province: user?.province || 'Southern',
-      district: user?.district || 'Itezhi-Tezhi',
-      date: new Date().toISOString().split('T')[0],
-      time: "08:00-08:40",
-      duration: "40 min",
-      classSize: size,
-      boys: boys,
-      girls: girls,
-      subtopic: '',
-      generalCompetences: ["Analytical thinking", "Collaboration", "Communication", "Critical thinking"],
-      specificCompetence: `By the end of this lesson, learners will be able to understand and explain ${topic}`,
-      lessonGoal: `By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}`,
-      rationale: `Understanding ${topic} is essential for learners to develop critical thinking skills and make informed decisions.`,
-      priorKnowledge: "Learners have basic knowledge of the topic from previous lessons",
-      references: ["2026 Teaching Module", "Curriculum Guide", `${subject} Grade ${grade} Textbook`],
-      learningEnvironment: "Classroom with adequate resources",
-      materials: ["Manila paper", "Markers", "Charts", "Worksheet", "Real objects"],
-      expectedStandard: "Topic concepts explained correctly",
-      lessonProgression: [
-        { stage: "INTRODUCTION", time: "5 min", teacherRole: "Ask engaging questions to introduce the topic", learnerRole: "Listen, participate, give examples", assessmentCriteria: "Observation of participation" },
-        { stage: "LESSON DEVELOPMENT", time: "10 min", teacherRole: "Explain key concepts and demonstrate", learnerRole: "Take notes, ask questions, discuss", assessmentCriteria: "Correct understanding of concepts" },
-        { stage: "ACTIVITY 1", time: "11 min", teacherRole: "Guide group work and provide materials", learnerRole: "Work in groups, complete tasks", assessmentCriteria: "Group collaboration and task completion" },
-        { stage: "ACTIVITY 2", time: "16 min", teacherRole: "Facilitate presentations and consolidate", learnerRole: "Present findings and correct own work", assessmentCriteria: "Accurate presentation" },
-        { stage: "EXERCISE", time: "20 min", teacherRole: "Give assessment and monitor", learnerRole: "Complete assessment individually", assessmentCriteria: "Correct responses" },
-        { stage: "CONCLUSION", time: "10 min", teacherRole: "Summarize key points", learnerRole: "Share what they learned", assessmentCriteria: "Verbal explanation" }
-      ],
-      homework: `Research and list examples of ${topic}`,
-      lessonEvaluation: "Lesson was successful, key competences were acquired",
-      teacherEvaluation: "Space for teacher's reflections",
-      learningOutcomes: [`Understand ${topic}`, `Apply ${topic}`, `Analyze ${topic}`],
-      learnersEvaluation: [`Define ${topic}`, `Give examples of ${topic}`, `Explain the importance of ${topic}`],
-      lessonDevelopment: [
-        { content: `Introduction to ${topic}`, teacherActivity: "Explain the concept", pupilActivity: "Listen and take notes", methods: "Lecture" },
-        { content: `Practice ${topic}`, teacherActivity: "Guide students", pupilActivity: "Work in groups", methods: "Group work" }
-      ],
-      teachingAids: ["Whiteboard", "Charts", "Diagrams"],
-      curriculum: 'cbc'
-    };
-  }
-}
-
-// ============ LESSON GENERATION ROUTE (CBC & OBC) ============
+// ============ LESSON GENERATION ROUTE (FIXED) ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
@@ -433,12 +501,10 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       let prompt;
       
       if (curriculumType === 'obc') {
-        // ============ OBC PROMPT ============
         prompt = `
-You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
+You are an expert Zambian teacher creating an OBC lesson plan for ${grade} ${subject} on: "${topic}".
 
-⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this OBC structure:
-
+Return ONLY valid JSON:
 {
   "title": "${topic}",
   "grade": "${grade}",
@@ -451,77 +517,27 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
   "boys": ${boys},
   "girls": ${girls},
   "subtopic": "",
-  "references": [
-    "Progress in ${subject} Grade ${grade} pg 78",
-    "${subject} Grade ${grade} Textbook",
-    "Teacher's Guide"
-  ],
-  "teachingAids": ["Learners book", "Chalk board", "Chart", "Diagrams"],
-  "rationale": "This lesson is on ${topic}. Teacher Exposition, Demonstration, Question and answer and group or class discussion methods will be used. This lesson will develop learners knowledge of ${topic}. The skill of identification and application of ${topic} methods. The value of logical thinking and accuracy in computing ${topic}.",
-  "learningOutcomes": [
-    "By the end of this lesson, learners should be able to:",
-    "Define ${topic}",
-    "Explain the concept of ${topic}",
-    "Apply ${topic} to solve problems",
-    "Analyze real-world applications of ${topic}"
-  ],
-  "prerequisiteKnowledge": "Learners have ideas about the topic being taught.",
-  "lessonIntroduction": "Teacher revises through the previous lesson",
+  "references": ["Textbook", "Teacher's Guide"],
+  "teachingAids": ["Chalk board", "Chart"],
+  "rationale": "This lesson develops knowledge of ${topic}.",
+  "learningOutcomes": ["Define ${topic}", "Apply ${topic}", "Analyze ${topic}"],
+  "prerequisiteKnowledge": "Basic knowledge",
+  "lessonIntroduction": "Teacher revises previous lesson",
   "lessonDevelopment": [
-    {
-      "content": "Introduction to ${topic} and key concepts",
-      "teacherActivity": "Teacher writes the example on the board and explains the concept of ${topic}",
-      "pupilActivity": "Learners to write the example in their exercise books and listen attentively",
-      "methods": "Teacher Exposition, Demonstration"
-    },
-    {
-      "content": "Main content and examples of ${topic}",
-      "teacherActivity": "Teacher solves ${topic} problems on the board and allows learners to ask questions",
-      "pupilActivity": "Learners to listen attentively and volunteer learners to go and solve on the board",
-      "methods": "Question and answer, group discussion"
-    },
-    {
-      "content": "Practice problems on ${topic}",
-      "teacherActivity": "Teacher writes ${topic} exercise on the board and asks volunteer learners to go and solve",
-      "pupilActivity": "Learners to write the exercise in their exercise books and volunteer to solve on the board",
-      "methods": "Group work, individual practice"
-    },
-    {
-      "content": "Summary and conclusion of ${topic}",
-      "teacherActivity": "Teacher consolidates learners responses and writes the summary on the board",
-      "pupilActivity": "Learners to listen attentively and write the summary",
-      "methods": "Review and consolidation"
-    }
+    {"content": "Introduction", "teacherActivity": "Explain", "pupilActivity": "Listen", "methods": "Lecture"}
   ],
-  "learnersEvaluation": [
-    "Define ${topic} in your own words",
-    "Give two examples of ${topic}",
-    "Solve a ${topic} problem: Determine the key features of ${topic}",
-    "Explain the importance of ${topic}"
-  ],
-  "expectedAnswers": [
-    "Correct definition of ${topic}",
-    "Two valid examples of ${topic}",
-    "Correct solution to the ${topic} problem",
-    "Clear explanation of the importance of ${topic}"
-  ],
-  "lessonConclusion": "Teacher concludes lesson by revising through the lesson with learners to help remedial learners",
-  "learnersEvaluationText": "Space for teacher's assessment of learner performance",
-  "teacherEvaluation": "The lesson was well delivered. The majority of the learners were able to grasp the concept and could work out problems involving ${topic}. Remedial work was given to those who had challenges."
+  "learnersEvaluation": ["Define ${topic}", "Give examples"],
+  "expectedAnswers": ["Correct definition", "Valid examples"],
+  "lessonConclusion": "Teacher concludes lesson",
+  "teacherEvaluation": "Lesson was successful"
 }
-
-🔴 RULES:
-- Make content specific to ${grade} ${subject} on "${topic}".
-- Include realistic examples and practice problems.
-- Return ONLY the JSON object, no other text.
+Keep it SHORT. Valid JSON only.
 `;
       } else {
-        // ============ CBC PROMPT ============
         prompt = `
-You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
+You are an expert Zambian teacher creating a CBC lesson plan for ${grade} ${subject} on: "${topic}".
 
-⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this CBC structure:
-
+Return ONLY valid JSON:
 {
   "title": "${topic}",
   "grade": "${grade}",
@@ -537,82 +553,37 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
   "boys": ${boys},
   "girls": ${girls},
   "subtopic": "",
-  "generalCompetences": ["Analytical thinking", "Collaboration", "Communication", "Critical thinking"],
-  "specificCompetence": "Classify and explain the types of ${topic}",
-  "lessonGoal": "By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}",
-  "rationale": "Understanding ${topic} is essential for learners to make informed decisions and develop critical thinking skills.",
-  "priorKnowledge": "Learners have basic knowledge of the topic from previous lessons",
-  "references": ["2026 Teaching Module", "Curriculum Guide", "${subject} Grade ${grade} Textbook"],
-  "learningEnvironment": "Classroom, laboratory, school garden",
-  "materials": ["Manila paper", "Markers", "Charts", "Worksheet", "Real objects"],
-  "expectedStandard": "Topic concepts classified correctly",
+  "generalCompetences": ["Critical thinking", "Communication", "Collaboration"],
+  "specificCompetence": "Understand ${topic}",
+  "lessonGoal": "By the end, learners will understand ${topic}",
+  "rationale": "${topic} is important for learners",
+  "priorKnowledge": "Basic knowledge",
+  "references": ["Textbook", "Teacher's Guide"],
+  "learningEnvironment": "Classroom",
+  "materials": ["Whiteboard", "Markers"],
+  "expectedStandard": "Demonstrate understanding",
   "lessonProgression": [
-    {
-      "stage": "INTRODUCTION",
-      "time": "5 min",
-      "teacherRole": "Ask: 'What do you know about this topic?'",
-      "learnerRole": "Listen, participate, give examples",
-      "assessmentCriteria": "Observation of participation"
-    },
-    {
-      "stage": "LESSON DEVELOPMENT",
-      "time": "10 min",
-      "teacherRole": "Explain key concepts and demonstrate",
-      "learnerRole": "Take notes, ask questions, discuss",
-      "assessmentCriteria": "Correct understanding of concepts"
-    },
-    {
-      "stage": "ACTIVITY 1",
-      "time": "11 min",
-      "teacherRole": "Guide group work and provide materials",
-      "learnerRole": "Work in groups, complete tasks",
-      "assessmentCriteria": "Group collaboration and task completion"
-    },
-    {
-      "stage": "ACTIVITY 2",
-      "time": "16 min",
-      "teacherRole": "Facilitate presentations and consolidate",
-      "learnerRole": "Present findings and correct own work",
-      "assessmentCriteria": "Accurate presentation"
-    },
-    {
-      "stage": "EXERCISE",
-      "time": "20 min",
-      "teacherRole": "Give assessment and monitor",
-      "learnerRole": "Complete assessment individually",
-      "assessmentCriteria": "Correct responses"
-    },
-    {
-      "stage": "CONCLUSION",
-      "time": "10 min",
-      "teacherRole": "Summarize key points",
-      "learnerRole": "Share what they learned",
-      "assessmentCriteria": "Verbal explanation"
-    }
+    {"stage": "INTRODUCTION", "time": "5 min", "teacherRole": "Introduce", "learnerRole": "Listen", "assessmentCriteria": "Participation"}
   ],
-  "homework": "Research and list local examples of ${topic}",
-  "lessonEvaluation": "Lesson was successful, key competences were acquired",
-  "teacherEvaluation": "Space for teacher's reflections"
+  "homework": "Research ${topic}",
+  "lessonEvaluation": "Successful",
+  "teacherEvaluation": "To be filled"
 }
-
-🔴 RULES:
-- Make content specific to ${grade} ${subject} on "${topic}".
-- Include realistic examples relevant to Zambian schools.
-- Return ONLY the JSON object, no other text.
+Keep it SHORT. Valid JSON only.
 `;
       }
 
-      console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson with DeepSeek...`);
+      console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson...`);
 
       const response = await deepseek.chat.completions.create({
         model: "deepseek-chat",
         messages: [
-          { role: "system", content: `You are an expert Zambian teacher creating detailed ${curriculumType.toUpperCase()} lesson plans. Always return valid JSON in the exact format specified. Never add extra text.` },
+          { role: "system", content: "Return valid JSON only. Keep it short." },
           { role: "user", content: prompt }
         ],
-        temperature: 0.5,
-        max_tokens: 4096,
-        response_format: { type: "json_object" }
+        temperature: 0.3,
+        max_tokens: 1500, // Reduced to prevent truncation
+        response_format: { type: "json_object" } // Force JSON
       });
 
       let content = response.choices[0].message.content;
@@ -625,42 +596,23 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
       
       aiContent = JSON.parse(content);
       
-      // Merge with fallback to ensure all fields exist
+      // Merge with fallback
       const fallback = generateFallbackLesson(topic, grade, subject, classSize, curriculumType, user);
       aiContent = { ...fallback, ...aiContent };
-      
-      // Ensure arrays are not empty
-      if (curriculumType === 'obc') {
-        aiContent.references = aiContent.references || fallback.references;
-        aiContent.teachingAids = aiContent.teachingAids || fallback.teachingAids;
-        aiContent.learningOutcomes = aiContent.learningOutcomes || fallback.learningOutcomes;
-        aiContent.lessonDevelopment = aiContent.lessonDevelopment || fallback.lessonDevelopment;
-        aiContent.learnersEvaluation = aiContent.learnersEvaluation || fallback.learnersEvaluation;
-        aiContent.expectedAnswers = aiContent.expectedAnswers || fallback.expectedAnswers;
-      } else {
-        aiContent.generalCompetences = aiContent.generalCompetences || fallback.generalCompetences;
-        aiContent.lessonProgression = aiContent.lessonProgression || fallback.lessonProgression;
-        aiContent.learningOutcomes = aiContent.learningOutcomes || fallback.learningOutcomes;
-        aiContent.learnersEvaluation = aiContent.learnersEvaluation || fallback.learnersEvaluation;
-        aiContent.materials = aiContent.materials || fallback.materials;
-        aiContent.references = aiContent.references || fallback.references;
-        aiContent.lessonDevelopment = aiContent.lessonDevelopment || fallback.lessonDevelopment;
-        aiContent.teachingAids = aiContent.teachingAids || fallback.teachingAids;
-      }
 
-      console.log(`✅ ${curriculumType.toUpperCase()} lesson generated successfully`);
+      console.log(`✅ ${curriculumType.toUpperCase()} lesson generated`);
 
     } catch (error) {
-      console.log('⚠️ DeepSeek error, using fallback:', error.message);
+      console.log('⚠️ Error, using fallback:', error.message);
       useFallback = true;
     }
 
     if (useFallback || !aiContent) {
-      console.log(`📝 Using ${curriculumType.toUpperCase()} fallback lesson`);
+      console.log(`📝 Using ${curriculumType.toUpperCase()} fallback`);
       aiContent = generateFallbackLesson(topic, grade, subject, classSize, curriculumType, user);
     }
 
-    // ============ SAVE TO DATABASE ============
+    // Save to database
     const lesson = await prisma.lesson.create({
       data: {
         userId: req.userId,
@@ -735,7 +687,7 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
   }
 });
 
-// ============ SCHEME OF WORK GENERATION ROUTE ============
+// ============ SCHEME OF WORK GENERATION ROUTE (FIXED) ============
 
 app.post('/api/schemes/generate', authenticate, async (req, res) => {
   try {
@@ -763,84 +715,88 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       });
     }
 
-    // ============ GENERATE SCHEME DIRECTLY ============
+    // ============ USE FALLBACK DIRECTLY (RELIABLE) ============
+    console.log('📝 Generating scheme directly...');
+    
     const assessmentWeeksList = assessmentWeeks || [3, 6, 9, 12];
     const customTopics = weekTopics || {};
     const totalWeeksCount = totalWeeks || 13;
-
-    const weeks = [];
     const subtopicsList = subtopic ? subtopic.split(',').map(s => s.trim()) : [];
     
-    const defaultTopics = [
-      `Introduction to ${subject}`,
-      `Basic concepts of ${subject}`,
-      `Advanced ${subject} topics`,
-      `Practical applications of ${subject}`,
-      `Review and assessment of ${subject}`
-    ];
-
-    for (let i = 1; i <= totalWeeksCount; i++) {
-      const isAssessment = assessmentWeeksList.includes(i);
-      const isRevision = [1, 5, 9].includes(i);
+    // First, try DeepSeek but with very short prompt
+    let aiContent = null;
+    let useFallback = false;
+    
+    try {
+      const prompt = `
+Create a Scheme of Work for ${grade} ${subject}. Return JSON:
+{
+  "weeks": [
+    {"week": 1, "topics": [{"topic": "Topic", "specificOutcome": "Outcome", "methods": "Methods", "aids": "Aids", "references": "References", "knowledge": "Knowledge", "skills": "Skills", "values": "Values"}], "assessment": null}
+  ],
+  "assessmentWeeks": [3, 6, 9, 12],
+  "testTopics": ["Mid-term", "End of term"]
+}
+Keep it SHORT. Valid JSON only.
+`;
       
-      let weekTopics = [];
-      
-      if (isRevision) {
-        weekTopics = [{
-          topic: 'REVISION WEEK',
-          specificOutcome: 'Correct their past misconceptions',
-          methods: 'Class discussion, Question and answer, Group work',
-          aids: 'Test papers, Revision notes',
-          references: 'Test papers, Marking keys',
-          knowledge: '',
-          skills: '',
-          values: ''
-        }];
-      } else if (isAssessment) {
-        weekTopics = [{
-          topic: 'ASSESSMENT',
-          specificOutcome: 'Demonstrate understanding of the topics covered',
-          methods: 'Test, Examination, Practical assessment',
-          aids: 'Examination papers, Answer sheets',
-          references: 'Teacher\'s guide, Marking scheme',
-          knowledge: '',
-          skills: '',
-          values: ''
-        }];
-      } else {
-        let topicName = customTopics[i] || '';
-        
-        if (!topicName && subtopicsList.length > 0) {
-          const subtopicIndex = (i - 2) % subtopicsList.length;
-          topicName = subtopicsList[subtopicIndex];
-        }
-        
-        if (!topicName) {
-          const defaultIndex = (i - 2) % defaultTopics.length;
-          topicName = defaultTopics[defaultIndex];
-        }
-        
-        let weekType = 'Lesson';
-        if (i % 4 === 0) weekType = 'Practical';
-        if (i % 5 === 0) weekType = 'Group Work';
-        
-        weekTopics = [{
-          topic: topicName,
-          specificOutcome: `By the end of this lesson, learners will be able to understand and explain ${topicName}`,
-          methods: `Lecture, discussion, group work, ${weekType === 'Practical' ? 'practical demonstration' : 'question and answer'}`,
-          aids: `Whiteboard, charts, textbooks, ${weekType === 'Practical' ? 'laboratory equipment' : 'diagrams'}`,
-          references: `${subject} Grade ${grade} Textbook, Teacher's Guide`,
-          knowledge: `Comprehensive knowledge of ${topicName}`,
-          skills: `Critical thinking, analysis, ${weekType === 'Group Work' ? 'collaboration' : 'problem-solving'}`,
-          values: `Responsibility, teamwork, ${weekType === 'Practical' ? 'scientific inquiry' : 'curiosity'}`
-        }];
-      }
-      
-      weeks.push({
-        week: i,
-        topics: weekTopics,
-        assessment: isAssessment ? `End of Week ${i} Assessment` : null
+      const response = await deepseek.chat.completions.create({
+        model: "deepseek-chat",
+        messages: [
+          { role: "system", content: "Return valid JSON only. Keep it short." },
+          { role: "user", content: prompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 1000,
+        response_format: { type: "json_object" }
       });
+      
+      aiContent = safeParseJSON(response.choices[0].message.content);
+      
+      if (aiContent) {
+        console.log('✅ DeepSeek generated scheme successfully');
+      } else {
+        useFallback = true;
+      }
+    } catch (error) {
+      console.log('⚠️ DeepSeek error, using fallback');
+      useFallback = true;
+    }
+    
+    // Use fallback if needed
+    if (!aiContent || useFallback) {
+      console.log('📝 Using fallback scheme generator');
+      aiContent = generateFallbackScheme(grade, subject, term, user, customTopics);
+    }
+    
+    // Build weeks from AI content or fallback
+    const weeks = aiContent.weeks.map(week => ({
+      week: week.week,
+      topics: week.topics.map(topic => ({
+        topic: topic.topic || '',
+        specificOutcome: topic.specificOutcome || '',
+        methods: topic.methods || '',
+        aids: topic.aids || '',
+        references: topic.references || '',
+        knowledge: topic.knowledge || '',
+        skills: topic.skills || '',
+        values: topic.values || ''
+      })),
+      assessment: week.assessment || null
+    }));
+
+    // If subtopics were provided, use them
+    if (subtopicsList.length > 0) {
+      let weekIndex = 0;
+      for (let i = 0; i < weeks.length; i++) {
+        if (!assessmentWeeksList.includes(weeks[i].week) && ![1, 5, 9].includes(weeks[i].week)) {
+          if (weekIndex < subtopicsList.length) {
+            weeks[i].topics[0].topic = subtopicsList[weekIndex];
+            weeks[i].topics[0].specificOutcome = `By the end of this lesson, learners will be able to understand and explain ${subtopicsList[weekIndex]}`;
+            weekIndex++;
+          }
+        }
+      }
     }
 
     const generatedScheme = {
@@ -858,6 +814,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
+    // Save scheme to database
     const scheme = await prisma.scheme.create({
       data: {
         userId: req.userId,
@@ -880,6 +837,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       data: { schemesUsed: user.schemesUsed + 1 }
     });
 
+    console.log('✅ Scheme generated successfully');
     res.status(201).json({
       ...generatedScheme,
       id: scheme.id,
@@ -892,226 +850,6 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       error: 'Failed to generate scheme of work',
       details: error.message
     });
-  }
-});
-
-// ============ SCHEME EXPORT ROUTES ============
-
-app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const scheme = await prisma.scheme.findUnique({
-      where: { id: id },
-    });
-
-    if (!scheme) {
-      return res.status(404).json({ error: 'Scheme not found' });
-    }
-
-    if (scheme.userId !== req.userId) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
-
-    let html = `
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Scheme of Work</title>
-        <style>
-          body { font-family: Arial, sans-serif; font-size: 12pt; margin: 40px; }
-          h1 { text-align: center; font-size: 18pt; }
-          h2 { text-align: center; font-size: 16pt; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 10pt; }
-          th { background-color: #e0e0e0; font-weight: bold; border: 1px solid #000; padding: 6px; }
-          td { border: 1px solid #000; padding: 6px; vertical-align: top; }
-          .footer { text-align: center; margin-top: 30px; font-size: 10pt; }
-        </style>
-      </head>
-      <body>
-        <h1>MINISTRY OF EDUCATION</h1>
-        <h2>SCHEME OF WORK</h2>
-        <p style="text-align: center;"><strong>School:</strong> ${scheme.school || 'School Name'}</p>
-        <p style="text-align: center;"><strong>Subject:</strong> ${scheme.subject}</p>
-        <p style="text-align: center;"><strong>Grade:</strong> ${scheme.grade}</p>
-        <p style="text-align: center;"><strong>Term:</strong> ${scheme.term}</p>
-        <p style="text-align: center;"><strong>Year:</strong> ${scheme.year}</p>
-        <p style="text-align: center;"><strong>Assessment Weeks:</strong> ${scheme.assessmentWeeks?.join(', ') || 'None'}</p>
-        <hr>
-        <table>
-          <thead>
-            <tr>
-              <th>WEEK</th>
-              <th>TOPIC</th>
-              <th>SPECIFIC OUTCOME</th>
-              <th>METHODS</th>
-              <th>AIDS</th>
-              <th>REFERENCES</th>
-              <th>KNOWLEDGE</th>
-              <th>SKILLS</th>
-              <th>VALUES</th>
-            </tr>
-          </thead>
-          <tbody>
-    `;
-
-    scheme.weeks.forEach(week => {
-      const topics = week.topics || [];
-      const topicText = topics.map(t => t.topic || '').join('; ');
-      const outcomeText = topics.map(t => t.specificOutcome || '').join('; ');
-      const methodsText = topics.map(t => t.methods || '').join('; ');
-      const aidsText = topics.map(t => t.aids || '').join('; ');
-      const refsText = topics.map(t => t.references || '').join('; ');
-      const knowledgeText = topics.map(t => t.knowledge || '').join('; ');
-      const skillsText = topics.map(t => t.skills || '').join('; ');
-      const valuesText = topics.map(t => t.values || '').join('; ');
-
-      html += `
-        <tr>
-          <td style="text-align: center;">${week.week}</td>
-          <td>${topicText || '-'}</td>
-          <td>${outcomeText || '-'}</td>
-          <td>${methodsText || '-'}</td>
-          <td>${aidsText || '-'}</td>
-          <td>${refsText || '-'}</td>
-          <td>${knowledgeText || '-'}</td>
-          <td>${skillsText || '-'}</td>
-          <td>${valuesText || '-'}</td>
-        </tr>
-      `;
-    });
-
-    html += `
-          </tbody>
-        </table>
-        <div class="footer">
-          <p>© 2026 mytoolbox - Made for teachers in Zambia</p>
-        </div>
-      </body>
-      </html>
-    `;
-
-    res.setHeader('Content-Type', 'text/html');
-    res.setHeader('Content-Disposition', `attachment; filename="scheme_${scheme.id}.html"`);
-    res.send(html);
-
-  } catch (error) {
-    console.error('❌ PDF export error:', error);
-    res.status(500).json({ error: 'Failed to export scheme as PDF' });
-  }
-});
-
-app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const scheme = await prisma.scheme.findUnique({
-      where: { id: id },
-    });
-
-    if (!scheme) {
-      return res.status(404).json({ error: 'Scheme not found' });
-    }
-
-    if (scheme.userId !== req.userId) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
-
-    let html = `
-      <html xmlns:o='urn:schemas-microsoft-com:office:office' 
-            xmlns:w='urn:schemas-microsoft-com:office:word' 
-            xmlns='http://www.w3.org/TR/REC-html40'>
-      <head>
-        <meta charset="utf-8">
-        <title>Scheme of Work</title>
-        <!--[if gte mso 9]>
-        <xml>
-          <w:WordDocument>
-            <w:View>Print</w:View>
-            <w:Zoom>100</w:Zoom>
-          </w:WordDocument>
-        </xml>
-        <![endif]-->
-        <style>
-          body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; margin: 40px; }
-          h1 { text-align: center; font-size: 18pt; }
-          h2 { text-align: center; font-size: 16pt; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th { background-color: #e0e0e0; font-weight: bold; border: 1px solid #000; padding: 6px; }
-          td { border: 1px solid #000; padding: 6px; vertical-align: top; }
-          .footer { text-align: center; margin-top: 30px; font-size: 10pt; }
-        </style>
-      </head>
-      <body>
-        <h1>MINISTRY OF EDUCATION</h1>
-        <h2>SCHEME OF WORK</h2>
-        <p style="text-align: center;"><strong>School:</strong> ${scheme.school || 'School Name'}</p>
-        <p style="text-align: center;"><strong>Subject:</strong> ${scheme.subject}</p>
-        <p style="text-align: center;"><strong>Grade:</strong> ${scheme.grade}</p>
-        <p style="text-align: center;"><strong>Term:</strong> ${scheme.term}</p>
-        <p style="text-align: center;"><strong>Year:</strong> ${scheme.year}</p>
-        <p style="text-align: center;"><strong>Assessment Weeks:</strong> ${scheme.assessmentWeeks?.join(', ') || 'None'}</p>
-        <hr>
-        <table>
-          <thead>
-            <tr>
-              <th>WEEK</th>
-              <th>TOPIC</th>
-              <th>SPECIFIC OUTCOME</th>
-              <th>METHODS</th>
-              <th>AIDS</th>
-              <th>REFERENCES</th>
-              <th>KNOWLEDGE</th>
-              <th>SKILLS</th>
-              <th>VALUES</th>
-            </tr>
-          </thead>
-          <tbody>
-    `;
-
-    scheme.weeks.forEach(week => {
-      const topics = week.topics || [];
-      const topicText = topics.map(t => t.topic || '').join('; ');
-      const outcomeText = topics.map(t => t.specificOutcome || '').join('; ');
-      const methodsText = topics.map(t => t.methods || '').join('; ');
-      const aidsText = topics.map(t => t.aids || '').join('; ');
-      const refsText = topics.map(t => t.references || '').join('; ');
-      const knowledgeText = topics.map(t => t.knowledge || '').join('; ');
-      const skillsText = topics.map(t => t.skills || '').join('; ');
-      const valuesText = topics.map(t => t.values || '').join('; ');
-
-      html += `
-        <tr>
-          <td style="text-align: center;">${week.week}</td>
-          <td>${topicText || '-'}</td>
-          <td>${outcomeText || '-'}</td>
-          <td>${methodsText || '-'}</td>
-          <td>${aidsText || '-'}</td>
-          <td>${refsText || '-'}</td>
-          <td>${knowledgeText || '-'}</td>
-          <td>${skillsText || '-'}</td>
-          <td>${valuesText || '-'}</td>
-        </tr>
-      `;
-    });
-
-    html += `
-          </tbody>
-        </table>
-        <div class="footer">
-          <p>© 2026 mytoolbox - Made for teachers in Zambia</p>
-        </div>
-      </body>
-      </html>
-    `;
-
-    res.setHeader('Content-Type', 'application/msword');
-    res.setHeader('Content-Disposition', `attachment; filename="scheme_${scheme.id}.doc"`);
-    res.send(html);
-
-  } catch (error) {
-    console.error('❌ Word export error:', error);
-    res.status(500).json({ error: 'Failed to export scheme as Word' });
   }
 });
 
@@ -1355,7 +1093,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Auth routes available at /api/auth/*`);
   console.log(`✅ Lesson generation available at /api/lessons/generate`);
   console.log(`✅ Scheme generation available at /api/schemes/generate`);
-  console.log(`✅ Scheme export available at /api/schemes/export/:id/:format`);
   console.log(`✅ Get lessons at /api/lessons`);
   console.log(`✅ Get schemes at /api/schemes`);
   console.log(`✅ Get lessons (alias) at /api/lessons/mine`);
