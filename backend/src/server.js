@@ -133,7 +133,6 @@ function generateFallbackScheme(grade, subject, term, user, customTopics = {}) {
     const customTopic = customTopics[weekNumber];
     
     if (customTopic) {
-      // Use the custom topic
       weekTopics.push({
         topic: customTopic,
         specificOutcome: `Understand and apply knowledge of ${customTopic}`,
@@ -144,7 +143,6 @@ function generateFallbackScheme(grade, subject, term, user, customTopics = {}) {
         values: "Responsibility, teamwork"
       });
     } else {
-      // Use default topics
       const numTopics = 3 + Math.floor(Math.random() * 2);
       for (let j = 0; j < numTopics; j++) {
         const topicIndex = (i + j) % defaultTopics.length;
@@ -270,7 +268,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE (WITH DEEPSEEK) ============
+// ============ LESSON GENERATION ROUTE ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
@@ -294,7 +292,6 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       });
     }
 
-    // 🔥 CALL DEEPSEEK API FOR LESSON GENERATION
     const prompt = `
       Create a detailed lesson plan for Grade ${grade} ${subject} on the topic "${topic}" using the ${curriculum || 'CBC'} curriculum for a Zambian school.
 
@@ -342,7 +339,6 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
 
     console.log('✅ Lesson generated successfully');
 
-    // Save lesson to database - WITH subtopic added
     const lesson = await prisma.lesson.create({
       data: {
         userId: req.userId,
@@ -384,7 +380,6 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       }
     });
 
-    // Update user's lesson count
     await prisma.user.update({
       where: { id: req.userId },
       data: { lessonsUsed: user.lessonsUsed + 1 }
@@ -414,11 +409,15 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
   }
 });
 
-// ============ SCHEME OF WORK GENERATION ROUTE (WITH CUSTOM TOPICS) ============
+// ============ SCHEME OF WORK GENERATION ROUTE (WITH SUBTOPIC) ============
 
 app.post('/api/schemes/generate', authenticate, async (req, res) => {
   try {
-    const { grade, subject, term, year, school, weeks: totalWeeks, assessmentWeeks, testTopics, weekTopics } = req.body;
+    const { 
+      grade, subject, term, year, school, 
+      weeks: totalWeeks, assessmentWeeks, testTopics, 
+      weekTopics, subtopic // ✅ ADDED subtopic
+    } = req.body;
 
     if (!grade || !subject) {
       return res.status(400).json({ error: 'Missing required fields: grade, subject' });
@@ -448,11 +447,10 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
     });
 
     console.log('📝 Custom topics:', customTopicsString || 'None provided');
+    console.log('📝 Subtopic:', subtopic || 'None provided');
 
-    // Build assessment weeks string
     const assessmentWeeksString = assessmentWeeks ? assessmentWeeks.join(', ') : '3, 6, 9, 12';
 
-    // 🔥 CALL DEEPSEEK API WITH CUSTOM TOPICS
     const prompt = `
       Generate a Scheme of Work for Grade ${grade} ${subject} for ${term || 'Term 1'}.
       
@@ -491,7 +489,6 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
 
     let aiContent = safeParseJSON(response.choices[0].message.content);
     
-    // If parsing failed, use fallback with custom topics
     if (!aiContent) {
       console.log('📝 Using fallback scheme generator with custom topics');
       aiContent = generateFallbackScheme(grade, subject, term, user, customTopicsMap);
@@ -499,7 +496,6 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
 
     console.log('✅ Scheme generated successfully');
 
-    // Structure the scheme data
     const weeks = aiContent.weeks.map(week => ({
       week: week.week,
       topics: week.topics.map(topic => ({
@@ -522,13 +518,13 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       totalWeeks: totalWeeks || 13,
       school: school || user.school || '',
       teacherName: user.fullName || '',
+      subtopic: subtopic || '', // ✅ ADDED subtopic
       weeks: weeks,
       assessmentWeeks: aiContent.assessmentWeeks || assessmentWeeks || [3, 6, 9, 12],
       testTopics: aiContent.testTopics || testTopics || [`Mid-term test on ${subject}`, `End of term test on ${subject}`],
       createdAt: new Date().toISOString()
     };
 
-    // Save scheme to database
     const scheme = await prisma.scheme.create({
       data: {
         userId: req.userId,
@@ -541,17 +537,16 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
         assessmentWeeks: generatedScheme.assessmentWeeks,
         school: school || user.school || '',
         teacherName: user.fullName || '',
+        subtopic: subtopic || '', // ✅ ADDED subtopic
         testTopics: generatedScheme.testTopics
       }
     });
 
-    // Update user's scheme count
     await prisma.user.update({
       where: { id: req.userId },
       data: { schemesUsed: user.schemesUsed + 1 }
     });
 
-    // Return the generated scheme
     res.status(201).json({
       ...generatedScheme,
       id: scheme.id,
