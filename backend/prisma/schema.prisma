@@ -37,17 +37,14 @@ model Lesson {
   id                  String   @id @default(cuid())
   userId              String
   user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  // Core fields
   grade               String
   subject             String
   topic               String
+  subtopic            String?
   title               String?
   classSize           Int      @default(40)
   duration            String   @default("40 min")
   curriculum          String   @default("cbc")
-  
-  // Teacher info
   teacherName         String?
   school              String?
   province            String?
@@ -56,8 +53,6 @@ model Lesson {
   time                String?
   boys                Int?
   girls               Int?
-  
-  // CBC fields
   generalCompetences  String[]
   specificCompetence  String?
   lessonGoal          String?
@@ -67,25 +62,20 @@ model Lesson {
   learningEnvironment String?
   materials           String[]
   expectedStandard    String?
-  lessonProgression   Json?    // Array of {stage, time, teacherRole, learnerRole, assessmentCriteria}
+  lessonProgression   Json?
   homework            String?
   lessonEvaluation    String?
-  
-  // OBC fields
   teacherEvaluation   String?
   learningOutcomes    String[]
-  lessonDevelopment   Json?    // Array of {time, learningPoints, teacherActivities, pupilActivities}
+  lessonDevelopment   Json?
   learnersEvaluation  String[]
   teachingAids        String[]
-  
-  // Additional fields
   objectives          String[]
   development         String[]
   activities          String[]
   assessment          String
   curriculumCodes     String[]
   provinceContext     String?
-  
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
@@ -94,7 +84,6 @@ model Scheme {
   id              String   @id @default(cuid())
   userId          String
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
   grade           String
   subject         String
   term            String
@@ -102,12 +91,10 @@ model Scheme {
   totalWeeks      Int      @default(13)
   school          String
   teacherName     String?
-  
-  // Scheme data
-  weeks           Json     // Array of {week, topics: [{topic, specificOutcome, methods, aids, knowledge, skills, values}], assessment}
+  subtopic        String?  // ✅ NEW FIELD
+  weeks           Json
   assessmentWeeks Int[]
-  testTopics      Json?    // Array of test topic names
-  
+  testTopics      Json?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
@@ -116,7 +103,6 @@ model Payment {
   id            String    @id @default(cuid())
   userId        String
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
   referenceId   String    @unique
   transactionId String    @unique
   amount        Float
