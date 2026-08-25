@@ -1,4 +1,4 @@
-// src/server.js - Complete application with DeepSeek AI integration
+// src/server.js - Complete application with DeepSeek AI integration and Lipila payments
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 const OpenAI = require('openai');
+const axios = require('axios');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -18,6 +19,64 @@ const deepseek = new OpenAI({
   apiKey: process.env.DEEPSEEK_API_KEY,
   baseURL: "https://api.deepseek.com"
 });
+
+// ============ LIPILA PAYMENT SERVICE ============
+class LipilaService {
+  constructor() {
+    this.apiKey = process.env.LIPILA_API_KEY || process.env.LIPIJA_API_KEY;
+    const isSandbox = this.apiKey?.startsWith('lsk_');
+    this.baseURL = isSandbox 
+      ? 'https://sandbox-api.lipila.com' 
+      : 'https://api.lipila.com';
+    
+    this.client = axios.create({
+      baseURL: this.baseURL,
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 30000,
+    });
+  }
+
+  async createCollection({ referenceId, amount, accountNumber, currency = 'ZMW', callbackUrl }) {
+    try {
+      const response = await this.client.post('/api/v1/collections', {
+        referenceId,
+        amount,
+        accountNumber,
+        currency,
+        callbackUrl,
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Lipila collection error:', error.response?.data || error.message);
+      throw new Error(error.response?.data?.message || 'Payment initiation failed');
+    }
+  }
+
+  async getTransactionStatus(referenceId) {
+    try {
+      const response = await this.client.get(`/api/v1/transactions/${referenceId}/status`);
+      return response.data;
+    } catch (error) {
+      console.error('Status check error:', error.response?.data || error.message);
+      throw new Error('Failed to check transaction status');
+    }
+  }
+
+  async getBalance() {
+    try {
+      const response = await this.client.get('/api/v1/balance');
+      return response.data;
+    } catch (error) {
+      console.error('Balance check error:', error.response?.data || error.message);
+      throw new Error('Failed to get balance');
+    }
+  }
+}
+
+const lipilaService = new LipilaService();
 
 // ============ CORS CONFIGURATION ============
 const corsOptions = {
@@ -227,7 +286,6 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
     const curriculumType = curriculum || 'cbc';
     let prompt;
 
-    // ============ DETAILED CBC FORMAT (BIOLOGY) ============
     if (curriculumType === 'cbc') {
       prompt = `
 You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
@@ -313,9 +371,7 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
 - Include realistic examples relevant to Zambian schools.
 - Return ONLY the JSON object, no other text.
 `;
-    } 
-    // ============ DETAILED OBC FORMAT (MATHEMATICS) ============
-    else {
+    } else {
       prompt = `
 You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
 
@@ -448,7 +504,6 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
 
     console.log(`✅ Detailed ${curriculumType.toUpperCase()} lesson generated successfully`);
 
-    // Save lesson to database
     const lesson = await prisma.lesson.create({
       data: {
         userId: req.userId,
@@ -524,7 +579,7 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
   }
 });
 
-// ============ SCHEME OF WORK GENERATION ROUTE (DETAILED) ============
+// ============ SCHEME OF WORK GENERATION ROUTE ============
 
 app.post('/api/schemes/generate', authenticate, async (req, res) => {
   try {
@@ -552,7 +607,6 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       });
     }
 
-    // Build custom topics string
     let customTopicsString = '';
     const customTopicsMap = weekTopics || {};
     Object.keys(customTopicsMap).forEach(week => {
@@ -566,7 +620,6 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
 
     const assessmentWeeksString = assessmentWeeks ? assessmentWeeks.join(', ') : '3, 6, 9, 12';
 
-    // ============ DETAILED SCHEME OF WORK PROMPT ============
     const prompt = `
 You are an expert curriculum planner for Zambian schools. Create a detailed Scheme of Work for Grade ${grade} ${subject} for ${term || 'Term 1'}.
 
@@ -631,7 +684,6 @@ Assessment weeks are: ${assessmentWeeksString}
 
     console.log('✅ Scheme generated successfully');
 
-    // Structure the scheme data
     const weeks = aiContent.weeks.map(week => ({
       week: week.week,
       topics: week.topics.map(topic => ({
@@ -662,7 +714,6 @@ Assessment weeks are: ${assessmentWeeksString}
       createdAt: new Date().toISOString()
     };
 
-    // Save scheme to database
     const scheme = await prisma.scheme.create({
       data: {
         userId: req.userId,
@@ -819,24 +870,49 @@ app.get('/api/schemes/mine', authenticate, async (req, res) => {
   }
 });
 
-// ============ START SERVER ============
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Server running on port ${PORT}`);
-  console.log(`✅ Health check: http://localhost:${PORT}/health`);
-  console.log(`✅ Auth routes available at /api/auth/*`);
-  console.log(`✅ Lesson generation available at /api/lessons/generate`);
-  console.log(`✅ Scheme generation available at /api/schemes/generate`);
-  console.log(`✅ Get lessons at /api/lessons`);
-  console.log(`✅ Get schemes at /api/schemes`);
-  console.log(`✅ Get lessons (alias) at /api/lessons/mine`);
-  console.log(`✅ Get schemes (alias) at /api/schemes/mine`);
-  console.log(`✅ DeepSeek AI integration enabled`);
-  console.log(`✅ CORS enabled for Vercel and Render frontend`);
-});
+// ============ PAYMENT ROUTES ============
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, closing server...');
-  prisma.$disconnect();
-  process.exit(0);
-});
+// Initiate a payment
+app.post('/api/payments/initiate', authenticate, async (req, res) => {
+  try {
+    const { amount, phoneNumber, plan } = req.body;
+
+    if (!amount || !phoneNumber) {
+      return res.status(400).json({ error: 'Amount and phone number are required' });
+    }
+
+    // Validate phone number format (Zambian)
+    const cleanNumber = phoneNumber.replace(/\s/g, '');
+    if (!cleanNumber.match(/^260[0-9]{9}$/)) {
+      return res.status(400).json({ error: 'Invalid phone number format. Use 260XXXXXXXXX' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Generate a unique reference
+    const referenceId = `TX-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+    // Determine callback URL
+    const callbackUrl = `${process.env.BACKEND_URL || 'https://mytoolbox-production.up.railway.app'}/api/payments/webhook`;
+
+    // Create collection request
+    const payment = await lipilaService.createCollection({
+      referenceId,
+      amount: parseFloat(amount),
+      accountNumber: cleanNumber,
+      currency: 'ZMW',
+      callbackUrl,
+    });
+
+    // Save payment record
+    const paymentRecord = await prisma.payment.create({
+      data: {
+        userId: req.userId,
+        referenceId: referenceId,
+        transactionId: payment.transactionId || referenceId,
