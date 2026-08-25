@@ -55,7 +55,7 @@ model Lesson {
   grade           String
   subject         String
   topic           String
-  subtopic        String?
+  // ✅ subtopic REMOVED - matches database
   title           String?
   classSize       Int       @default(40)
   duration        String    @default("40 min")
