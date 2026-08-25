@@ -1,4 +1,4 @@
-// src/server.js - Complete application with DeepSeek AI integration and Lipila payments
+// src/server.js - Complete application with DeepSeek AI integration, Lipila payments, Notes, and Assessments
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -139,35 +139,26 @@ function safeParseJSON(content) {
   try {
     if (!content) return null;
     
-    // Remove markdown code blocks
     let cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
     
-    // Try to find JSON object
     let jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       cleaned = jsonMatch[0];
     }
     
-    // Fix common JSON issues
     cleaned = cleaned.replace(/,\s*([}\]])/g, '$1');
     cleaned = cleaned.replace(/'/g, '"');
     cleaned = cleaned.replace(/\\n/g, ' ');
     cleaned = cleaned.replace(/\\r/g, ' ');
     cleaned = cleaned.replace(/\\t/g, ' ');
-    
-    // Remove trailing commas
     cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
-    
-    // Fix unquoted property names
     cleaned = cleaned.replace(/(\{|\,)\s*([a-zA-Z0-9_]+)\s*:/g, '$1"$2":');
     
-    // Handle incomplete JSON - count brackets and add missing ones
     let openBraces = (cleaned.match(/\{/g) || []).length;
     let closeBraces = (cleaned.match(/\}/g) || []).length;
     let openBrackets = (cleaned.match(/\[/g) || []).length;
     let closeBrackets = (cleaned.match(/\]/g) || []).length;
     
-    // Add missing closing brackets
     while (closeBraces < openBraces) {
       cleaned += '}';
       closeBraces++;
@@ -465,7 +456,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE (FIXED) ============
+// ============ LESSON GENERATION ROUTE ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
@@ -582,8 +573,8 @@ Keep it SHORT. Valid JSON only.
           { role: "user", content: prompt }
         ],
         temperature: 0.3,
-        max_tokens: 1500, // Reduced to prevent truncation
-        response_format: { type: "json_object" } // Force JSON
+        max_tokens: 1500,
+        response_format: { type: "json_object" }
       });
 
       let content = response.choices[0].message.content;
@@ -596,7 +587,6 @@ Keep it SHORT. Valid JSON only.
       
       aiContent = JSON.parse(content);
       
-      // Merge with fallback
       const fallback = generateFallbackLesson(topic, grade, subject, classSize, curriculumType, user);
       aiContent = { ...fallback, ...aiContent };
 
@@ -612,7 +602,6 @@ Keep it SHORT. Valid JSON only.
       aiContent = generateFallbackLesson(topic, grade, subject, classSize, curriculumType, user);
     }
 
-    // Save to database
     const lesson = await prisma.lesson.create({
       data: {
         userId: req.userId,
@@ -687,7 +676,7 @@ Keep it SHORT. Valid JSON only.
   }
 });
 
-// ============ SCHEME OF WORK GENERATION ROUTE (FIXED) ============
+// ============ SCHEME OF WORK GENERATION ROUTE ============
 
 app.post('/api/schemes/generate', authenticate, async (req, res) => {
   try {
@@ -715,7 +704,6 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       });
     }
 
-    // ============ USE FALLBACK DIRECTLY (RELIABLE) ============
     console.log('📝 Generating scheme directly...');
     
     const assessmentWeeksList = assessmentWeeks || [3, 6, 9, 12];
@@ -723,7 +711,6 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
     const totalWeeksCount = totalWeeks || 13;
     const subtopicsList = subtopic ? subtopic.split(',').map(s => s.trim()) : [];
     
-    // First, try DeepSeek but with very short prompt
     let aiContent = null;
     let useFallback = false;
     
@@ -763,13 +750,11 @@ Keep it SHORT. Valid JSON only.
       useFallback = true;
     }
     
-    // Use fallback if needed
     if (!aiContent || useFallback) {
       console.log('📝 Using fallback scheme generator');
       aiContent = generateFallbackScheme(grade, subject, term, user, customTopics);
     }
     
-    // Build weeks from AI content or fallback
     const weeks = aiContent.weeks.map(week => ({
       week: week.week,
       topics: week.topics.map(topic => ({
@@ -785,7 +770,6 @@ Keep it SHORT. Valid JSON only.
       assessment: week.assessment || null
     }));
 
-    // If subtopics were provided, use them
     if (subtopicsList.length > 0) {
       let weekIndex = 0;
       for (let i = 0; i < weeks.length; i++) {
@@ -814,7 +798,6 @@ Keep it SHORT. Valid JSON only.
       createdAt: new Date().toISOString()
     };
 
-    // Save scheme to database
     const scheme = await prisma.scheme.create({
       data: {
         userId: req.userId,
@@ -850,6 +833,449 @@ Keep it SHORT. Valid JSON only.
       error: 'Failed to generate scheme of work',
       details: error.message
     });
+  }
+});
+
+// ============ SCHEME EXPORT ROUTES ============
+
+app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const scheme = await prisma.scheme.findUnique({
+      where: { id: id },
+    });
+
+    if (!scheme) {
+      return res.status(404).json({ error: 'Scheme not found' });
+    }
+
+    if (scheme.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    let html = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' 
+            xmlns:w='urn:schemas-microsoft-com:office:word' 
+            xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset="utf-8">
+        <title>Scheme of Work</title>
+        <!--[if gte mso 9]>
+        <xml>
+          <w:WordDocument>
+            <w:View>Print</w:View>
+            <w:Zoom>100</w:Zoom>
+          </w:WordDocument>
+        </xml>
+        <![endif]-->
+        <style>
+          body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; margin: 40px; }
+          h1 { text-align: center; font-size: 18pt; }
+          h2 { text-align: center; font-size: 16pt; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th { background-color: #e0e0e0; font-weight: bold; border: 1px solid #000; padding: 6px; }
+          td { border: 1px solid #000; padding: 6px; vertical-align: top; }
+          .footer { text-align: center; margin-top: 30px; font-size: 10pt; }
+        </style>
+      </head>
+      <body>
+        <h1>MINISTRY OF EDUCATION</h1>
+        <h2>SCHEME OF WORK</h2>
+        <p style="text-align: center;"><strong>School:</strong> ${scheme.school || 'School Name'}</p>
+        <p style="text-align: center;"><strong>Subject:</strong> ${scheme.subject}</p>
+        <p style="text-align: center;"><strong>Grade:</strong> ${scheme.grade}</p>
+        <p style="text-align: center;"><strong>Term:</strong> ${scheme.term}</p>
+        <p style="text-align: center;"><strong>Year:</strong> ${scheme.year}</p>
+        <p style="text-align: center;"><strong>Assessment Weeks:</strong> ${scheme.assessmentWeeks?.join(', ') || 'None'}</p>
+        <hr>
+        <table>
+          <thead>
+            <tr>
+              <th>WEEK</th>
+              <th>TOPIC</th>
+              <th>SPECIFIC OUTCOME</th>
+              <th>METHODS</th>
+              <th>AIDS</th>
+              <th>REFERENCES</th>
+              <th>KNOWLEDGE</th>
+              <th>SKILLS</th>
+              <th>VALUES</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    scheme.weeks.forEach(week => {
+      const topics = week.topics || [];
+      const topicText = topics.map(t => t.topic || '').join('; ');
+      const outcomeText = topics.map(t => t.specificOutcome || '').join('; ');
+      const methodsText = topics.map(t => t.methods || '').join('; ');
+      const aidsText = topics.map(t => t.aids || '').join('; ');
+      const refsText = topics.map(t => t.references || '').join('; ');
+      const knowledgeText = topics.map(t => t.knowledge || '').join('; ');
+      const skillsText = topics.map(t => t.skills || '').join('; ');
+      const valuesText = topics.map(t => t.values || '').join('; ');
+
+      html += `
+        <tr>
+          <td style="text-align: center;">${week.week}</td>
+          <td>${topicText || '-'}</td>
+          <td>${outcomeText || '-'}</td>
+          <td>${methodsText || '-'}</td>
+          <td>${aidsText || '-'}</td>
+          <td>${refsText || '-'}</td>
+          <td>${knowledgeText || '-'}</td>
+          <td>${skillsText || '-'}</td>
+          <td>${valuesText || '-'}</td>
+        </tr>
+      `;
+    });
+
+    html += `
+          </tbody>
+        </table>
+        <div class="footer">
+          <p>© 2026 mytoolbox - Made for teachers in Zambia</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    res.setHeader('Content-Type', 'application/msword');
+    res.setHeader('Content-Disposition', `attachment; filename="scheme_${scheme.id}.doc"`);
+    res.send(html);
+
+  } catch (error) {
+    console.error('❌ Word export error:', error);
+    res.status(500).json({ error: 'Failed to export scheme as Word' });
+  }
+});
+
+app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const scheme = await prisma.scheme.findUnique({
+      where: { id: id },
+    });
+
+    if (!scheme) {
+      return res.status(404).json({ error: 'Scheme not found' });
+    }
+
+    if (scheme.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    let html = `
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Scheme of Work</title>
+        <style>
+          body { font-family: Arial, sans-serif; font-size: 12pt; margin: 40px; }
+          h1 { text-align: center; font-size: 18pt; }
+          h2 { text-align: center; font-size: 16pt; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 10pt; }
+          th { background-color: #e0e0e0; font-weight: bold; border: 1px solid #000; padding: 6px; }
+          td { border: 1px solid #000; padding: 6px; vertical-align: top; }
+          .footer { text-align: center; margin-top: 30px; font-size: 10pt; }
+        </style>
+      </head>
+      <body>
+        <h1>MINISTRY OF EDUCATION</h1>
+        <h2>SCHEME OF WORK</h2>
+        <p style="text-align: center;"><strong>School:</strong> ${scheme.school || 'School Name'}</p>
+        <p style="text-align: center;"><strong>Subject:</strong> ${scheme.subject}</p>
+        <p style="text-align: center;"><strong>Grade:</strong> ${scheme.grade}</p>
+        <p style="text-align: center;"><strong>Term:</strong> ${scheme.term}</p>
+        <p style="text-align: center;"><strong>Year:</strong> ${scheme.year}</p>
+        <p style="text-align: center;"><strong>Assessment Weeks:</strong> ${scheme.assessmentWeeks?.join(', ') || 'None'}</p>
+        <hr>
+        <table>
+          <thead>
+            <tr>
+              <th>WEEK</th>
+              <th>TOPIC</th>
+              <th>SPECIFIC OUTCOME</th>
+              <th>METHODS</th>
+              <th>AIDS</th>
+              <th>REFERENCES</th>
+              <th>KNOWLEDGE</th>
+              <th>SKILLS</th>
+              <th>VALUES</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    scheme.weeks.forEach(week => {
+      const topics = week.topics || [];
+      const topicText = topics.map(t => t.topic || '').join('; ');
+      const outcomeText = topics.map(t => t.specificOutcome || '').join('; ');
+      const methodsText = topics.map(t => t.methods || '').join('; ');
+      const aidsText = topics.map(t => t.aids || '').join('; ');
+      const refsText = topics.map(t => t.references || '').join('; ');
+      const knowledgeText = topics.map(t => t.knowledge || '').join('; ');
+      const skillsText = topics.map(t => t.skills || '').join('; ');
+      const valuesText = topics.map(t => t.values || '').join('; ');
+
+      html += `
+        <tr>
+          <td style="text-align: center;">${week.week}</td>
+          <td>${topicText || '-'}</td>
+          <td>${outcomeText || '-'}</td>
+          <td>${methodsText || '-'}</td>
+          <td>${aidsText || '-'}</td>
+          <td>${refsText || '-'}</td>
+          <td>${knowledgeText || '-'}</td>
+          <td>${skillsText || '-'}</td>
+          <td>${valuesText || '-'}</td>
+        </tr>
+      `;
+    });
+
+    html += `
+          </tbody>
+        </table>
+        <div class="footer">
+          <p>© 2026 mytoolbox - Made for teachers in Zambia</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    res.setHeader('Content-Type', 'text/html');
+    res.setHeader('Content-Disposition', `attachment; filename="scheme_${scheme.id}.html"`);
+    res.send(html);
+
+  } catch (error) {
+    console.error('❌ PDF export error:', error);
+    res.status(500).json({ error: 'Failed to export scheme as PDF' });
+  }
+});
+
+// ============ NOTES ROUTES ============
+
+// Get all notes for the current user
+app.get('/api/notes', authenticate, async (req, res) => {
+  try {
+    const notes = await prisma.note.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+    res.json(notes);
+  } catch (error) {
+    console.error('Error fetching notes:', error);
+    res.status(500).json({ error: 'Failed to fetch notes' });
+  }
+});
+
+// Get a specific note by ID
+app.get('/api/notes/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const note = await prisma.note.findUnique({
+      where: { id: id },
+    });
+    if (!note) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+    if (note.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    res.json(note);
+  } catch (error) {
+    console.error('Error fetching note:', error);
+    res.status(500).json({ error: 'Failed to fetch note' });
+  }
+});
+
+// Create a new note
+app.post('/api/notes', authenticate, async (req, res) => {
+  try {
+    const { title, content, subject, grade } = req.body;
+    if (!title || !content) {
+      return res.status(400).json({ error: 'Title and content are required' });
+    }
+    const note = await prisma.note.create({
+      data: {
+        userId: req.userId,
+        title,
+        content,
+        subject,
+        grade,
+      }
+    });
+    res.status(201).json(note);
+  } catch (error) {
+    console.error('Error creating note:', error);
+    res.status(500).json({ error: 'Failed to create note' });
+  }
+});
+
+// Update a note
+app.put('/api/notes/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, content, subject, grade } = req.body;
+    const existingNote = await prisma.note.findUnique({
+      where: { id: id },
+    });
+    if (!existingNote) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+    if (existingNote.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const note = await prisma.note.update({
+      where: { id: id },
+      data: { title, content, subject, grade },
+    });
+    res.json(note);
+  } catch (error) {
+    console.error('Error updating note:', error);
+    res.status(500).json({ error: 'Failed to update note' });
+  }
+});
+
+// Delete a note
+app.delete('/api/notes/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const existingNote = await prisma.note.findUnique({
+      where: { id: id },
+    });
+    if (!existingNote) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+    if (existingNote.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    await prisma.note.delete({
+      where: { id: id },
+    });
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error deleting note:', error);
+    res.status(500).json({ error: 'Failed to delete note' });
+  }
+});
+
+// ============ ASSESSMENTS ROUTES ============
+
+// Get all assessments for the current user
+app.get('/api/assessments', authenticate, async (req, res) => {
+  try {
+    const assessments = await prisma.assessment.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+    res.json(assessments);
+  } catch (error) {
+    console.error('Error fetching assessments:', error);
+    res.status(500).json({ error: 'Failed to fetch assessments' });
+  }
+});
+
+// Get a specific assessment by ID
+app.get('/api/assessments/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const assessment = await prisma.assessment.findUnique({
+      where: { id: id },
+    });
+    if (!assessment) {
+      return res.status(404).json({ error: 'Assessment not found' });
+    }
+    if (assessment.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    res.json(assessment);
+  } catch (error) {
+    console.error('Error fetching assessment:', error);
+    res.status(500).json({ error: 'Failed to fetch assessment' });
+  }
+});
+
+// Create a new assessment
+app.post('/api/assessments', authenticate, async (req, res) => {
+  try {
+    const { title, type, subject, grade, description, questions, maxScore } = req.body;
+    if (!title || !type) {
+      return res.status(400).json({ error: 'Title and type are required' });
+    }
+    const assessment = await prisma.assessment.create({
+      data: {
+        userId: req.userId,
+        title,
+        type,
+        subject,
+        grade,
+        description,
+        questions: questions || [],
+        maxScore: maxScore || 0,
+      }
+    });
+    res.status(201).json(assessment);
+  } catch (error) {
+    console.error('Error creating assessment:', error);
+    res.status(500).json({ error: 'Failed to create assessment' });
+  }
+});
+
+// Submit/complete an assessment
+app.post('/api/assessments/:id/submit', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { score, answers } = req.body;
+    const existingAssessment = await prisma.assessment.findUnique({
+      where: { id: id },
+    });
+    if (!existingAssessment) {
+      return res.status(404).json({ error: 'Assessment not found' });
+    }
+    if (existingAssessment.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const assessment = await prisma.assessment.update({
+      where: { id: id },
+      data: {
+        score: score || 0,
+        questions: answers || existingAssessment.questions,
+        completedAt: new Date(),
+      }
+    });
+    res.json(assessment);
+  } catch (error) {
+    console.error('Error submitting assessment:', error);
+    res.status(500).json({ error: 'Failed to submit assessment' });
+  }
+});
+
+// Delete an assessment
+app.delete('/api/assessments/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const existingAssessment = await prisma.assessment.findUnique({
+      where: { id: id },
+    });
+    if (!existingAssessment) {
+      return res.status(404).json({ error: 'Assessment not found' });
+    }
+    if (existingAssessment.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    await prisma.assessment.delete({
+      where: { id: id },
+    });
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error deleting assessment:', error);
+    res.status(500).json({ error: 'Failed to delete assessment' });
   }
 });
 
@@ -1093,6 +1519,9 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Auth routes available at /api/auth/*`);
   console.log(`✅ Lesson generation available at /api/lessons/generate`);
   console.log(`✅ Scheme generation available at /api/schemes/generate`);
+  console.log(`✅ Scheme export available at /api/schemes/export/:id/:format`);
+  console.log(`✅ Notes routes available at /api/notes`);
+  console.log(`✅ Assessments routes available at /api/assessments`);
   console.log(`✅ Get lessons at /api/lessons`);
   console.log(`✅ Get schemes at /api/schemes`);
   console.log(`✅ Get lessons (alias) at /api/lessons/mine`);
