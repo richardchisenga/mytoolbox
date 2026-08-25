@@ -261,7 +261,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE (EXACT FORMAT) ============
+// ============ LESSON GENERATION ROUTE (CBC & OBC FORMATS) ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
@@ -285,81 +285,175 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       });
     }
 
-    // 🔥 EXACT LESSON PLAN PROMPT
-    const prompt = `
-You are an expert Zambian teacher creating a detailed lesson plan for Grade ${grade} ${subject} on the topic "${topic}" using the ${curriculum || 'CBC'} curriculum.
+    const curriculumType = curriculum || 'cbc';
+    let prompt;
 
-⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this structure:
+    if (curriculumType === 'obc') {
+      // OBC FORMAT PROMPT
+      prompt = `
+You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
+
+⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this OBC structure:
 
 {
   "title": "${topic}",
+  "grade": "${grade}",
+  "subject": "${subject}",
+  "teacherName": "${user.fullName || 'MR/MRS'}",
+  "school": "${user.school || 'KASHINAKAZHI SECONDARY SCHOOL'}",
+  "date": "${new Date().toISOString().split('T')[0]}",
+  "duration": "80 MINUTES",
+  "classSize": ${parseInt(classSize) || 40},
+  "boys": ${Math.floor(parseInt(classSize) / 2) || 18},
+  "girls": ${Math.ceil(parseInt(classSize) / 2) || 22},
+  "subtopic": "",
+  "references": ["Reference 1", "Reference 2", "Reference 3"],
+  "teachingAids": ["Chart", "Images", "Video", "PowerPoint slides", "Worksheet"],
+  "rationale": "Why this topic is important for learners",
   "learningOutcomes": [
-    "By the end of this lesson, learners will be able to...",
-    "By the end of this lesson, learners will be able to...",
-    "By the end of this lesson, learners will be able to..."
+    "Outcome 1",
+    "Outcome 2",
+    "Outcome 3",
+    "Outcome 4"
   ],
   "lessonDevelopment": [
     {
       "time": "10 min",
-      "learningPoints": "Key learning points for this stage",
-      "teacherActivities": "What the teacher does",
-      "pupilActivities": "What the pupils do"
+      "learningPoints": "Introduction: What is the topic?",
+      "teacherActivities": "Ask questions, write definitions on board",
+      "pupilActivities": "Define in their own words, participate"
+    },
+    {
+      "time": "20 min",
+      "learningPoints": "Key concepts and their sources",
+      "teacherActivities": "List key points with sources, use diagrams",
+      "pupilActivities": "Complete tables, take notes"
+    },
+    {
+      "time": "20 min",
+      "learningPoints": "Main content and examples",
+      "teacherActivities": "Use charts and diagrams to explain",
+      "pupilActivities": "Label diagrams, write examples"
+    },
+    {
+      "time": "15 min",
+      "learningPoints": "Distinctions and applications",
+      "teacherActivities": "Give contrasting examples",
+      "pupilActivities": "Classify given processes"
+    },
+    {
+      "time": "15 min",
+      "learningPoints": "Conclusion and summary",
+      "teacherActivities": "Lead oral quiz and recap",
+      "pupilActivities": "Answer worksheet questions"
     }
   ],
   "learnersEvaluation": [
     "Question 1",
     "Question 2",
-    "Question 3"
+    "Question 3",
+    "Question 4",
+    "Question 5"
   ],
-  "teacherEvaluation": "Space for teacher's reflections after the lesson",
-  "generalCompetences": ["Critical thinking", "Communication", "Collaboration"],
-  "specificCompetence": "The specific competence for this lesson",
-  "lessonGoal": "The overall goal of the lesson",
-  "rationale": "Why this lesson is important for learners",
-  "priorKnowledge": "What learners should already know",
+  "teacherEvaluation": "Space for teacher's reflections",
+  "lessonConclusion": "Teacher to conclude lesson by revising through the lesson with learners to help remedial learners"
+}
+
+🔴 RULES:
+- Keep content concise, clear, and aligned with the OBC curriculum.
+- Return ONLY the JSON object, no other text.
+`;
+    } else {
+      // CBC FORMAT PROMPT
+      prompt = `
+You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
+
+⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this CBC structure:
+
+{
+  "title": "${topic}",
+  "grade": "${grade}",
+  "subject": "${subject}",
+  "teacherName": "${user.fullName || 'MR/MRS'}",
+  "school": "${user.school || 'KASHINAKAZHI SECONDARY SCHOOL'}",
+  "province": "${user.province || 'Southern'}",
+  "district": "${user.district || 'Itezhi-Tezhi'}",
+  "date": "${new Date().toISOString().split('T')[0]}",
+  "time": "08:00-08:40",
+  "duration": "40 min",
+  "classSize": ${parseInt(classSize) || 40},
+  "boys": ${Math.floor(parseInt(classSize) / 2) || 18},
+  "girls": ${Math.ceil(parseInt(classSize) / 2) || 22},
+  "subtopic": "",
+  "generalCompetences": ["Critical thinking", "Creativity", "Communication", "Collaboration"],
+  "specificCompetence": "Specific competence statement",
+  "lessonGoal": "By the end of this lesson, learners will be able to...",
+  "rationale": "Why this topic is important for learners",
+  "priorKnowledge": "What learners already know",
   "references": ["Reference 1", "Reference 2"],
-  "learningEnvironment": "Classroom setup, resources, and environment",
+  "learningEnvironment": "classroom, laboratory, school garden",
   "materials": ["Material 1", "Material 2", "Material 3"],
-  "expectedStandard": "The expected standard of achievement",
+  "expectedStandard": "What learners should achieve",
   "lessonProgression": [
     {
       "stage": "INTRODUCTION",
-      "time": "10 min",
-      "teacherRole": "What the teacher does during introduction",
-      "learnerRole": "What the learners do during introduction",
-      "assessmentCriteria": "How understanding is assessed"
+      "time": "5 min",
+      "teacherRole": "Ask engaging questions to introduce the topic",
+      "learnerRole": "Listen, participate, and give examples",
+      "assessmentCriteria": "Observation of participation"
     },
     {
-      "stage": "DEVELOPMENT",
+      "stage": "LESSON DEVELOPMENT",
+      "time": "10 min",
+      "teacherRole": "Explain key concepts and demonstrate",
+      "learnerRole": "Take notes, ask questions, discuss",
+      "assessmentCriteria": "Correct understanding of concepts"
+    },
+    {
+      "stage": "ACTIVITY 1",
+      "time": "11 min",
+      "teacherRole": "Guide group work and provide materials",
+      "learnerRole": "Work in groups, complete tasks",
+      "assessmentCriteria": "Group collaboration and task completion"
+    },
+    {
+      "stage": "ACTIVITY 2",
+      "time": "16 min",
+      "teacherRole": "Facilitate presentations and consolidate",
+      "learnerRole": "Present findings and correct own work",
+      "assessmentCriteria": "Accurate presentation"
+    },
+    {
+      "stage": "EXERCISE/ASSESSMENT",
       "time": "20 min",
-      "teacherRole": "What the teacher does during development",
-      "learnerRole": "What the learners do during development",
-      "assessmentCriteria": "How understanding is assessed"
+      "teacherRole": "Give assessment and monitor",
+      "learnerRole": "Complete assessment individually",
+      "assessmentCriteria": "Correct responses"
     },
     {
       "stage": "CONCLUSION",
       "time": "10 min",
-      "teacherRole": "What the teacher does during conclusion",
-      "learnerRole": "What the learners do during conclusion",
-      "assessmentCriteria": "How understanding is assessed"
+      "teacherRole": "Summarize key points",
+      "learnerRole": "Share what they learned",
+      "assessmentCriteria": "Verbal explanation"
     }
   ],
-  "homework": "Homework assignment",
-  "lessonEvaluation": "Evaluation of the lesson"
+  "homework": "Research and write about the topic",
+  "lessonEvaluation": "Lesson was successful, key competences were acquired"
 }
 
 🔴 RULES:
-- Keep content concise, clear, and aligned with the ${curriculum || 'CBC'} curriculum.
+- Keep content concise, clear, and aligned with the CBC curriculum.
 - Return ONLY the JSON object, no other text.
-- For OBC curriculum, adjust the structure to be more objective-based.
 `;
+    }
 
-    console.log('📝 Generating lesson with DeepSeek...');
+    console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson with DeepSeek...`);
 
     const response = await deepseek.chat.completions.create({
       model: "deepseek-chat",
       messages: [
-        { role: "system", content: "You are an expert Zambian teacher. Always return valid JSON in the exact format specified. Never add extra text." },
+        { role: "system", content: `You are an expert Zambian teacher creating detailed ${curriculumType.toUpperCase()} lesson plans. Always return valid JSON in the exact format specified. Never add extra text.` },
         { role: "user", content: prompt }
       ],
       temperature: 0.5,
@@ -395,11 +489,12 @@ You are an expert Zambian teacher creating a detailed lesson plan for Grade ${gr
           { stage: "CONCLUSION", time: "10 min", teacherRole: "Review key points", learnerRole: "Share findings", assessmentCriteria: "Verbal explanation" }
         ],
         homework: `Solve ${topic} problems`,
-        lessonEvaluation: "Learners demonstrated good understanding"
+        lessonEvaluation: "Learners demonstrated good understanding",
+        curriculum: curriculumType
       };
     }
 
-    console.log('✅ Lesson generated successfully');
+    console.log(`✅ ${curriculumType.toUpperCase()} lesson generated successfully`);
 
     // Save lesson to database
     const lesson = await prisma.lesson.create({
@@ -408,11 +503,11 @@ You are an expert Zambian teacher creating a detailed lesson plan for Grade ${gr
         grade: grade,
         subject: subject,
         topic: topic,
-        subtopic: '',
+        subtopic: aiContent.subtopic || '',
         title: aiContent.title || topic,
         classSize: parseInt(classSize) || 40,
-        duration: '40 min',
-        curriculum: curriculum || 'cbc',
+        duration: aiContent.duration || '40 min',
+        curriculum: curriculumType,
         objectives: aiContent.learningOutcomes || [`Understand ${topic}`],
         development: aiContent.lessonDevelopment?.map(d => d.learningPoints) || [],
         activities: aiContent.lessonDevelopment?.map(d => d.pupilActivities) || [],
@@ -439,7 +534,12 @@ You are an expert Zambian teacher creating a detailed lesson plan for Grade ${gr
         school: user.school || '',
         province: user.province || '',
         district: user.district || '',
-        date: new Date().toISOString().split('T')[0]
+        date: aiContent.date || new Date().toISOString().split('T')[0],
+        time: aiContent.time || '',
+        boys: aiContent.boys || 0,
+        girls: aiContent.girls || 0,
+        teachingAids: aiContent.teachingAids || [],
+        lessonConclusion: aiContent.lessonConclusion || ''
       }
     });
 
@@ -456,7 +556,7 @@ You are an expert Zambian teacher creating a detailed lesson plan for Grade ${gr
       subject: subject,
       topic: topic,
       classSize: parseInt(classSize) || 40,
-      curriculum: curriculum || 'cbc',
+      curriculum: curriculumType,
       school: user.school || '',
       province: user.province || '',
       district: user.district || '',
@@ -472,7 +572,7 @@ You are an expert Zambian teacher creating a detailed lesson plan for Grade ${gr
   }
 });
 
-// ============ SCHEME OF WORK GENERATION ROUTE (EXACT FORMAT) ============
+// ============ SCHEME OF WORK GENERATION ROUTE ============
 
 app.post('/api/schemes/generate', authenticate, async (req, res) => {
   try {
@@ -514,7 +614,6 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
 
     const assessmentWeeksString = assessmentWeeks ? assessmentWeeks.join(', ') : '3, 6, 9, 12';
 
-    // 🔥 EXACT SCHEME OF WORK PROMPT
     const prompt = `
 You are an expert curriculum planner for Zambian schools. Create a Scheme of Work for Grade ${grade} ${subject} for ${term || 'Term 1'}.
 
@@ -556,7 +655,7 @@ Assessment weeks are: ${assessmentWeeksString}
 - Return ONLY the JSON object, no other text.
 `;
 
-    console.log('📝 Generating scheme with DeepSeek using exact format...');
+    console.log('📝 Generating scheme with DeepSeek...');
 
     const response = await deepseek.chat.completions.create({
       model: "deepseek-chat",
@@ -571,13 +670,13 @@ Assessment weeks are: ${assessmentWeeksString}
     let aiContent = safeParseJSON(response.choices[0].message.content);
     
     if (!aiContent) {
-      console.log('📝 Using fallback scheme generator with custom topics');
+      console.log('📝 Using fallback scheme generator');
       aiContent = generateFallbackScheme(grade, subject, term, user, customTopicsMap);
     }
 
     console.log('✅ Scheme generated successfully');
 
-    // Structure the scheme data with ALL fields
+    // Structure the scheme data
     const weeks = aiContent.weeks.map(week => ({
       week: week.week,
       topics: week.topics.map(topic => ({
