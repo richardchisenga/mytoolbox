@@ -113,12 +113,13 @@ function safeParseJSON(content) {
   }
 }
 
-// ============ FALLBACK SCHEME GENERATOR ============
+// ============ FALLBACK SCHEME GENERATOR (WITH CUSTOM TOPICS) ============
 
-function generateFallbackScheme(grade, subject, term, user) {
+function generateFallbackScheme(grade, subject, term, user, customTopics = {}) {
   const weeks = [];
   const totalWeeks = 13;
-  const topics = [
+  
+  const defaultTopics = [
     `Introduction to ${subject}`,
     `Basic concepts of ${subject}`,
     `Advanced ${subject} topics`,
@@ -128,19 +129,37 @@ function generateFallbackScheme(grade, subject, term, user) {
 
   for (let i = 1; i <= totalWeeks; i++) {
     const weekTopics = [];
-    const numTopics = 3 + Math.floor(Math.random() * 2);
-    for (let j = 0; j < numTopics; j++) {
-      const topicIndex = (i + j) % topics.length;
+    const weekNumber = i;
+    const customTopic = customTopics[weekNumber];
+    
+    if (customTopic) {
+      // Use the custom topic
       weekTopics.push({
-        topic: topics[topicIndex],
-        specificOutcome: `Understand ${topics[topicIndex]}`,
+        topic: customTopic,
+        specificOutcome: `Understand and apply knowledge of ${customTopic}`,
         methods: "Lecture, discussion, group work",
         aids: "Whiteboard, charts, textbooks",
-        knowledge: `Knowledge of ${topics[topicIndex]}`,
+        knowledge: `Knowledge of ${customTopic}`,
         skills: "Critical thinking, analysis",
         values: "Responsibility, teamwork"
       });
+    } else {
+      // Use default topics
+      const numTopics = 3 + Math.floor(Math.random() * 2);
+      for (let j = 0; j < numTopics; j++) {
+        const topicIndex = (i + j) % defaultTopics.length;
+        weekTopics.push({
+          topic: defaultTopics[topicIndex],
+          specificOutcome: `Understand ${defaultTopics[topicIndex]}`,
+          methods: "Lecture, discussion, group work",
+          aids: "Whiteboard, charts, textbooks",
+          knowledge: `Knowledge of ${defaultTopics[topicIndex]}`,
+          skills: "Critical thinking, analysis",
+          values: "Responsibility, teamwork"
+        });
+      }
     }
+    
     weeks.push({
       week: i,
       topics: weekTopics,
@@ -330,7 +349,7 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
         grade: grade,
         subject: subject,
         topic: topic,
-        subtopic: '', // ✅ ADDED - Fixes the missing column error
+        subtopic: '',
         title: aiContent.title || topic,
         classSize: parseInt(classSize) || 40,
         duration: '40 min',
@@ -395,11 +414,11 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
   }
 });
 
-// ============ SCHEME OF WORK GENERATION ROUTE (FIXED) ============
+// ============ SCHEME OF WORK GENERATION ROUTE (WITH CUSTOM TOPICS) ============
 
 app.post('/api/schemes/generate', authenticate, async (req, res) => {
   try {
-    const { grade, subject, term, year, school } = req.body;
+    const { grade, subject, term, year, school, weeks: totalWeeks, assessmentWeeks, testTopics, weekTopics } = req.body;
 
     if (!grade || !subject) {
       return res.status(400).json({ error: 'Missing required fields: grade, subject' });
@@ -419,20 +438,43 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       });
     }
 
-    // 🔥 SHORTER PROMPT TO PREVENT TRUNCATION
+    // Build custom topics string
+    let customTopicsString = '';
+    const customTopicsMap = weekTopics || {};
+    Object.keys(customTopicsMap).forEach(week => {
+      if (customTopicsMap[week]) {
+        customTopicsString += `Week ${week}: ${customTopicsMap[week]}\n`;
+      }
+    });
+
+    console.log('📝 Custom topics:', customTopicsString || 'None provided');
+
+    // Build assessment weeks string
+    const assessmentWeeksString = assessmentWeeks ? assessmentWeeks.join(', ') : '3, 6, 9, 12';
+
+    // 🔥 CALL DEEPSEEK API WITH CUSTOM TOPICS
     const prompt = `
       Generate a Scheme of Work for Grade ${grade} ${subject} for ${term || 'Term 1'}.
+      
+      The user has specified these topics for specific weeks:
+      ${customTopicsString || 'Generate appropriate topics for all weeks.'}
+      
+      Assessment weeks are: ${assessmentWeeksString}
       
       Return ONLY valid JSON with this structure:
       {
         "weeks": [
-          {"week": 1, "topics": [{"topic": "Topic", "specificOutcome": "Outcome", "methods": "Methods", "aids": "Aids", "knowledge": "Knowledge", "skills": "Skills", "values": "Values"}], "assessment": "Assessment"}
+          {"week": 1, "topics": [{"topic": "Topic name", "specificOutcome": "Outcome", "methods": "Methods", "aids": "Aids", "knowledge": "Knowledge", "skills": "Skills", "values": "Values"}], "assessment": "Assessment"}
         ],
         "assessmentWeeks": [3, 6, 9, 12],
         "testTopics": ["Mid-term test", "End of term test"]
       }
       
-      Keep it SHORT. Maximum 3 topics per week. Valid JSON only.
+      IMPORTANT: 
+      - For weeks where the user specified a topic, use that exact topic.
+      - For assessment weeks, set the topic as "Assessment" or the user's specified test topic.
+      - Keep it SHORT. Maximum 3 topics per week.
+      - Valid JSON only.
     `;
 
     console.log('📝 Generating scheme with DeepSeek...');
@@ -440,19 +482,19 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
     const response = await deepseek.chat.completions.create({
       model: "deepseek-chat",
       messages: [
-        { role: "system", content: "You are a curriculum expert. Return valid JSON only. Keep responses short." },
+        { role: "system", content: "You are a curriculum expert. Return valid JSON only. Use the user's custom topics when provided." },
         { role: "user", content: prompt }
       ],
       temperature: 0.7,
-      max_tokens: 2000 // Reduced to prevent truncation
+      max_tokens: 2500
     });
 
     let aiContent = safeParseJSON(response.choices[0].message.content);
     
-    // If parsing failed, use fallback
+    // If parsing failed, use fallback with custom topics
     if (!aiContent) {
-      console.log('📝 Using fallback scheme generator');
-      aiContent = generateFallbackScheme(grade, subject, term, user);
+      console.log('📝 Using fallback scheme generator with custom topics');
+      aiContent = generateFallbackScheme(grade, subject, term, user, customTopicsMap);
     }
 
     console.log('✅ Scheme generated successfully');
@@ -477,16 +519,16 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       subject: subject,
       term: term || 'Term 1',
       year: year || new Date().getFullYear().toString(),
-      totalWeeks: 13,
+      totalWeeks: totalWeeks || 13,
       school: school || user.school || '',
       teacherName: user.fullName || '',
       weeks: weeks,
-      assessmentWeeks: aiContent.assessmentWeeks || [3, 6, 9, 12],
-      testTopics: aiContent.testTopics || [`Mid-term test on ${subject}`, `End of term test on ${subject}`],
+      assessmentWeeks: aiContent.assessmentWeeks || assessmentWeeks || [3, 6, 9, 12],
+      testTopics: aiContent.testTopics || testTopics || [`Mid-term test on ${subject}`, `End of term test on ${subject}`],
       createdAt: new Date().toISOString()
     };
 
-    // Save scheme to database - WITH teacherName
+    // Save scheme to database
     const scheme = await prisma.scheme.create({
       data: {
         userId: req.userId,
@@ -494,11 +536,11 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
         subject: subject,
         term: term || 'Term 1',
         year: year || new Date().getFullYear().toString(),
-        totalWeeks: 13,
+        totalWeeks: totalWeeks || 13,
         weeks: weeks,
         assessmentWeeks: generatedScheme.assessmentWeeks,
         school: school || user.school || '',
-        teacherName: user.fullName || '', // ✅ NOW INCLUDED
+        teacherName: user.fullName || '',
         testTopics: generatedScheme.testTopics
       }
     });
