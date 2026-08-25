@@ -323,13 +323,14 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
 
     console.log('✅ Lesson generated successfully');
 
-    // Save lesson to database
+    // Save lesson to database - WITH subtopic added
     const lesson = await prisma.lesson.create({
       data: {
         userId: req.userId,
         grade: grade,
         subject: subject,
         topic: topic,
+        subtopic: '', // ✅ ADDED - Fixes the missing column error
         title: aiContent.title || topic,
         classSize: parseInt(classSize) || 40,
         duration: '40 min',
