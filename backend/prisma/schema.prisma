@@ -1,46 +1,138 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  fullName           String
+  email              String    @unique
+  passwordHash       String
+  school             String
+  province           String
+  district           String
+  grades             String[]
+  subjects           String[]
+  lastActive         DateTime  @default(now())
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  lastResetAt        DateTime  @default(now())
+  lessonsLimit       Int       @default(5)
+  lessonsUsed        Int       @default(0)
+  schemesLimit       Int       @default(3)
+  schemesUsed        Int       @default(0)
+  subscriptionEndsAt DateTime?
+  role               Plan      @default(FREE)
+  lessons            Lesson[]
+  payments           Payment[]
+  schemes            Scheme[]
+}
+
 model Lesson {
-  id              String    @id @default(cuid())
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Core fields
+  grade               String
+  subject             String
+  topic               String
+  title               String?
+  classSize           Int      @default(40)
+  duration            String   @default("40 min")
+  curriculum          String   @default("cbc")
+  
+  // Teacher info
+  teacherName         String?
+  school              String?
+  province            String?
+  district            String?
+  date                String?
+  time                String?
+  boys                Int?
+  girls               Int?
+  
+  // CBC fields
+  generalCompetences  String[]
+  specificCompetence  String?
+  lessonGoal          String?
+  rationale           String?
+  priorKnowledge      String?
+  references          String[]
+  learningEnvironment String?
+  materials           String[]
+  expectedStandard    String?
+  lessonProgression   Json?    // Array of {stage, time, teacherRole, learnerRole, assessmentCriteria}
+  homework            String?
+  lessonEvaluation    String?
+  
+  // OBC fields
+  teacherEvaluation   String?
+  learningOutcomes    String[]
+  lessonDevelopment   Json?    // Array of {time, learningPoints, teacherActivities, pupilActivities}
+  learnersEvaluation  String[]
+  teachingAids        String[]
+  
+  // Additional fields
+  objectives          String[]
+  development         String[]
+  activities          String[]
+  assessment          String
+  curriculumCodes     String[]
+  provinceContext     String?
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model Scheme {
+  id              String   @id @default(cuid())
   userId          String
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
   grade           String
   subject         String
-  topic           String
-  subtopic        String?   // ✅ Added back
-  title           String?
-  classSize       Int       @default(40)
-  duration        String    @default("40 min")
-  curriculum      String    @default("cbc")
+  term            String
+  year            String   @default("2026")
+  totalWeeks      Int      @default(13)
+  school          String
   teacherName     String?
-  school          String?
-  province        String?
-  district        String?
-  date            String?
-  time            String?
-  boys            Int?
-  girls           Int?
-  generalCompetences String[]
-  specificCompetence String?
-  lessonGoal      String?
-  rationale       String?
-  priorKnowledge  String?
-  references      String[]
-  learningEnvironment String?
-  materials       String[]
-  expectedStandard String?
-  lessonProgression Json?
-  homework        String?
-  lessonEvaluation String?
-  teacherEvaluation String?
-  learningOutcomes String[]
-  lessonDevelopment Json?
-  learnersEvaluation String[]
-  teachingAids    String[]
-  objectives      String[]
-  development     String[]
-  activities      String[]
-  assessment      String
-  curriculumCodes String[]
-  provinceContext String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  
+  // Scheme data
+  weeks           Json     // Array of {week, topics: [{topic, specificOutcome, methods, aids, knowledge, skills, values}], assessment}
+  assessmentWeeks Int[]
+  testTopics      Json?    // Array of test topic names
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Payment {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  referenceId   String    @unique
+  transactionId String    @unique
+  amount        Float
+  currency      String    @default("ZMW")
+  provider      String    @default("lipila")
+  phoneNumber   String?
+  status        String    @default("pending")
+  externalId    String?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  expiresAt     DateTime?
+  plan          Plan      @default(PRO)
+}
+
+enum Plan {
+  FREE
+  PRO
+  SCHOOL
 }
