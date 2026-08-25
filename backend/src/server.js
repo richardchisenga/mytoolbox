@@ -261,7 +261,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE (CBC & OBC FORMATS) ============
+// ============ LESSON GENERATION ROUTE (CBC & OBC FORMATS - FIXED) ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
@@ -289,7 +289,6 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
     let prompt;
 
     if (curriculumType === 'obc') {
-      // OBC FORMAT PROMPT
       prompt = `
 You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
 
@@ -355,8 +354,7 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
     "Question 4",
     "Question 5"
   ],
-  "teacherEvaluation": "Space for teacher's reflections",
-  "lessonConclusion": "Teacher to conclude lesson by revising through the lesson with learners to help remedial learners"
+  "teacherEvaluation": "Space for teacher's reflections"
 }
 
 🔴 RULES:
@@ -364,7 +362,6 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
 - Return ONLY the JSON object, no other text.
 `;
     } else {
-      // CBC FORMAT PROMPT
       prompt = `
 You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
 
@@ -496,7 +493,7 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
 
     console.log(`✅ ${curriculumType.toUpperCase()} lesson generated successfully`);
 
-    // Save lesson to database
+    // ✅ FIXED: Removed lessonConclusion from the data
     const lesson = await prisma.lesson.create({
       data: {
         userId: req.userId,
@@ -538,8 +535,8 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
         time: aiContent.time || '',
         boys: aiContent.boys || 0,
         girls: aiContent.girls || 0,
-        teachingAids: aiContent.teachingAids || [],
-        lessonConclusion: aiContent.lessonConclusion || ''
+        teachingAids: aiContent.teachingAids || []
+        // ❌ REMOVED: lessonConclusion: aiContent.lessonConclusion || ''
       }
     });
 
