@@ -133,39 +133,6 @@ app.get('/', (req, res) => {
   res.json({ message: 'MyToolbox API is running' });
 });
 
-// ============ JSON PARSING HELPER ============
-
-function safeParseJSON(content) {
-  try {
-    let cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
-    let jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      cleaned = jsonMatch[0];
-    }
-    cleaned = cleaned.replace(/,\s*([}\]])/g, '$1');
-    cleaned = cleaned.replace(/'/g, '"');
-    
-    let openBraces = (cleaned.match(/\{/g) || []).length;
-    let closeBraces = (cleaned.match(/\}/g) || []).length;
-    let openBrackets = (cleaned.match(/\[/g) || []).length;
-    let closeBrackets = (cleaned.match(/\]/g) || []).length;
-    
-    while (closeBraces < openBraces) {
-      cleaned += '}';
-      closeBraces++;
-    }
-    while (closeBrackets < openBrackets) {
-      cleaned += ']';
-      closeBrackets++;
-    }
-    
-    return JSON.parse(cleaned);
-  } catch (error) {
-    console.log('⚠️ JSON parse failed, using fallback');
-    return null;
-  }
-}
-
 // ============ AUTH ROUTES ============
 
 app.post('/api/auth/register', async (req, res) => {
@@ -259,7 +226,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE ============
+// ============ LESSON GENERATION ROUTE (FIXED - RELIABLE) ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
@@ -284,226 +251,160 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
     }
 
     const curriculumType = curriculum || 'cbc';
-    let prompt;
-
-    if (curriculumType === 'cbc') {
-      prompt = `
-You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
-
-⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this detailed CBC structure:
-
-{
-  "title": "${topic}",
-  "grade": "${grade}",
-  "subject": "${subject}",
-  "teacherName": "${user.fullName || 'MR/MRS'}",
-  "school": "${user.school || 'KASHINAKAZHI SECONDARY SCHOOL'}",
-  "province": "${user.province || 'Southern'}",
-  "district": "${user.district || 'Itezhi-Tezhi'}",
-  "date": "${new Date().toISOString().split('T')[0]}",
-  "time": "08:00-08:40",
-  "duration": "40 min",
-  "classSize": ${parseInt(classSize) || 40},
-  "boys": ${Math.floor(parseInt(classSize) / 2) || 18},
-  "girls": ${Math.ceil(parseInt(classSize) / 2) || 22},
-  "subtopic": "",
-  "generalCompetences": ["Analytical thinking", "Collaboration", "Communication", "Critical thinking"],
-  "specificCompetence": "Classify and explain the types of ${topic}",
-  "lessonGoal": "By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}",
-  "rationale": "Understanding ${topic} is essential for learners to make informed decisions and develop critical thinking skills.",
-  "priorKnowledge": "Learners have basic knowledge of the topic from previous lessons",
-  "references": ["2026 Teaching Module", "Curriculum Guide", "${subject} Grade ${grade} Textbook"],
-  "learningEnvironment": "Classroom, laboratory, school garden",
-  "materials": ["Manila paper", "Markers", "Charts", "Worksheet", "Real objects"],
-  "expectedStandard": "Topic concepts classified correctly",
-  "lessonProgression": [
-    {
-      "stage": "INTRODUCTION",
-      "time": "5 min",
-      "teacherRole": "Ask: 'What do you know about this topic?'",
-      "learnerRole": "Listen, participate, give examples",
-      "assessmentCriteria": "Observation of participation"
-    },
-    {
-      "stage": "LESSON DEVELOPMENT",
-      "time": "10 min",
-      "teacherRole": "Explain key concepts and demonstrate",
-      "learnerRole": "Take notes, ask questions, discuss",
-      "assessmentCriteria": "Correct understanding of concepts"
-    },
-    {
-      "stage": "ACTIVITY 1",
-      "time": "11 min",
-      "teacherRole": "Guide group work and provide materials",
-      "learnerRole": "Work in groups, complete tasks",
-      "assessmentCriteria": "Group collaboration and task completion"
-    },
-    {
-      "stage": "ACTIVITY 2",
-      "time": "16 min",
-      "teacherRole": "Facilitate presentations and consolidate",
-      "learnerRole": "Present findings and correct own work",
-      "assessmentCriteria": "Accurate presentation"
-    },
-    {
-      "stage": "EXERCISE",
-      "time": "20 min",
-      "teacherRole": "Give assessment and monitor",
-      "learnerRole": "Complete assessment individually",
-      "assessmentCriteria": "Correct classification"
-    },
-    {
-      "stage": "CONCLUSION",
-      "time": "10 min",
-      "teacherRole": "Summarize key points",
-      "learnerRole": "Share what they learned",
-      "assessmentCriteria": "Verbal explanation"
-    }
-  ],
-  "homework": "Research and list local examples of ${topic}",
-  "lessonEvaluation": "Lesson was successful, key competences were acquired",
-  "lessonConclusion": "Teacher concludes lesson by revising through the lesson with learners to help remedial learners",
-  "teacherEvaluation": "Space for teacher's reflections"
-}
-
-🔴 RULES:
-- Make content specific to ${grade} ${subject} on "${topic}".
-- Include realistic examples relevant to Zambian schools.
-- Return ONLY the JSON object, no other text.
-`;
-    } else {
-      prompt = `
-You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
-
-⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this detailed OBC structure:
-
-{
-  "title": "${topic}",
-  "grade": "${grade}",
-  "subject": "${subject}",
-  "teacherName": "${user.fullName || 'MR/MRS'}",
-  "school": "${user.school || 'KASHINAKAZHI SECONDARY SCHOOL'}",
-  "date": "${new Date().toISOString().split('T')[0]}",
-  "duration": "80 MINUTES",
-  "classSize": ${parseInt(classSize) || 40},
-  "boys": ${Math.floor(parseInt(classSize) / 2) || 18},
-  "girls": ${Math.ceil(parseInt(classSize) / 2) || 22},
-  "subtopic": "",
-  "references": [
-    "Progress in ${subject} Grade ${grade} pg 78",
-    "${subject} Grade ${grade} Textbook",
-    "Teacher's Guide"
-  ],
-  "teachingAids": ["Learners book", "Chalk board", "Chart", "Diagrams"],
-  "rationale": "This lesson is on solving ${topic} using appropriate methods. Teacher Exposition, Demonstration, Question and answer and group or class discussion methods will be used. This lesson will develop learners knowledge of ${topic}. The skill of identification and application of ${topic} methods. The value of logical thinking and accuracy in computing ${topic}.",
-  "learningOutcomes": [
-    "Define and identify ${topic}",
-    "Apply ${topic} to solve problems",
-    "Analyze real-world applications of ${topic}"
-  ],
-  "prerequisiteKnowledge": "Learners have ideas about the topic being taught.",
-  "lessonIntroduction": "Teacher revises through the previous lesson",
-  "lessonDevelopment": [
-    {
-      "content": "Introduction to ${topic} and key concepts",
-      "teacherActivity": "Teacher writes the example on the board and explains the concept",
-      "pupilActivity": "Learners to write the example in their exercise books and listen attentively",
-      "methods": "Teacher Exposition, Demonstration"
-    },
-    {
-      "content": "Practical application of ${topic}",
-      "teacherActivity": "Teacher solves on the board and allows learners to ask questions",
-      "pupilActivity": "Learners to listen attentively and volunteer learners to go and solve on the board",
-      "methods": "Question and answer, group discussion"
-    },
-    {
-      "content": "Practice problems on ${topic}",
-      "teacherActivity": "Teacher writes the exercise on the board and asks volunteer learners to go and solve",
-      "pupilActivity": "Learners to write the exercise in their exercise books and volunteer to solve on the board",
-      "methods": "Group work, individual practice"
-    },
-    {
-      "content": "Summary and conclusion of ${topic}",
-      "teacherActivity": "Teacher consolidates learners responses and writes the summary on the board",
-      "pupilActivity": "Learners to listen attentively and write the summary",
-      "methods": "Review and consolidation"
-    }
-  ],
-  "learnersEvaluation": [
-    "Define ${topic} in your own words",
-    "Give two examples of ${topic}",
-    "Solve a ${topic} problem",
-    "Explain the importance of ${topic}"
-  ],
-  "expectedAnswers": [
-    "Question 1: Correct definition of ${topic}",
-    "Question 2: Two valid examples of ${topic}",
-    "Question 3: Correct solution to the ${topic} problem",
-    "Question 4: Clear explanation of the importance of ${topic}"
-  ],
-  "lessonConclusion": "Teacher concludes lesson by revising through the lesson with learners to help remedial learners",
-  "learnersEvaluationText": "Space for teacher's assessment of learner performance",
-  "teacherEvaluation": "The lesson was well delivered. The majority of the learners were able to grasp the concept and could work out problems involving ${topic}. Remedial work was given to those who had challenges."
-}
-
-🔴 RULES:
-- Make content specific to ${grade} ${subject} on "${topic}".
-- Include realistic examples and practice problems.
-- Return ONLY the JSON object, no other text.
-`;
-    }
-
-    console.log(`📝 Generating detailed ${curriculumType.toUpperCase()} lesson with DeepSeek...`);
-
-    const response = await deepseek.chat.completions.create({
-      model: "deepseek-chat",
-      messages: [
-        { role: "system", content: `You are an expert Zambian teacher creating detailed ${curriculumType.toUpperCase()} lesson plans. Always return valid JSON in the exact format specified. Never add extra text.` },
-        { role: "user", content: prompt }
-      ],
-      temperature: 0.5,
-      max_tokens: 4096
-    });
-
-    let aiContent = safeParseJSON(response.choices[0].message.content);
     
-    if (!aiContent) {
-      console.log('⚠️ DeepSeek parsing failed, using fallback lesson');
+    // ============ GENERATE LESSON ============
+    let aiContent = null;
+    let useFallback = false;
+
+    try {
+      // 🔥 SIMPLIFIED PROMPT - DeepSeek works better with shorter prompts
+      const prompt = `
+Create a ${curriculumType.toUpperCase()} lesson plan for ${grade} ${subject} on "${topic}".
+
+Return ONLY valid JSON with these exact fields:
+{
+  "title": "${topic}",
+  "grade": "${grade}",
+  "subject": "${subject}",
+  "teacherName": "${user.fullName || 'Teacher'}",
+  "school": "${user.school || 'School'}",
+  "date": "${new Date().toISOString().split('T')[0]}",
+  "duration": "${curriculumType === 'obc' ? '80 MINUTES' : '40 min'}",
+  "classSize": ${parseInt(classSize) || 40},
+  "boys": ${Math.floor(parseInt(classSize) / 2) || 18},
+  "girls": ${Math.ceil(parseInt(classSize) / 2) || 22},
+  "subtopic": "",
+  "generalCompetences": ["Critical thinking", "Communication", "Collaboration"],
+  "specificCompetence": "Demonstrate understanding of ${topic}",
+  "lessonGoal": "By the end of this lesson, learners will understand ${topic}",
+  "rationale": "${topic} is important for learners",
+  "priorKnowledge": "Basic knowledge of ${subject}",
+  "references": ["Textbook", "Teacher's Guide"],
+  "learningEnvironment": "Classroom",
+  "materials": ["Whiteboard", "Markers"],
+  "expectedStandard": "Learners will demonstrate understanding",
+  "lessonProgression": [
+    {"stage": "INTRODUCTION", "time": "10 min", "teacherRole": "Introduce topic", "learnerRole": "Listen", "assessmentCriteria": "Participation"},
+    {"stage": "DEVELOPMENT", "time": "20 min", "teacherRole": "Guide practice", "learnerRole": "Work in groups", "assessmentCriteria": "Task completion"},
+    {"stage": "CONCLUSION", "time": "10 min", "teacherRole": "Review", "learnerRole": "Share", "assessmentCriteria": "Verbal"}
+  ],
+  "homework": "Practice ${topic} problems",
+  "lessonEvaluation": "Lesson was successful",
+  "teacherEvaluation": "To be filled after lesson"
+}
+
+Keep it SHORT and VALID JSON only.
+`;
+
+      console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson...`);
+
+      // 🔥 USE DEEPSEEK WITH JSON MODE
+      const response = await deepseek.chat.completions.create({
+        model: "deepseek-chat",
+        messages: [
+          { role: "system", content: "You are a teacher. Return valid JSON only. No extra text." },
+          { role: "user", content: prompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 1500,
+        response_format: { type: "json_object" } // ✅ FORCE JSON
+      });
+
+      // 🔥 CLEAN AND PARSE JSON
+      let content = response.choices[0].message.content;
+      
+      // Remove any markdown or extra text
+      content = content.replace(/```json/g, '').replace(/```/g, '').trim();
+      
+      // Find JSON object
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        content = jsonMatch[0];
+      }
+      
+      aiContent = JSON.parse(content);
+      
+      // Ensure required fields exist
+      aiContent.title = aiContent.title || topic;
+      aiContent.grade = aiContent.grade || grade;
+      aiContent.subject = aiContent.subject || subject;
+      aiContent.teacherName = aiContent.teacherName || user.fullName || 'Teacher';
+      aiContent.school = aiContent.school || user.school || 'School';
+      aiContent.date = aiContent.date || new Date().toISOString().split('T')[0];
+      aiContent.duration = aiContent.duration || (curriculumType === 'obc' ? '80 MINUTES' : '40 min');
+      aiContent.classSize = aiContent.classSize || parseInt(classSize) || 40;
+      aiContent.boys = aiContent.boys || Math.floor(parseInt(classSize) / 2) || 18;
+      aiContent.girls = aiContent.girls || Math.ceil(parseInt(classSize) / 2) || 22;
+      aiContent.generalCompetences = aiContent.generalCompetences || ["Critical thinking", "Communication", "Collaboration"];
+      aiContent.lessonProgression = aiContent.lessonProgression || [
+        { stage: "INTRODUCTION", time: "10 min", teacherRole: "Introduce", learnerRole: "Listen", assessmentCriteria: "Participation" },
+        { stage: "DEVELOPMENT", time: "20 min", teacherRole: "Guide", learnerRole: "Practice", assessmentCriteria: "Task completion" },
+        { stage: "CONCLUSION", time: "10 min", teacherRole: "Review", learnerRole: "Share", assessmentCriteria: "Verbal" }
+      ];
+      aiContent.learningOutcomes = aiContent.learningOutcomes || [`Understand ${topic}`, `Apply ${topic}`];
+      aiContent.learnersEvaluation = aiContent.learnersEvaluation || [`Define ${topic}`, `Give examples of ${topic}`];
+      aiContent.materials = aiContent.materials || ["Whiteboard", "Markers", "Textbook"];
+      aiContent.references = aiContent.references || ["Textbook", "Teacher's Guide"];
+      aiContent.lessonDevelopment = aiContent.lessonDevelopment || [
+        { content: `Introduction to ${topic}`, teacherActivity: "Explain", pupilActivity: "Listen", methods: "Lecture" },
+        { content: `Practice ${topic}`, teacherActivity: "Guide", pupilActivity: "Solve problems", methods: "Group work" }
+      ];
+
+      console.log(`✅ ${curriculumType.toUpperCase()} lesson generated successfully`);
+
+    } catch (error) {
+      console.log('⚠️ DeepSeek error, using fallback:', error.message);
+      useFallback = true;
+    }
+
+    // ============ FALLBACK ============
+    if (useFallback || !aiContent) {
+      console.log('📝 Using fallback lesson');
       aiContent = {
         title: topic,
         grade: grade,
         subject: subject,
         teacherName: user.fullName || 'MR/MRS',
         school: user.school || 'KASHINAKAZHI SECONDARY SCHOOL',
+        province: user.province || 'Southern',
+        district: user.district || 'Itezhi-Tezhi',
         date: new Date().toISOString().split('T')[0],
+        time: "08:00-08:40",
         duration: curriculumType === 'obc' ? '80 MINUTES' : '40 min',
         classSize: parseInt(classSize) || 40,
         boys: Math.floor(parseInt(classSize) / 2) || 18,
         girls: Math.ceil(parseInt(classSize) / 2) || 22,
         subtopic: '',
-        generalCompetences: ["Analytical thinking", "Collaboration", "Communication", "Critical thinking"],
-        specificCompetence: `Demonstrate understanding of ${topic}`,
-        lessonGoal: `By the end of this lesson, learners will be able to apply ${topic} in real-world contexts`,
-        rationale: `${topic} is essential for understanding advanced concepts`,
-        priorKnowledge: `Basic knowledge of ${subject}`,
-        references: [`${subject} Grade ${grade} Textbook`, "Teacher's Guide"],
+        generalCompetences: ["Critical thinking", "Communication", "Collaboration", "Creativity"],
+        specificCompetence: `By the end of this lesson, learners will be able to demonstrate understanding of ${topic}`,
+        lessonGoal: `By the end of this lesson, learners will be able to identify, classify, and explain ${topic}`,
+        rationale: `Understanding ${topic} is essential for learners to develop critical thinking skills.`,
+        priorKnowledge: "Learners have basic knowledge of the topic from previous lessons",
+        references: ["2026 Teaching Module", "Curriculum Guide", `${subject} Grade ${grade} Textbook`],
         learningEnvironment: "Classroom with adequate resources",
-        materials: ["Whiteboard", "Markers", "Worksheets"],
-        expectedStandard: `Learners will be able to solve ${topic} problems independently`,
+        materials: ["Whiteboard", "Markers", "Charts", "Worksheets"],
+        expectedStandard: "Topic concepts explained correctly",
         lessonProgression: [
-          { stage: "INTRODUCTION", time: "10 min", teacherRole: "Introduce topic", learnerRole: "Listen and participate", assessmentCriteria: "Participation" },
-          { stage: "DEVELOPMENT", time: "20 min", teacherRole: "Guide activities", learnerRole: "Practice in groups", assessmentCriteria: "Task completion" },
-          { stage: "CONCLUSION", time: "10 min", teacherRole: "Review key points", learnerRole: "Share findings", assessmentCriteria: "Verbal explanation" }
+          { stage: "INTRODUCTION", time: "10 min", teacherRole: "Ask engaging questions", learnerRole: "Listen and participate", assessmentCriteria: "Observation" },
+          { stage: "DEVELOPMENT", time: "20 min", teacherRole: "Explain key concepts", learnerRole: "Take notes and discuss", assessmentCriteria: "Understanding" },
+          { stage: "ACTIVITY", time: "15 min", teacherRole: "Guide group work", learnerRole: "Work in groups", assessmentCriteria: "Collaboration" },
+          { stage: "EXERCISE", time: "20 min", teacherRole: "Give assessment", learnerRole: "Complete individually", assessmentCriteria: "Correct responses" },
+          { stage: "CONCLUSION", time: "10 min", teacherRole: "Summarize", learnerRole: "Share what they learned", assessmentCriteria: "Verbal explanation" }
         ],
-        homework: `Solve ${topic} problems`,
-        lessonEvaluation: "Learners demonstrated good understanding",
-        teacherEvaluation: "Space for teacher's reflections",
-        curriculum: curriculumType
+        homework: `Research and write about ${topic}`,
+        lessonEvaluation: "Lesson was successful, key competences were acquired",
+        teacherEvaluation: "To be filled after lesson",
+        learningOutcomes: [`Understand ${topic}`, `Apply ${topic}`, `Analyze ${topic}`],
+        learnersEvaluation: [`Define ${topic}`, `Give examples of ${topic}`, `Solve a ${topic} problem`],
+        lessonDevelopment: [
+          { content: `Introduction to ${topic}`, teacherActivity: "Explain the concept", pupilActivity: "Listen and take notes", methods: "Lecture" },
+          { content: `Practice ${topic}`, teacherActivity: "Guide students", pupilActivity: "Work in groups", methods: "Group work" }
+        ],
+        teachingAids: ["Whiteboard", "Charts", "Diagrams"]
       };
     }
 
-    console.log(`✅ Detailed ${curriculumType.toUpperCase()} lesson generated successfully`);
-
+    // ============ SAVE TO DATABASE ============
     const lesson = await prisma.lesson.create({
       data: {
         userId: req.userId,
@@ -545,8 +446,7 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
         time: aiContent.time || '',
         boys: aiContent.boys || 0,
         girls: aiContent.girls || 0,
-        teachingAids: aiContent.teachingAids || [],
-        lessonConclusion: aiContent.lessonConclusion || ''
+        teachingAids: aiContent.teachingAids || []
       }
     });
 
