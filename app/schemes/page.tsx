@@ -3,12 +3,13 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeftIcon, CalendarIcon, ArrowDownTrayIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, ArrowDownTrayIcon, PlusIcon } from "@heroicons/react/24/outline";
 
 export default function SchemesPage() {
   const router = useRouter();
   const [grade, setGrade] = useState("");
   const [subject, setSubject] = useState("");
+  const [subtopic, setSubtopic] = useState(""); // ✅ NEW STATE
   const [term, setTerm] = useState("1");
   const [totalWeeks, setTotalWeeks] = useState(13);
   const [assessmentWeeks, setAssessmentWeeks] = useState<number[]>([6, 13]);
@@ -22,7 +23,7 @@ export default function SchemesPage() {
   const [savedSchemes, setSavedSchemes] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ============ FETCH SAVED SCHEMES ============
+  // Fetch saved schemes
   useEffect(() => {
     const fetchSchemes = async () => {
       try {
@@ -126,6 +127,7 @@ export default function SchemesPage() {
           body: JSON.stringify({
             grade,
             subject,
+            subtopic, // ✅ ADDED subtopic
             term,
             weeks: totalWeeks,
             assessmentWeeks,
@@ -142,7 +144,6 @@ export default function SchemesPage() {
 
       const data = await response.json();
       setGeneratedScheme(data);
-      // Add to saved schemes list
       setSavedSchemes([data, ...savedSchemes]);
     } catch (error: any) {
       console.error("Generation failed:", error);
@@ -186,7 +187,7 @@ export default function SchemesPage() {
     }
   };
 
-  // ============ RENDER SCHEME TABLE ============
+  // Render scheme table
   const renderSchemeTable = (scheme: any) => {
     if (!scheme.weeks || scheme.weeks.length === 0) {
       return <p className="text-gray-500 text-center py-8">No weeks data available</p>;
@@ -199,7 +200,7 @@ export default function SchemesPage() {
             <tr className="bg-gray-100 border-b-2 border-gray-300">
               <th className="p-2 border-r border-gray-300 text-center font-bold text-gray-800">WEEK</th>
               <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">TOPIC</th>
-              <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">TYPE</th>
+              <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">SUBTOPIC</th> {/* ✅ NEW COLUMN */}
               <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">SPECIFIC OUTCOME</th>
               <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">METHODS</th>
               <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">AIDS</th>
@@ -211,8 +212,6 @@ export default function SchemesPage() {
           <tbody>
             {scheme.weeks.map((week: any, idx: number) => {
               const isAssessment = scheme.assessmentWeeks?.includes(week.week) || false;
-              // Get the first topic or use empty object if no topics
-              const firstTopic = week.topics && week.topics.length > 0 ? week.topics[0] : {};
               
               return (
                 <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
@@ -225,12 +224,8 @@ export default function SchemesPage() {
                       </div>
                     ))}
                   </td>
-                  <td className="p-2 border border-gray-300 text-center">
-                    {isAssessment ? (
-                      <span className="px-2 py-1 bg-gray-200 text-gray-700 rounded-full text-xs font-semibold">TEST</span>
-                    ) : (
-                      <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs">Lesson</span>
-                    )}
+                  <td className="p-2 border border-gray-300 text-xs">
+                    {scheme.subtopic || '-'} {/* ✅ DISPLAY SUBTOPIC */}
                   </td>
                   <td className="p-2 border border-gray-300 text-xs">
                     {week.topics && week.topics.map((t: any, i: number) => (
@@ -271,7 +266,7 @@ export default function SchemesPage() {
     );
   };
 
-  // ============ RENDER SAVED SCHEMES LIST ============
+  // Render saved schemes list
   const renderSavedSchemes = () => {
     if (savedSchemes.length === 0) {
       return (
@@ -295,6 +290,9 @@ export default function SchemesPage() {
                   {scheme.grade} · {scheme.term} · {scheme.year}
                 </p>
                 <p className="text-sm text-gray-500 mt-1">
+                  Subtopic: {scheme.subtopic || 'None'} {/* ✅ DISPLAY SUBTOPIC */}
+                </p>
+                <p className="text-sm text-gray-500">
                   Assessment Weeks: {scheme.assessmentWeeks?.join(', ') || 'None'}
                 </p>
               </div>
@@ -312,11 +310,10 @@ export default function SchemesPage() {
     );
   };
 
-  // ============ MAIN RENDER ============
+  // Main render
   return (
     <div className="min-h-screen bg-white p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <header className="mb-8 border-b-2 border-gray-300 pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -333,14 +330,12 @@ export default function SchemesPage() {
           </div>
         </header>
 
-        {/* Loading State */}
         {isLoading && (
           <div className="text-center py-12">
             <p className="text-gray-500">Loading schemes...</p>
           </div>
         )}
 
-        {/* Saved Schemes */}
         {!isLoading && !generatedScheme && (
           <>
             <h2 className="text-xl font-semibold text-gray-800 mb-4">Saved Schemes</h2>
@@ -348,12 +343,10 @@ export default function SchemesPage() {
             
             <div className="mt-8 border-t border-gray-200 pt-8">
               <h2 className="text-xl font-semibold text-gray-800 mb-4">Generate New Scheme</h2>
-              {/* ... rest of the generation form ... */}
             </div>
           </>
         )}
 
-        {/* Generated Scheme View */}
         {generatedScheme && (
           <div>
             <div className="flex items-center justify-between mb-6">
@@ -371,6 +364,9 @@ export default function SchemesPage() {
                   {generatedScheme.grade} · {generatedScheme.term} · {generatedScheme.year}
                 </p>
                 <p className="text-sm text-gray-500 mt-1">
+                  Subtopic: {generatedScheme.subtopic || 'None'}
+                </p>
+                <p className="text-sm text-gray-500">
                   Assessment Weeks: {generatedScheme.assessmentWeeks?.join(', ') || 'None'}
                 </p>
               </div>
@@ -406,7 +402,6 @@ export default function SchemesPage() {
           </div>
         )}
 
-        {/* Generation Form (when not viewing a scheme) */}
         {!generatedScheme && !isLoading && (
           <div className="max-w-4xl bg-white border border-gray-300 rounded-lg p-6 mt-4">
             {error && (
@@ -441,6 +436,18 @@ export default function SchemesPage() {
               </div>
             </div>
 
+            {/* ✅ NEW SUBTOPIC FIELD */}
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700">Subtopic</label>
+              <input
+                type="text"
+                value={subtopic}
+                onChange={(e) => setSubtopic(e.target.value)}
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400"
+                placeholder="e.g. Cell Biology, Algebra, etc."
+              />
+            </div>
+
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Term</label>
@@ -467,7 +474,6 @@ export default function SchemesPage() {
               </div>
             </div>
 
-            {/* Week Topics */}
             <div className="mt-6 border-t border-gray-200 pt-4">
               <h3 className="text-lg font-semibold text-gray-800 mb-3">Week Topics</h3>
               <p className="text-sm text-gray-500 mb-3">
@@ -514,7 +520,6 @@ export default function SchemesPage() {
               </div>
             </div>
 
-            {/* Assessment Weeks */}
             <div className="mt-6 border-t border-gray-200 pt-4">
               <h3 className="text-lg font-semibold text-gray-800 mb-3">Select Assessment Weeks</h3>
               <p className="text-sm text-gray-500 mb-3">
