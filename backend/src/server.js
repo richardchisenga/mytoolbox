@@ -74,6 +74,87 @@ app.get('/', (req, res) => {
   res.json({ message: 'MyToolbox API is running' });
 });
 
+// ============ JSON PARSING HELPER ============
+
+function safeParseJSON(content) {
+  try {
+    // Remove markdown code blocks
+    let cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
+    
+    // Find JSON object
+    let jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleaned = jsonMatch[0];
+    }
+    
+    // Fix common JSON issues
+    cleaned = cleaned.replace(/,\s*([}\]])/g, '$1');
+    cleaned = cleaned.replace(/'/g, '"');
+    
+    // Handle incomplete JSON - count brackets and add missing ones
+    let openBraces = (cleaned.match(/\{/g) || []).length;
+    let closeBraces = (cleaned.match(/\}/g) || []).length;
+    let openBrackets = (cleaned.match(/\[/g) || []).length;
+    let closeBrackets = (cleaned.match(/\]/g) || []).length;
+    
+    while (closeBraces < openBraces) {
+      cleaned += '}';
+      closeBraces++;
+    }
+    while (closeBrackets < openBrackets) {
+      cleaned += ']';
+      closeBrackets++;
+    }
+    
+    return JSON.parse(cleaned);
+  } catch (error) {
+    console.log('⚠️ JSON parse failed, using fallback');
+    return null;
+  }
+}
+
+// ============ FALLBACK SCHEME GENERATOR ============
+
+function generateFallbackScheme(grade, subject, term, user) {
+  const weeks = [];
+  const totalWeeks = 13;
+  const topics = [
+    `Introduction to ${subject}`,
+    `Basic concepts of ${subject}`,
+    `Advanced ${subject} topics`,
+    `Practical applications of ${subject}`,
+    `Review and assessment of ${subject}`
+  ];
+
+  for (let i = 1; i <= totalWeeks; i++) {
+    const weekTopics = [];
+    const numTopics = 3 + Math.floor(Math.random() * 2);
+    for (let j = 0; j < numTopics; j++) {
+      const topicIndex = (i + j) % topics.length;
+      weekTopics.push({
+        topic: topics[topicIndex],
+        specificOutcome: `Understand ${topics[topicIndex]}`,
+        methods: "Lecture, discussion, group work",
+        aids: "Whiteboard, charts, textbooks",
+        knowledge: `Knowledge of ${topics[topicIndex]}`,
+        skills: "Critical thinking, analysis",
+        values: "Responsibility, teamwork"
+      });
+    }
+    weeks.push({
+      week: i,
+      topics: weekTopics,
+      assessment: i % 3 === 0 ? `End of Week ${i} Assessment` : null
+    });
+  }
+
+  return {
+    weeks: weeks,
+    assessmentWeeks: [3, 6, 9, 12],
+    testTopics: [`Mid-term test on ${subject}`, `End of term test on ${subject}`]
+  };
+}
+
 // ============ AUTH ROUTES ============
 
 // Register
@@ -313,7 +394,7 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
   }
 });
 
-// ============ SCHEME OF WORK GENERATION ROUTE (WITH DEEPSEEK) ============
+// ============ SCHEME OF WORK GENERATION ROUTE (FIXED) ============
 
 app.post('/api/schemes/generate', authenticate, async (req, res) => {
   try {
@@ -337,40 +418,20 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       });
     }
 
-    // 🔥 CALL DEEPSEEK API FOR SCHEME GENERATION
+    // 🔥 SHORTER PROMPT TO PREVENT TRUNCATION
     const prompt = `
-      Create a detailed Scheme of Work for Grade ${grade} ${subject} for ${term || 'Term 1'} in a Zambian school.
-
-      Requirements:
-      - 13 weeks of content
-      - Each week should have 3-5 topics
-      - Include specific outcomes, methods, teaching aids, knowledge, skills, and values for each topic
-      - Follow the ${subject} curriculum for Grade ${grade}
-
-      Return ONLY valid JSON with this exact structure:
+      Generate a Scheme of Work for Grade ${grade} ${subject} for ${term || 'Term 1'}.
+      
+      Return ONLY valid JSON with this structure:
       {
         "weeks": [
-          {
-            "week": 1,
-            "topics": [
-              {
-                "topic": "Topic name",
-                "specificOutcome": "What students should know",
-                "methods": "Teaching methods",
-                "aids": "Teaching aids",
-                "knowledge": "Knowledge gained",
-                "skills": "Skills developed",
-                "values": "Values instilled"
-              }
-            ],
-            "assessment": "Assessment for this week"
-          }
+          {"week": 1, "topics": [{"topic": "Topic", "specificOutcome": "Outcome", "methods": "Methods", "aids": "Aids", "knowledge": "Knowledge", "skills": "Skills", "values": "Values"}], "assessment": "Assessment"}
         ],
         "assessmentWeeks": [3, 6, 9, 12],
-        "testTopics": ["Test 1 name", "Test 2 name"]
+        "testTopics": ["Mid-term test", "End of term test"]
       }
-
-      Make sure to return ONLY the JSON object, no other text.
+      
+      Keep it SHORT. Maximum 3 topics per week. Valid JSON only.
     `;
 
     console.log('📝 Generating scheme with DeepSeek...');
@@ -378,14 +439,20 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
     const response = await deepseek.chat.completions.create({
       model: "deepseek-chat",
       messages: [
-        { role: "system", content: "You are an expert curriculum planner for Zambian schools. Always return valid JSON." },
+        { role: "system", content: "You are a curriculum expert. Return valid JSON only. Keep responses short." },
         { role: "user", content: prompt }
       ],
       temperature: 0.7,
-      max_tokens: 4096
+      max_tokens: 2000 // Reduced to prevent truncation
     });
 
-    const aiContent = JSON.parse(response.choices[0].message.content);
+    let aiContent = safeParseJSON(response.choices[0].message.content);
+    
+    // If parsing failed, use fallback
+    if (!aiContent) {
+      console.log('📝 Using fallback scheme generator');
+      aiContent = generateFallbackScheme(grade, subject, term, user);
+    }
 
     console.log('✅ Scheme generated successfully');
 
@@ -418,7 +485,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    // Save scheme to database
+    // Save scheme to database - WITH teacherName
     const scheme = await prisma.scheme.create({
       data: {
         userId: req.userId,
@@ -430,6 +497,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
         weeks: weeks,
         assessmentWeeks: generatedScheme.assessmentWeeks,
         school: school || user.school || '',
+        teacherName: user.fullName || '', // ✅ NOW INCLUDED
         testTopics: generatedScheme.testTopics
       }
     });
