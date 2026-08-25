@@ -276,7 +276,7 @@ function generateFallbackLesson(topic, grade, subject, classSize, curriculumType
   const girls = Math.ceil(size / 2) || 22;
   
   if (curriculumType === 'obc') {
-    // ============ OBC FALLBACK ============
+    // ============ OBC FALLBACK (FIXED FORMATTING) ============
     return {
       title: topic,
       grade: grade,
@@ -298,29 +298,29 @@ function generateFallbackLesson(topic, grade, subject, classSize, curriculumType
       rationale: `This lesson is on ${topic}. Teacher Exposition, Demonstration, Question and answer and group or class discussion methods will be used. This lesson will develop learners knowledge of ${topic}. The skill of identification and application of ${topic} methods. The value of logical thinking and accuracy in computing ${topic}.`,
       learningOutcomes: [
         "By the end of this lesson, learners should be able to:",
-        `1. Define ${topic}`,
-        `2. Explain the concept of ${topic}`,
-        `3. Apply ${topic} to solve problems`,
-        `4. Analyze real-world applications of ${topic}`
+        `Define ${topic}`,
+        `Explain the concept of ${topic}`,
+        `Apply ${topic} to solve problems`,
+        `Analyze real-world applications of ${topic}`
       ],
       prerequisiteKnowledge: "Learners have ideas about the topic being taught.",
       lessonIntroduction: "Teacher revises through the previous lesson",
       lessonDevelopment: [
         {
           content: `Introduction to ${topic} and key concepts`,
-          teacherActivity: "Teacher writes the example on the board and explains the concept",
+          teacherActivity: `Teacher writes the example on the board and explains the concept of ${topic}`,
           pupilActivity: "Learners to write the example in their exercise books and listen attentively",
           methods: "Teacher Exposition, Demonstration"
         },
         {
           content: `Main content and examples of ${topic}`,
-          teacherActivity: "Teacher solves on the board and allows learners to ask questions",
+          teacherActivity: `Teacher solves ${topic} problems on the board and allows learners to ask questions`,
           pupilActivity: "Learners to listen attentively and volunteer learners to go and solve on the board",
           methods: "Question and answer, group discussion"
         },
         {
           content: `Practice problems on ${topic}`,
-          teacherActivity: "Teacher writes the exercise on the board and asks volunteer learners to go and solve",
+          teacherActivity: `Teacher writes ${topic} exercise on the board and asks volunteer learners to go and solve`,
           pupilActivity: "Learners to write the exercise in their exercise books and volunteer to solve on the board",
           methods: "Group work, individual practice"
         },
@@ -332,16 +332,16 @@ function generateFallbackLesson(topic, grade, subject, classSize, curriculumType
         }
       ],
       learnersEvaluation: [
-        `1. Define ${topic} in your own words`,
-        `2. Give two examples of ${topic}`,
-        `3. Solve a ${topic} problem`,
-        `4. Explain the importance of ${topic}`
+        `Define ${topic} in your own words`,
+        `Give two examples of ${topic}`,
+        `Solve a ${topic} problem: Determine the key features of ${topic}`,
+        `Explain the importance of ${topic}`
       ],
       expectedAnswers: [
-        `Question 1: Correct definition of ${topic}`,
-        `Question 2: Two valid examples of ${topic}`,
-        `Question 3: Correct solution to the ${topic} problem`,
-        `Question 4: Clear explanation of the importance of ${topic}`
+        `Correct definition of ${topic}`,
+        `Two valid examples of ${topic}`,
+        `Correct solution to the ${topic} problem`,
+        `Clear explanation of the importance of ${topic}`
       ],
       lessonConclusion: "Teacher concludes lesson by revising through the lesson with learners to help remedial learners",
       learnersEvaluationText: "Space for teacher's assessment of learner performance",
@@ -460,44 +460,50 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
   "rationale": "This lesson is on ${topic}. Teacher Exposition, Demonstration, Question and answer and group or class discussion methods will be used. This lesson will develop learners knowledge of ${topic}. The skill of identification and application of ${topic} methods. The value of logical thinking and accuracy in computing ${topic}.",
   "learningOutcomes": [
     "By the end of this lesson, learners should be able to:",
-    "1. Define ${topic}",
-    "2. Explain the concept of ${topic}",
-    "3. Apply ${topic} to solve problems",
-    "4. Analyze real-world applications of ${topic}"
+    "Define ${topic}",
+    "Explain the concept of ${topic}",
+    "Apply ${topic} to solve problems",
+    "Analyze real-world applications of ${topic}"
   ],
   "prerequisiteKnowledge": "Learners have ideas about the topic being taught.",
   "lessonIntroduction": "Teacher revises through the previous lesson",
   "lessonDevelopment": [
     {
       "content": "Introduction to ${topic} and key concepts",
-      "teacherActivity": "Teacher writes the example on the board and explains the concept",
+      "teacherActivity": "Teacher writes the example on the board and explains the concept of ${topic}",
       "pupilActivity": "Learners to write the example in their exercise books and listen attentively",
       "methods": "Teacher Exposition, Demonstration"
     },
     {
       "content": "Main content and examples of ${topic}",
-      "teacherActivity": "Teacher solves on the board and allows learners to ask questions",
+      "teacherActivity": "Teacher solves ${topic} problems on the board and allows learners to ask questions",
       "pupilActivity": "Learners to listen attentively and volunteer learners to go and solve on the board",
       "methods": "Question and answer, group discussion"
     },
     {
       "content": "Practice problems on ${topic}",
-      "teacherActivity": "Teacher writes the exercise on the board and asks volunteer learners to go and solve",
+      "teacherActivity": "Teacher writes ${topic} exercise on the board and asks volunteer learners to go and solve",
       "pupilActivity": "Learners to write the exercise in their exercise books and volunteer to solve on the board",
       "methods": "Group work, individual practice"
+    },
+    {
+      "content": "Summary and conclusion of ${topic}",
+      "teacherActivity": "Teacher consolidates learners responses and writes the summary on the board",
+      "pupilActivity": "Learners to listen attentively and write the summary",
+      "methods": "Review and consolidation"
     }
   ],
   "learnersEvaluation": [
-    "1. Define ${topic} in your own words",
-    "2. Give two examples of ${topic}",
-    "3. Solve a ${topic} problem",
-    "4. Explain the importance of ${topic}"
+    "Define ${topic} in your own words",
+    "Give two examples of ${topic}",
+    "Solve a ${topic} problem: Determine the key features of ${topic}",
+    "Explain the importance of ${topic}"
   ],
   "expectedAnswers": [
-    "Question 1: Correct definition of ${topic}",
-    "Question 2: Two valid examples of ${topic}",
-    "Question 3: Correct solution to the ${topic} problem",
-    "Question 4: Clear explanation of the importance of ${topic}"
+    "Correct definition of ${topic}",
+    "Two valid examples of ${topic}",
+    "Correct solution to the ${topic} problem",
+    "Clear explanation of the importance of ${topic}"
   ],
   "lessonConclusion": "Teacher concludes lesson by revising through the lesson with learners to help remedial learners",
   "learnersEvaluationText": "Space for teacher's assessment of learner performance",
