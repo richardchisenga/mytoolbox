@@ -76,6 +76,7 @@ model Lesson {
   assessment          String
   curriculumCodes     String[]
   provinceContext     String?
+  lessonConclusion    String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
@@ -91,7 +92,7 @@ model Scheme {
   totalWeeks      Int      @default(13)
   school          String
   teacherName     String?
-  subtopic        String?  // ✅ NEW FIELD
+  subtopic        String?
   weeks           Json
   assessmentWeeks Int[]
   testTopics      Json?
@@ -100,21 +101,22 @@ model Scheme {
 }
 
 model Payment {
-  id            String    @id @default(cuid())
+  id            String   @id @default(cuid())
   userId        String
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  referenceId   String    @unique
-  transactionId String    @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referenceId   String   @unique
+  transactionId String   @unique
   amount        Float
-  currency      String    @default("ZMW")
-  provider      String    @default("lipila")
+  currency      String   @default("ZMW")
+  provider      String   @default("lipila")
   phoneNumber   String?
-  status        String    @default("pending")
+  status        String   @default("pending")
   externalId    String?
   completedAt   DateTime?
-  createdAt     DateTime  @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
   expiresAt     DateTime?
-  plan          Plan      @default(PRO)
+  plan          Plan     @default(PRO)
 }
 
 enum Plan {
