@@ -916,3 +916,172 @@ app.post('/api/payments/initiate', authenticate, async (req, res) => {
         userId: req.userId,
         referenceId: referenceId,
         transactionId: payment.transactionId || referenceId,
+        amount: parseFloat(amount),
+        currency: 'ZMW',
+        provider: 'lipila',
+        phoneNumber: cleanNumber,
+        status: 'pending',
+        externalId: payment.id || null,
+        plan: plan || 'PRO',
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes expiry
+      }
+    });
+
+    res.status(201).json({
+      success: true,
+      payment: paymentRecord,
+      provider: payment,
+      message: 'Payment initiated. Please check your phone for the prompt.',
+    });
+
+  } catch (error) {
+    console.error('❌ Payment initiation error:', error);
+    res.status(500).json({
+      error: 'Failed to initiate payment',
+      details: error.message
+    });
+  }
+});
+
+// Webhook for payment confirmation (called by Lipila)
+app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const payload = req.body;
+    console.log('📥 Webhook received:', payload);
+
+    const { referenceId, status, amount, accountNumber, transactionId } = payload;
+
+    // Find the payment record
+    const payment = await prisma.payment.findUnique({
+      where: { referenceId: referenceId },
+      include: { user: true },
+    });
+
+    if (!payment) {
+      console.log('⚠️ Payment not found for reference:', referenceId);
+      return res.status(404).json({ error: 'Payment not found' });
+    }
+
+    // Don't process if already completed
+    if (payment.status === 'completed') {
+      console.log('⏭️ Payment already completed:', referenceId);
+      return res.status(200).json({ message: 'Already processed' });
+    }
+
+    // Update payment status
+    const isSuccessful = status === 'completed' || status === 'successful';
+    const isFailed = status === 'failed' || status === 'cancelled';
+
+    let updatedStatus = 'pending';
+    if (isSuccessful) {
+      updatedStatus = 'completed';
+    } else if (isFailed) {
+      updatedStatus = 'failed';
+    }
+
+    // Update payment record
+    await prisma.payment.update({
+      where: { referenceId: referenceId },
+      data: {
+        status: updatedStatus,
+        completedAt: isSuccessful ? new Date() : null,
+        externalId: transactionId || payload.id || payment.externalId,
+      }
+    });
+
+    // If payment successful, upgrade user
+    if (isSuccessful && payment.user) {
+      const plan = payment.plan || 'PRO';
+      await prisma.user.update({
+        where: { id: payment.userId },
+        data: {
+          role: plan,
+          schemesLimit: plan === 'PRO' ? 100 : 3,
+          lessonsLimit: plan === 'PRO' ? 1000 : 5,
+          subscriptionEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+        }
+      });
+      console.log(`✅ User ${payment.user.email} upgraded to ${plan}`);
+    }
+
+    res.status(200).json({ message: 'Webhook processed successfully' });
+
+  } catch (error) {
+    console.error('❌ Webhook error:', error);
+    res.status(500).json({ error: 'Webhook processing failed' });
+  }
+});
+
+// Check payment status
+app.get('/api/payments/:referenceId/status', authenticate, async (req, res) => {
+  try {
+    const { referenceId } = req.params;
+
+    const payment = await prisma.payment.findUnique({
+      where: { referenceId: referenceId },
+    });
+
+    if (!payment) {
+      return res.status(404).json({ error: 'Payment not found' });
+    }
+
+    // Verify ownership
+    if (payment.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Get fresh status from Lipila
+    const status = await lipilaService.getTransactionStatus(referenceId);
+
+    res.json({
+      payment,
+      providerStatus: status,
+    });
+
+  } catch (error) {
+    console.error('❌ Status check error:', error);
+    res.status(500).json({
+      error: 'Failed to check payment status',
+      details: error.message
+    });
+  }
+});
+
+// Get user's payment history
+app.get('/api/payments/history', authenticate, async (req, res) => {
+  try {
+    const payments = await prisma.payment.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+    res.json(payments);
+  } catch (error) {
+    console.error('Error fetching payment history:', error);
+    res.status(500).json({ error: 'Failed to fetch payment history' });
+  }
+});
+
+// ============ START SERVER ============
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`✅ Health check: http://localhost:${PORT}/health`);
+  console.log(`✅ Auth routes available at /api/auth/*`);
+  console.log(`✅ Lesson generation available at /api/lessons/generate`);
+  console.log(`✅ Scheme generation available at /api/schemes/generate`);
+  console.log(`✅ Get lessons at /api/lessons`);
+  console.log(`✅ Get schemes at /api/schemes`);
+  console.log(`✅ Get lessons (alias) at /api/lessons/mine`);
+  console.log(`✅ Get schemes (alias) at /api/schemes/mine`);
+  console.log(`✅ Payment routes available at /api/payments/*`);
+  console.log(`✅ DeepSeek AI integration enabled`);
+  console.log(`✅ Lipila payment integration enabled`);
+  console.log(`✅ CORS enabled for Vercel and Render frontend`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, closing server...');
+  prisma.$disconnect();
+  process.exit(0);
+});
