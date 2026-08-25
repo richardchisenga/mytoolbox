@@ -78,20 +78,14 @@ app.get('/', (req, res) => {
 
 function safeParseJSON(content) {
   try {
-    // Remove markdown code blocks
     let cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    // Find JSON object
     let jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       cleaned = jsonMatch[0];
     }
-    
-    // Fix common JSON issues
     cleaned = cleaned.replace(/,\s*([}\]])/g, '$1');
     cleaned = cleaned.replace(/'/g, '"');
     
-    // Handle incomplete JSON - count brackets and add missing ones
     let openBraces = (cleaned.match(/\{/g) || []).length;
     let closeBraces = (cleaned.match(/\}/g) || []).length;
     let openBrackets = (cleaned.match(/\[/g) || []).length;
@@ -113,7 +107,7 @@ function safeParseJSON(content) {
   }
 }
 
-// ============ FALLBACK SCHEME GENERATOR (WITH CUSTOM TOPICS) ============
+// ============ FALLBACK SCHEME GENERATOR ============
 
 function generateFallbackScheme(grade, subject, term, user, customTopics = {}) {
   const weeks = [];
@@ -135,12 +129,13 @@ function generateFallbackScheme(grade, subject, term, user, customTopics = {}) {
     if (customTopic) {
       weekTopics.push({
         topic: customTopic,
-        specificOutcome: `Understand and apply knowledge of ${customTopic}`,
-        methods: "Lecture, discussion, group work",
-        aids: "Whiteboard, charts, textbooks",
-        knowledge: `Knowledge of ${customTopic}`,
-        skills: "Critical thinking, analysis",
-        values: "Responsibility, teamwork"
+        specificOutcome: `By the end of this lesson, learners will be able to understand and apply knowledge of ${customTopic}`,
+        methods: "Lecture, discussion, group work, question and answer",
+        aids: "Whiteboard, charts, textbooks, diagrams",
+        references: "Textbook, Teacher's Guide",
+        knowledge: `Comprehensive knowledge of ${customTopic}`,
+        skills: "Critical thinking, analysis, collaboration",
+        values: "Responsibility, teamwork, curiosity"
       });
     } else {
       const numTopics = 3 + Math.floor(Math.random() * 2);
@@ -148,12 +143,13 @@ function generateFallbackScheme(grade, subject, term, user, customTopics = {}) {
         const topicIndex = (i + j) % defaultTopics.length;
         weekTopics.push({
           topic: defaultTopics[topicIndex],
-          specificOutcome: `Understand ${defaultTopics[topicIndex]}`,
-          methods: "Lecture, discussion, group work",
-          aids: "Whiteboard, charts, textbooks",
+          specificOutcome: `By the end of this lesson, learners will be able to understand ${defaultTopics[topicIndex]}`,
+          methods: "Lecture, discussion, group work, question and answer",
+          aids: "Whiteboard, charts, textbooks, diagrams",
+          references: "Textbook, Teacher's Guide",
           knowledge: `Knowledge of ${defaultTopics[topicIndex]}`,
-          skills: "Critical thinking, analysis",
-          values: "Responsibility, teamwork"
+          skills: "Critical thinking, analysis, collaboration",
+          values: "Responsibility, teamwork, curiosity"
         });
       }
     }
@@ -174,7 +170,6 @@ function generateFallbackScheme(grade, subject, term, user, customTopics = {}) {
 
 // ============ AUTH ROUTES ============
 
-// Register
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { fullName, email, password, school, province, district, grades, subjects } = req.body;
@@ -215,7 +210,6 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// Login
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -249,7 +243,6 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Get current user
 app.get('/api/auth/me', authenticate, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
@@ -268,7 +261,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE ============
+// ============ LESSON GENERATION ROUTE (EXACT FORMAT) ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
@@ -292,53 +285,123 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       });
     }
 
+    // 🔥 EXACT LESSON PLAN PROMPT
     const prompt = `
-      Create a detailed lesson plan for Grade ${grade} ${subject} on the topic "${topic}" using the ${curriculum || 'CBC'} curriculum for a Zambian school.
+You are an expert Zambian teacher creating a detailed lesson plan for Grade ${grade} ${subject} on the topic "${topic}" using the ${curriculum || 'CBC'} curriculum.
 
-      Return ONLY valid JSON with this exact structure:
-      {
-        "title": "Lesson title",
-        "learningOutcomes": ["Outcome 1", "Outcome 2", "Outcome 3"],
-        "lessonDevelopment": [
-          { "time": "10 min", "learningPoints": "...", "teacherActivities": "...", "pupilActivities": "..." }
-        ],
-        "learnersEvaluation": ["Question 1", "Question 2", "Question 3"],
-        "teacherEvaluation": "Space for teacher's reflections",
-        "generalCompetences": ["Critical thinking", "Communication", "Collaboration"],
-        "specificCompetence": "Specific competence for this lesson",
-        "lessonGoal": "Goal of the lesson",
-        "rationale": "Why this lesson is important",
-        "priorKnowledge": "What students should already know",
-        "references": ["Reference 1", "Reference 2"],
-        "learningEnvironment": "Classroom setup and resources",
-        "materials": ["Material 1", "Material 2", "Material 3"],
-        "expectedStandard": "Expected standard of achievement",
-        "lessonProgression": [
-          { "stage": "Introduction", "time": "10 min", "teacherRole": "...", "learnerRole": "...", "assessmentCriteria": "..." }
-        ],
-        "homework": "Homework assignment",
-        "lessonEvaluation": "Evaluation of the lesson"
-      }
+⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this structure:
 
-      Make sure to return ONLY the JSON object, no other text.
-    `;
+{
+  "title": "${topic}",
+  "learningOutcomes": [
+    "By the end of this lesson, learners will be able to...",
+    "By the end of this lesson, learners will be able to...",
+    "By the end of this lesson, learners will be able to..."
+  ],
+  "lessonDevelopment": [
+    {
+      "time": "10 min",
+      "learningPoints": "Key learning points for this stage",
+      "teacherActivities": "What the teacher does",
+      "pupilActivities": "What the pupils do"
+    }
+  ],
+  "learnersEvaluation": [
+    "Question 1",
+    "Question 2",
+    "Question 3"
+  ],
+  "teacherEvaluation": "Space for teacher's reflections after the lesson",
+  "generalCompetences": ["Critical thinking", "Communication", "Collaboration"],
+  "specificCompetence": "The specific competence for this lesson",
+  "lessonGoal": "The overall goal of the lesson",
+  "rationale": "Why this lesson is important for learners",
+  "priorKnowledge": "What learners should already know",
+  "references": ["Reference 1", "Reference 2"],
+  "learningEnvironment": "Classroom setup, resources, and environment",
+  "materials": ["Material 1", "Material 2", "Material 3"],
+  "expectedStandard": "The expected standard of achievement",
+  "lessonProgression": [
+    {
+      "stage": "INTRODUCTION",
+      "time": "10 min",
+      "teacherRole": "What the teacher does during introduction",
+      "learnerRole": "What the learners do during introduction",
+      "assessmentCriteria": "How understanding is assessed"
+    },
+    {
+      "stage": "DEVELOPMENT",
+      "time": "20 min",
+      "teacherRole": "What the teacher does during development",
+      "learnerRole": "What the learners do during development",
+      "assessmentCriteria": "How understanding is assessed"
+    },
+    {
+      "stage": "CONCLUSION",
+      "time": "10 min",
+      "teacherRole": "What the teacher does during conclusion",
+      "learnerRole": "What the learners do during conclusion",
+      "assessmentCriteria": "How understanding is assessed"
+    }
+  ],
+  "homework": "Homework assignment",
+  "lessonEvaluation": "Evaluation of the lesson"
+}
+
+🔴 RULES:
+- Keep content concise, clear, and aligned with the ${curriculum || 'CBC'} curriculum.
+- Return ONLY the JSON object, no other text.
+- For OBC curriculum, adjust the structure to be more objective-based.
+`;
 
     console.log('📝 Generating lesson with DeepSeek...');
 
     const response = await deepseek.chat.completions.create({
       model: "deepseek-chat",
       messages: [
-        { role: "system", content: "You are an expert Zambian teacher creating detailed lesson plans. Always return valid JSON." },
+        { role: "system", content: "You are an expert Zambian teacher. Always return valid JSON in the exact format specified. Never add extra text." },
         { role: "user", content: prompt }
       ],
-      temperature: 0.7,
+      temperature: 0.5,
       max_tokens: 4096
     });
 
-    const aiContent = JSON.parse(response.choices[0].message.content);
+    let aiContent = safeParseJSON(response.choices[0].message.content);
+    
+    if (!aiContent) {
+      console.log('⚠️ DeepSeek parsing failed, using fallback lesson');
+      aiContent = {
+        title: topic,
+        learningOutcomes: [`Understand ${topic}`, `Apply ${topic}`, `Analyze ${topic}`],
+        lessonDevelopment: [
+          { time: "10 min", learningPoints: `Introduction to ${topic}`, teacherActivities: "Explain the concept", pupilActivities: "Listen and take notes" },
+          { time: "20 min", learningPoints: `Practical application of ${topic}`, teacherActivities: "Guide students", pupilActivities: "Work in groups" },
+          { time: "10 min", learningPoints: `Review of ${topic}`, teacherActivities: "Summarize key points", pupilActivities: "Ask questions" }
+        ],
+        learnersEvaluation: [`Define ${topic}`, `Give examples of ${topic}`, `Solve a ${topic} problem`],
+        teacherEvaluation: "To be filled after lesson",
+        generalCompetences: ["Critical thinking", "Communication", "Collaboration"],
+        specificCompetence: `Demonstrate understanding of ${topic}`,
+        lessonGoal: `By the end of this lesson, learners will be able to apply ${topic} in real-world contexts`,
+        rationale: `${topic} is essential for understanding advanced concepts`,
+        priorKnowledge: `Basic knowledge of ${subject}`,
+        references: [`${subject} Grade ${grade} Textbook`, "Teacher's Guide"],
+        learningEnvironment: "Classroom with adequate resources",
+        materials: ["Whiteboard", "Markers", "Worksheets"],
+        expectedStandard: `Learners will be able to solve ${topic} problems independently`,
+        lessonProgression: [
+          { stage: "INTRODUCTION", time: "10 min", teacherRole: "Introduce topic", learnerRole: "Listen and participate", assessmentCriteria: "Participation" },
+          { stage: "DEVELOPMENT", time: "20 min", teacherRole: "Guide activities", learnerRole: "Practice in groups", assessmentCriteria: "Task completion" },
+          { stage: "CONCLUSION", time: "10 min", teacherRole: "Review key points", learnerRole: "Share findings", assessmentCriteria: "Verbal explanation" }
+        ],
+        homework: `Solve ${topic} problems`,
+        lessonEvaluation: "Learners demonstrated good understanding"
+      };
+    }
 
     console.log('✅ Lesson generated successfully');
 
+    // Save lesson to database
     const lesson = await prisma.lesson.create({
       data: {
         userId: req.userId,
@@ -409,14 +472,14 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
   }
 });
 
-// ============ SCHEME OF WORK GENERATION ROUTE (WITH SUBTOPIC) ============
+// ============ SCHEME OF WORK GENERATION ROUTE (EXACT FORMAT) ============
 
 app.post('/api/schemes/generate', authenticate, async (req, res) => {
   try {
     const { 
       grade, subject, term, year, school, 
       weeks: totalWeeks, assessmentWeeks, testTopics, 
-      weekTopics, subtopic // ✅ ADDED subtopic
+      weekTopics, subtopic 
     } = req.body;
 
     if (!grade || !subject) {
@@ -451,40 +514,58 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
 
     const assessmentWeeksString = assessmentWeeks ? assessmentWeeks.join(', ') : '3, 6, 9, 12';
 
+    // 🔥 EXACT SCHEME OF WORK PROMPT
     const prompt = `
-      Generate a Scheme of Work for Grade ${grade} ${subject} for ${term || 'Term 1'}.
-      
-      The user has specified these topics for specific weeks:
-      ${customTopicsString || 'Generate appropriate topics for all weeks.'}
-      
-      Assessment weeks are: ${assessmentWeeksString}
-      
-      Return ONLY valid JSON with this structure:
-      {
-        "weeks": [
-          {"week": 1, "topics": [{"topic": "Topic name", "specificOutcome": "Outcome", "methods": "Methods", "aids": "Aids", "knowledge": "Knowledge", "skills": "Skills", "values": "Values"}], "assessment": "Assessment"}
-        ],
-        "assessmentWeeks": [3, 6, 9, 12],
-        "testTopics": ["Mid-term test", "End of term test"]
-      }
-      
-      IMPORTANT: 
-      - For weeks where the user specified a topic, use that exact topic.
-      - For assessment weeks, set the topic as "Assessment" or the user's specified test topic.
-      - Keep it SHORT. Maximum 3 topics per week.
-      - Valid JSON only.
-    `;
+You are an expert curriculum planner for Zambian schools. Create a Scheme of Work for Grade ${grade} ${subject} for ${term || 'Term 1'}.
 
-    console.log('📝 Generating scheme with DeepSeek...');
+The user has specified these topics:
+${customTopicsString || 'Generate appropriate topics for all weeks.'}
+
+Assessment weeks are: ${assessmentWeeksString}
+
+⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this structure:
+
+{
+  "weeks": [
+    {
+      "week": 1,
+      "topics": [
+        {
+          "topic": "The specific topic name",
+          "specificOutcome": "What learners should achieve by the end of the lesson",
+          "methods": "Teaching and learning methods (e.g., Lecture, discussion, group work, question and answer)",
+          "aids": "Teaching and learning aids (e.g., Whiteboard, charts, textbooks, diagrams)",
+          "references": "Reference books and materials (e.g., Textbook, Teacher's Guide)",
+          "knowledge": "Knowledge learners will gain",
+          "skills": "Skills learners will develop",
+          "values": "Values learners will adopt"
+        }
+      ],
+      "assessment": "Assessment for this week (can be null for non-assessment weeks)"
+    }
+  ],
+  "assessmentWeeks": [3, 6, 9, 12],
+  "testTopics": ["Mid-term test", "End of term test"]
+}
+
+🔴 RULES:
+- For weeks where the user specified a topic, use that EXACT topic.
+- For assessment weeks, the topic should be "Assessment" or the user's specified test topic.
+- Each week can have 1-3 topics.
+- Keep content concise and curriculum-aligned.
+- Return ONLY the JSON object, no other text.
+`;
+
+    console.log('📝 Generating scheme with DeepSeek using exact format...');
 
     const response = await deepseek.chat.completions.create({
       model: "deepseek-chat",
       messages: [
-        { role: "system", content: "You are a curriculum expert. Return valid JSON only. Use the user's custom topics when provided." },
+        { role: "system", content: "You are an expert curriculum planner for Zambian schools. Always return valid JSON in the exact format specified. Never add extra text." },
         { role: "user", content: prompt }
       ],
-      temperature: 0.7,
-      max_tokens: 2500
+      temperature: 0.5,
+      max_tokens: 3000
     });
 
     let aiContent = safeParseJSON(response.choices[0].message.content);
@@ -496,6 +577,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
 
     console.log('✅ Scheme generated successfully');
 
+    // Structure the scheme data with ALL fields
     const weeks = aiContent.weeks.map(week => ({
       week: week.week,
       topics: week.topics.map(topic => ({
@@ -503,11 +585,12 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
         specificOutcome: topic.specificOutcome || '',
         methods: topic.methods || '',
         aids: topic.aids || '',
+        references: topic.references || '',
         knowledge: topic.knowledge || '',
         skills: topic.skills || '',
         values: topic.values || ''
       })),
-      assessment: week.assessment || ''
+      assessment: week.assessment || null
     }));
 
     const generatedScheme = {
@@ -518,13 +601,14 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       totalWeeks: totalWeeks || 13,
       school: school || user.school || '',
       teacherName: user.fullName || '',
-      subtopic: subtopic || '', // ✅ ADDED subtopic
+      subtopic: subtopic || '',
       weeks: weeks,
       assessmentWeeks: aiContent.assessmentWeeks || assessmentWeeks || [3, 6, 9, 12],
       testTopics: aiContent.testTopics || testTopics || [`Mid-term test on ${subject}`, `End of term test on ${subject}`],
       createdAt: new Date().toISOString()
     };
 
+    // Save scheme to database
     const scheme = await prisma.scheme.create({
       data: {
         userId: req.userId,
@@ -537,7 +621,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
         assessmentWeeks: generatedScheme.assessmentWeeks,
         school: school || user.school || '',
         teacherName: user.fullName || '',
-        subtopic: subtopic || '', // ✅ ADDED subtopic
+        subtopic: subtopic || '',
         testTopics: generatedScheme.testTopics
       }
     });
@@ -562,7 +646,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
   }
 });
 
-// ============ GET USER'S LESSONS ============
+// ============ GET ROUTES ============
 
 app.get('/api/lessons', authenticate, async (req, res) => {
   try {
@@ -578,8 +662,6 @@ app.get('/api/lessons', authenticate, async (req, res) => {
   }
 });
 
-// ============ GET USER'S LESSONS (Alias) ============
-
 app.get('/api/lessons/mine', authenticate, async (req, res) => {
   try {
     const lessons = await prisma.lesson.findMany({
@@ -594,8 +676,6 @@ app.get('/api/lessons/mine', authenticate, async (req, res) => {
   }
 });
 
-// ============ GET USER'S SCHEMES ============
-
 app.get('/api/schemes', authenticate, async (req, res) => {
   try {
     const schemes = await prisma.scheme.findMany({
@@ -609,8 +689,6 @@ app.get('/api/schemes', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch schemes' });
   }
 });
-
-// ============ GET USER'S SCHEMES (Alias) ============
 
 app.get('/api/schemes/mine', authenticate, async (req, res) => {
   try {
