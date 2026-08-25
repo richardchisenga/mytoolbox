@@ -9,7 +9,7 @@ export default function SchemesPage() {
   const router = useRouter();
   const [grade, setGrade] = useState("");
   const [subject, setSubject] = useState("");
-  const [subtopic, setSubtopic] = useState(""); // ✅ NEW STATE
+  const [subtopic, setSubtopic] = useState("");
   const [term, setTerm] = useState("1");
   const [totalWeeks, setTotalWeeks] = useState(13);
   const [assessmentWeeks, setAssessmentWeeks] = useState<number[]>([6, 13]);
@@ -127,7 +127,7 @@ export default function SchemesPage() {
           body: JSON.stringify({
             grade,
             subject,
-            subtopic, // ✅ ADDED subtopic
+            subtopic,
             term,
             weeks: totalWeeks,
             assessmentWeeks,
@@ -187,7 +187,7 @@ export default function SchemesPage() {
     }
   };
 
-  // Render scheme table
+  // ============ RENDER SCHEME TABLE ============
   const renderSchemeTable = (scheme: any) => {
     if (!scheme.weeks || scheme.weeks.length === 0) {
       return <p className="text-gray-500 text-center py-8">No weeks data available</p>;
@@ -200,10 +200,10 @@ export default function SchemesPage() {
             <tr className="bg-gray-100 border-b-2 border-gray-300">
               <th className="p-2 border-r border-gray-300 text-center font-bold text-gray-800">WEEK</th>
               <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">TOPIC</th>
-              <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">SUBTOPIC</th> {/* ✅ NEW COLUMN */}
-              <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">SPECIFIC OUTCOME</th>
-              <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">METHODS</th>
-              <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">AIDS</th>
+              <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">SPECIFIC OUTCOMES</th>
+              <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">TEACHING & LEARNING METHODS</th>
+              <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">TEACHING & LEARNING AIDS</th>
+              <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">REFERENCE BOOKS</th>
               <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">KNOWLEDGE</th>
               <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">SKILLS</th>
               <th className="p-2 border-l border-gray-300 text-left font-bold text-gray-800">VALUES</th>
@@ -212,7 +212,6 @@ export default function SchemesPage() {
           <tbody>
             {scheme.weeks.map((week: any, idx: number) => {
               const isAssessment = scheme.assessmentWeeks?.includes(week.week) || false;
-              
               return (
                 <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                   <td className="p-2 border border-gray-300 text-center font-bold">{week.week}</td>
@@ -223,9 +222,6 @@ export default function SchemesPage() {
                         {i < week.topics.length - 1 && <hr className="my-1 border-gray-200" />}
                       </div>
                     ))}
-                  </td>
-                  <td className="p-2 border border-gray-300 text-xs">
-                    {scheme.subtopic || '-'} {/* ✅ DISPLAY SUBTOPIC */}
                   </td>
                   <td className="p-2 border border-gray-300 text-xs">
                     {week.topics && week.topics.map((t: any, i: number) => (
@@ -240,6 +236,11 @@ export default function SchemesPage() {
                   <td className="p-2 border border-gray-300 text-xs">
                     {week.topics && week.topics.map((t: any, i: number) => (
                       <div key={i}>{t.aids || '-'}</div>
+                    ))}
+                  </td>
+                  <td className="p-2 border border-gray-300 text-xs">
+                    {week.topics && week.topics.map((t: any, i: number) => (
+                      <div key={i}>{t.references || '-'}</div>
                     ))}
                   </td>
                   <td className="p-2 border border-gray-300 text-xs">
@@ -266,7 +267,7 @@ export default function SchemesPage() {
     );
   };
 
-  // Render saved schemes list
+  // ============ RENDER SAVED SCHEMES LIST ============
   const renderSavedSchemes = () => {
     if (savedSchemes.length === 0) {
       return (
@@ -290,7 +291,7 @@ export default function SchemesPage() {
                   {scheme.grade} · {scheme.term} · {scheme.year}
                 </p>
                 <p className="text-sm text-gray-500 mt-1">
-                  Subtopic: {scheme.subtopic || 'None'} {/* ✅ DISPLAY SUBTOPIC */}
+                  Subtopic: {scheme.subtopic || 'None'}
                 </p>
                 <p className="text-sm text-gray-500">
                   Assessment Weeks: {scheme.assessmentWeeks?.join(', ') || 'None'}
@@ -310,10 +311,11 @@ export default function SchemesPage() {
     );
   };
 
-  // Main render
+  // ============ MAIN RENDER ============
   return (
     <div className="min-h-screen bg-white p-6">
       <div className="max-w-7xl mx-auto">
+        {/* Header */}
         <header className="mb-8 border-b-2 border-gray-300 pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -330,12 +332,14 @@ export default function SchemesPage() {
           </div>
         </header>
 
+        {/* Loading State */}
         {isLoading && (
           <div className="text-center py-12">
             <p className="text-gray-500">Loading schemes...</p>
           </div>
         )}
 
+        {/* Saved Schemes */}
         {!isLoading && !generatedScheme && (
           <>
             <h2 className="text-xl font-semibold text-gray-800 mb-4">Saved Schemes</h2>
@@ -347,6 +351,7 @@ export default function SchemesPage() {
           </>
         )}
 
+        {/* Generated Scheme View */}
         {generatedScheme && (
           <div>
             <div className="flex items-center justify-between mb-6">
@@ -402,6 +407,7 @@ export default function SchemesPage() {
           </div>
         )}
 
+        {/* Generation Form */}
         {!generatedScheme && !isLoading && (
           <div className="max-w-4xl bg-white border border-gray-300 rounded-lg p-6 mt-4">
             {error && (
@@ -436,7 +442,6 @@ export default function SchemesPage() {
               </div>
             </div>
 
-            {/* ✅ NEW SUBTOPIC FIELD */}
             <div className="mt-4">
               <label className="block text-sm font-medium text-gray-700">Subtopic</label>
               <input
@@ -474,6 +479,7 @@ export default function SchemesPage() {
               </div>
             </div>
 
+            {/* Week Topics */}
             <div className="mt-6 border-t border-gray-200 pt-4">
               <h3 className="text-lg font-semibold text-gray-800 mb-3">Week Topics</h3>
               <p className="text-sm text-gray-500 mb-3">
@@ -520,6 +526,7 @@ export default function SchemesPage() {
               </div>
             </div>
 
+            {/* Assessment Weeks */}
             <div className="mt-6 border-t border-gray-200 pt-4">
               <h3 className="text-lg font-semibold text-gray-800 mb-3">Select Assessment Weeks</h3>
               <p className="text-sm text-gray-500 mb-3">
