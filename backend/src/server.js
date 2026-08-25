@@ -133,6 +133,51 @@ app.get('/', (req, res) => {
   res.json({ message: 'MyToolbox API is running' });
 });
 
+// ============ JSON PARSING HELPER ============
+
+function safeParseJSON(content) {
+  try {
+    // Remove markdown code blocks
+    let cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
+    
+    // Try to find JSON object
+    let jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleaned = jsonMatch[0];
+    }
+    
+    // Fix common JSON issues
+    cleaned = cleaned.replace(/,\s*([}\]])/g, '$1');
+    cleaned = cleaned.replace(/'/g, '"');
+    cleaned = cleaned.replace(/\\n/g, ' ');
+    cleaned = cleaned.replace(/\\r/g, ' ');
+    cleaned = cleaned.replace(/\\t/g, ' ');
+    
+    // Remove trailing commas
+    cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
+    
+    // Handle incomplete JSON - count brackets and add missing ones
+    let openBraces = (cleaned.match(/\{/g) || []).length;
+    let closeBraces = (cleaned.match(/\}/g) || []).length;
+    let openBrackets = (cleaned.match(/\[/g) || []).length;
+    let closeBrackets = (cleaned.match(/\]/g) || []).length;
+    
+    while (closeBraces < openBraces) {
+      cleaned += '}';
+      closeBraces++;
+    }
+    while (closeBrackets < openBrackets) {
+      cleaned += ']';
+      closeBrackets++;
+    }
+    
+    return JSON.parse(cleaned);
+  } catch (error) {
+    console.log('⚠️ JSON parse failed, using fallback');
+    return null;
+  }
+}
+
 // ============ AUTH ROUTES ============
 
 app.post('/api/auth/register', async (req, res) => {
@@ -226,7 +271,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE (UPDATED - USING YOUR WORKING PROMPT) ============
+// ============ LESSON GENERATION ROUTE ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
@@ -259,7 +304,6 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
     let useFallback = false;
 
     try {
-      // ============ YOUR EXACT WORKING PROMPT ============
       const prompt = `
 You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
 
@@ -356,7 +400,6 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
         max_tokens: 4096
       });
 
-      // Parse the response
       let content = response.choices[0].message.content;
       content = content.replace(/```json/g, '').replace(/```/g, '').trim();
       
@@ -367,7 +410,6 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
       
       aiContent = JSON.parse(content);
       
-      // Ensure all required fields exist
       aiContent.title = aiContent.title || topic;
       aiContent.grade = aiContent.grade || grade;
       aiContent.subject = aiContent.subject || subject;
@@ -395,7 +437,6 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
       useFallback = true;
     }
 
-    // ============ FALLBACK ============
     if (useFallback || !aiContent) {
       console.log('📝 Using fallback lesson');
       aiContent = {
@@ -443,7 +484,6 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
       };
     }
 
-    // ============ SAVE TO DATABASE ============
     const lesson = await prisma.lesson.create({
       data: {
         userId: req.userId,
@@ -811,7 +851,6 @@ app.get('/api/schemes/mine', authenticate, async (req, res) => {
 
 // ============ PAYMENT ROUTES ============
 
-// Initiate a payment
 app.post('/api/payments/initiate', authenticate, async (req, res) => {
   try {
     const { amount, phoneNumber, plan } = req.body;
@@ -820,7 +859,6 @@ app.post('/api/payments/initiate', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Amount and phone number are required' });
     }
 
-    // Validate phone number format (Zambian)
     const cleanNumber = phoneNumber.replace(/\s/g, '');
     if (!cleanNumber.match(/^260[0-9]{9}$/)) {
       return res.status(400).json({ error: 'Invalid phone number format. Use 260XXXXXXXXX' });
@@ -834,13 +872,9 @@ app.post('/api/payments/initiate', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Generate a unique reference
     const referenceId = `TX-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-
-    // Determine callback URL
     const callbackUrl = `${process.env.BACKEND_URL || 'https://mytoolbox-production.up.railway.app'}/api/payments/webhook`;
 
-    // Create collection request
     const payment = await lipilaService.createCollection({
       referenceId,
       amount: parseFloat(amount),
@@ -849,7 +883,6 @@ app.post('/api/payments/initiate', authenticate, async (req, res) => {
       callbackUrl,
     });
 
-    // Save payment record
     const paymentRecord = await prisma.payment.create({
       data: {
         userId: req.userId,
@@ -862,7 +895,7 @@ app.post('/api/payments/initiate', authenticate, async (req, res) => {
         status: 'pending',
         externalId: payment.id || null,
         plan: plan || 'PRO',
-        expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes expiry
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
       }
     });
 
@@ -882,7 +915,6 @@ app.post('/api/payments/initiate', authenticate, async (req, res) => {
   }
 });
 
-// Webhook for payment confirmation (called by Lipila)
 app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   try {
     const payload = req.body;
@@ -890,7 +922,6 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), asy
 
     const { referenceId, status, amount, accountNumber, transactionId } = payload;
 
-    // Find the payment record
     const payment = await prisma.payment.findUnique({
       where: { referenceId: referenceId },
       include: { user: true },
@@ -901,13 +932,11 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), asy
       return res.status(404).json({ error: 'Payment not found' });
     }
 
-    // Don't process if already completed
     if (payment.status === 'completed') {
       console.log('⏭️ Payment already completed:', referenceId);
       return res.status(200).json({ message: 'Already processed' });
     }
 
-    // Update payment status
     const isSuccessful = status === 'completed' || status === 'successful';
     const isFailed = status === 'failed' || status === 'cancelled';
 
@@ -918,7 +947,6 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), asy
       updatedStatus = 'failed';
     }
 
-    // Update payment record
     await prisma.payment.update({
       where: { referenceId: referenceId },
       data: {
@@ -928,7 +956,6 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), asy
       }
     });
 
-    // If payment successful, upgrade user
     if (isSuccessful && payment.user) {
       const plan = payment.plan || 'PRO';
       await prisma.user.update({
@@ -937,7 +964,7 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), asy
           role: plan,
           schemesLimit: plan === 'PRO' ? 100 : 3,
           lessonsLimit: plan === 'PRO' ? 1000 : 5,
-          subscriptionEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+          subscriptionEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         }
       });
       console.log(`✅ User ${payment.user.email} upgraded to ${plan}`);
@@ -951,7 +978,6 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), asy
   }
 });
 
-// Check payment status
 app.get('/api/payments/:referenceId/status', authenticate, async (req, res) => {
   try {
     const { referenceId } = req.params;
@@ -964,12 +990,10 @@ app.get('/api/payments/:referenceId/status', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Payment not found' });
     }
 
-    // Verify ownership
     if (payment.userId !== req.userId) {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    // Get fresh status from Lipila
     const status = await lipilaService.getTransactionStatus(referenceId);
 
     res.json({
@@ -986,7 +1010,6 @@ app.get('/api/payments/:referenceId/status', authenticate, async (req, res) => {
   }
 });
 
-// Get user's payment history
 app.get('/api/payments/history', authenticate, async (req, res) => {
   try {
     const payments = await prisma.payment.findMany({
