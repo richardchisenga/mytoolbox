@@ -1,53 +1,3 @@
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-// ✅ Define the Plan enum
-enum Plan {
-  FREE
-  PRO
-  SCHOOL
-  ADMIN
-}
-
-model User {
-  id              String    @id @default(cuid())
-  fullName        String
-  email           String    @unique
-  passwordHash    String
-  school          String
-  province        String
-  district        String
-  grades          String[]
-  subjects        String[]
-  
-  // ✅ Use the Plan enum correctly
-  role            Plan      @default(FREE)   // 'FREE', 'PRO', 'SCHOOL'
-  
-  // Usage tracking
-  lessonsUsed     Int       @default(0)
-  lessonsLimit    Int       @default(5)      // Free: 5 per month
-  schemesUsed     Int       @default(0)
-  schemesLimit    Int       @default(3)      // Free: 3 per term
-  
-  // Subscription
-  subscriptionEndsAt DateTime?
-  lastResetAt     DateTime  @default(now())
-  lastActive      DateTime  @default(now())
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  lessons         Lesson[]
-  schemes         Scheme[]
-  payments        Payment[]
-  passwordResetTokens PasswordResetToken[]
-}
-
 model Lesson {
   id              String    @id @default(cuid())
   userId          String
@@ -55,7 +5,7 @@ model Lesson {
   grade           String
   subject         String
   topic           String
-  // ✅ subtopic REMOVED - matches database
+  subtopic        String?   // ✅ Added back
   title           String?
   classSize       Int       @default(40)
   duration        String    @default("40 min")
@@ -93,56 +43,4 @@ model Lesson {
   provinceContext String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-}
-
-model Scheme {
-  id              String    @id @default(cuid())
-  userId          String
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  school          String
-  grade           String
-  subject         String
-  term            String
-  year            String    @default("2026")
-  totalWeeks      Int       @default(13)
-  assessmentWeeks Int[]
-  testTopics      Json
-  weekTopics      Json?
-  weeks           Json
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-}
-
-model Payment {
-  id           String    @id @default(cuid())
-  userId       String
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  referenceId  String    @unique
-  transactionId String   @unique
-  amount       Float
-  currency     String    @default("ZMW")
-  
-  // ✅ Use Plan enum here too
-  plan         Plan      @default(PRO)
-  
-  provider     String    @default("lipila")
-  phoneNumber  String?
-  status       String    @default("pending") // pending, completed, failed
-  externalId   String?
-  completedAt  DateTime?
-  expiresAt    DateTime?
-  createdAt    DateTime  @default(now())
-}
-
-model PasswordResetToken {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash String   @unique
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime @default(now())
-
-  @@index([userId])
-  @@index([expiresAt])
 }
