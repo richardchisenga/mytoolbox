@@ -1,4 +1,4 @@
-// src/server.js - Complete application with DeepSeek AI integration and Lipila payments
+// src/server.js - Complete application with DeepSeek AI integration, Lipila payments, and Export routes
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -137,6 +137,8 @@ app.get('/', (req, res) => {
 
 function safeParseJSON(content) {
   try {
+    if (!content) return null;
+    
     // Remove markdown code blocks
     let cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
     
@@ -155,6 +157,9 @@ function safeParseJSON(content) {
     
     // Remove trailing commas
     cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
+    
+    // Fix unquoted property names
+    cleaned = cleaned.replace(/(\{|\,)\s*([a-zA-Z0-9_]+)\s*:/g, '$1"$2":');
     
     // Handle incomplete JSON - count brackets and add missing ones
     let openBraces = (cleaned.match(/\{/g) || []).length;
@@ -397,7 +402,8 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
           { role: "user", content: prompt }
         ],
         temperature: 0.5,
-        max_tokens: 4096
+        max_tokens: 4096,
+        response_format: { type: "json_object" }
       });
 
       let content = response.choices[0].message.content;
@@ -558,7 +564,7 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
   }
 });
 
-// ============ SCHEME OF WORK GENERATION ROUTE ============
+// ============ SCHEME OF WORK GENERATION ROUTE (UPDATED) ============
 
 app.post('/api/schemes/generate', authenticate, async (req, res) => {
   try {
@@ -586,6 +592,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       });
     }
 
+    const assessmentWeeksList = assessmentWeeks || [3, 6, 9, 12];
     let customTopicsString = '';
     const customTopicsMap = weekTopics || {};
     Object.keys(customTopicsMap).forEach(week => {
@@ -597,15 +604,13 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
     console.log('📝 Custom topics:', customTopicsString || 'None provided');
     console.log('📝 Subtopic:', subtopic || 'None provided');
 
-    const assessmentWeeksString = assessmentWeeks ? assessmentWeeks.join(', ') : '3, 6, 9, 12';
-
     const prompt = `
 You are an expert curriculum planner for Zambian schools. Create a detailed Scheme of Work for Grade ${grade} ${subject} for ${term || 'Term 1'}.
 
 The user has specified these topics:
 ${customTopicsString || 'Generate appropriate topics for all weeks.'}
 
-Assessment weeks are: ${assessmentWeeksString}
+Assessment weeks are: ${assessmentWeeksList.join(', ')}
 
 ⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this detailed structure:
 
@@ -628,7 +633,7 @@ Assessment weeks are: ${assessmentWeeksString}
       "assessment": "Assessment for this week (can be null for non-assessment weeks)"
     }
   ],
-  "assessmentWeeks": [3, 6, 9, 12],
+  "assessmentWeeks": [${assessmentWeeksList.join(', ')}],
   "testTopics": ["Mid-term test", "End of term test"]
 }
 
@@ -651,7 +656,8 @@ Assessment weeks are: ${assessmentWeeksString}
         { role: "user", content: prompt }
       ],
       temperature: 0.5,
-      max_tokens: 3000
+      max_tokens: 3000,
+      response_format: { type: "json_object" }
     });
 
     let aiContent = safeParseJSON(response.choices[0].message.content);
@@ -688,7 +694,7 @@ Assessment weeks are: ${assessmentWeeksString}
       teacherName: user.fullName || '',
       subtopic: subtopic || '',
       weeks: weeks,
-      assessmentWeeks: aiContent.assessmentWeeks || assessmentWeeks || [3, 6, 9, 12],
+      assessmentWeeks: aiContent.assessmentWeeks || assessmentWeeksList,
       testTopics: aiContent.testTopics || testTopics || [`Mid-term test on ${subject}`, `End of term test on ${subject}`],
       createdAt: new Date().toISOString()
     };
@@ -790,6 +796,229 @@ function generateFallbackScheme(grade, subject, term, user, customTopics = {}) {
     testTopics: [`Mid-term test on ${subject}`, `End of term test on ${subject}`]
   };
 }
+
+// ============ SCHEME EXPORT ROUTES ============
+
+// Export Scheme as PDF
+app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const scheme = await prisma.scheme.findUnique({
+      where: { id: id },
+    });
+
+    if (!scheme) {
+      return res.status(404).json({ error: 'Scheme not found' });
+    }
+
+    if (scheme.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Generate HTML for PDF
+    let html = `
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Scheme of Work</title>
+        <style>
+          body { font-family: Arial, sans-serif; font-size: 12pt; margin: 40px; }
+          h1 { text-align: center; font-size: 18pt; }
+          h2 { text-align: center; font-size: 16pt; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 10pt; }
+          th { background-color: #e0e0e0; font-weight: bold; border: 1px solid #000; padding: 6px; }
+          td { border: 1px solid #000; padding: 6px; vertical-align: top; }
+          .footer { text-align: center; margin-top: 30px; font-size: 10pt; }
+        </style>
+      </head>
+      <body>
+        <h1>MINISTRY OF EDUCATION</h1>
+        <h2>SCHEME OF WORK</h2>
+        <p style="text-align: center;"><strong>School:</strong> ${scheme.school || 'School Name'}</p>
+        <p style="text-align: center;"><strong>Subject:</strong> ${scheme.subject}</p>
+        <p style="text-align: center;"><strong>Grade:</strong> ${scheme.grade}</p>
+        <p style="text-align: center;"><strong>Term:</strong> ${scheme.term}</p>
+        <p style="text-align: center;"><strong>Year:</strong> ${scheme.year}</p>
+        <p style="text-align: center;"><strong>Assessment Weeks:</strong> ${scheme.assessmentWeeks?.join(', ') || 'None'}</p>
+        <hr>
+        <table>
+          <thead>
+            <tr>
+              <th>WEEK</th>
+              <th>TOPIC</th>
+              <th>SPECIFIC OUTCOME</th>
+              <th>METHODS</th>
+              <th>AIDS</th>
+              <th>REFERENCES</th>
+              <th>KNOWLEDGE</th>
+              <th>SKILLS</th>
+              <th>VALUES</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    scheme.weeks.forEach(week => {
+      const topics = week.topics || [];
+      const topicText = topics.map(t => t.topic || '').join('; ');
+      const outcomeText = topics.map(t => t.specificOutcome || '').join('; ');
+      const methodsText = topics.map(t => t.methods || '').join('; ');
+      const aidsText = topics.map(t => t.aids || '').join('; ');
+      const refsText = topics.map(t => t.references || '').join('; ');
+      const knowledgeText = topics.map(t => t.knowledge || '').join('; ');
+      const skillsText = topics.map(t => t.skills || '').join('; ');
+      const valuesText = topics.map(t => t.values || '').join('; ');
+
+      html += `
+        <tr>
+          <td style="text-align: center;">${week.week}</td>
+          <td>${topicText || '-'}</td>
+          <td>${outcomeText || '-'}</td>
+          <td>${methodsText || '-'}</td>
+          <td>${aidsText || '-'}</td>
+          <td>${refsText || '-'}</td>
+          <td>${knowledgeText || '-'}</td>
+          <td>${skillsText || '-'}</td>
+          <td>${valuesText || '-'}</td>
+        </tr>
+      `;
+    });
+
+    html += `
+          </tbody>
+        </table>
+        <div class="footer">
+          <p>© 2026 mytoolbox - Made for teachers in Zambia</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    res.setHeader('Content-Type', 'text/html');
+    res.setHeader('Content-Disposition', `attachment; filename="scheme_${scheme.id}.html"`);
+    res.send(html);
+
+  } catch (error) {
+    console.error('❌ PDF export error:', error);
+    res.status(500).json({ error: 'Failed to export scheme as PDF' });
+  }
+});
+
+// Export Scheme as Word (DOC)
+app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const scheme = await prisma.scheme.findUnique({
+      where: { id: id },
+    });
+
+    if (!scheme) {
+      return res.status(404).json({ error: 'Scheme not found' });
+    }
+
+    if (scheme.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    let html = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' 
+            xmlns:w='urn:schemas-microsoft-com:office:word' 
+            xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset="utf-8">
+        <title>Scheme of Work</title>
+        <!--[if gte mso 9]>
+        <xml>
+          <w:WordDocument>
+            <w:View>Print</w:View>
+            <w:Zoom>100</w:Zoom>
+          </w:WordDocument>
+        </xml>
+        <![endif]-->
+        <style>
+          body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; margin: 40px; }
+          h1 { text-align: center; font-size: 18pt; }
+          h2 { text-align: center; font-size: 16pt; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th { background-color: #e0e0e0; font-weight: bold; border: 1px solid #000; padding: 6px; }
+          td { border: 1px solid #000; padding: 6px; vertical-align: top; }
+          .footer { text-align: center; margin-top: 30px; font-size: 10pt; }
+        </style>
+      </head>
+      <body>
+        <h1>MINISTRY OF EDUCATION</h1>
+        <h2>SCHEME OF WORK</h2>
+        <p style="text-align: center;"><strong>School:</strong> ${scheme.school || 'School Name'}</p>
+        <p style="text-align: center;"><strong>Subject:</strong> ${scheme.subject}</p>
+        <p style="text-align: center;"><strong>Grade:</strong> ${scheme.grade}</p>
+        <p style="text-align: center;"><strong>Term:</strong> ${scheme.term}</p>
+        <p style="text-align: center;"><strong>Year:</strong> ${scheme.year}</p>
+        <p style="text-align: center;"><strong>Assessment Weeks:</strong> ${scheme.assessmentWeeks?.join(', ') || 'None'}</p>
+        <hr>
+        <table>
+          <thead>
+            <tr>
+              <th>WEEK</th>
+              <th>TOPIC</th>
+              <th>SPECIFIC OUTCOME</th>
+              <th>METHODS</th>
+              <th>AIDS</th>
+              <th>REFERENCES</th>
+              <th>KNOWLEDGE</th>
+              <th>SKILLS</th>
+              <th>VALUES</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    scheme.weeks.forEach(week => {
+      const topics = week.topics || [];
+      const topicText = topics.map(t => t.topic || '').join('; ');
+      const outcomeText = topics.map(t => t.specificOutcome || '').join('; ');
+      const methodsText = topics.map(t => t.methods || '').join('; ');
+      const aidsText = topics.map(t => t.aids || '').join('; ');
+      const refsText = topics.map(t => t.references || '').join('; ');
+      const knowledgeText = topics.map(t => t.knowledge || '').join('; ');
+      const skillsText = topics.map(t => t.skills || '').join('; ');
+      const valuesText = topics.map(t => t.values || '').join('; ');
+
+      html += `
+        <tr>
+          <td style="text-align: center;">${week.week}</td>
+          <td>${topicText || '-'}</td>
+          <td>${outcomeText || '-'}</td>
+          <td>${methodsText || '-'}</td>
+          <td>${aidsText || '-'}</td>
+          <td>${refsText || '-'}</td>
+          <td>${knowledgeText || '-'}</td>
+          <td>${skillsText || '-'}</td>
+          <td>${valuesText || '-'}</td>
+        </tr>
+      `;
+    });
+
+    html += `
+          </tbody>
+        </table>
+        <div class="footer">
+          <p>© 2026 mytoolbox - Made for teachers in Zambia</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    res.setHeader('Content-Type', 'application/msword');
+    res.setHeader('Content-Disposition', `attachment; filename="scheme_${scheme.id}.doc"`);
+    res.send(html);
+
+  } catch (error) {
+    console.error('❌ Word export error:', error);
+    res.status(500).json({ error: 'Failed to export scheme as Word' });
+  }
+});
 
 // ============ GET ROUTES ============
 
@@ -1031,6 +1260,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Auth routes available at /api/auth/*`);
   console.log(`✅ Lesson generation available at /api/lessons/generate`);
   console.log(`✅ Scheme generation available at /api/schemes/generate`);
+  console.log(`✅ Scheme export available at /api/schemes/export/:id/:format`);
   console.log(`✅ Get lessons at /api/lessons`);
   console.log(`✅ Get schemes at /api/schemes`);
   console.log(`✅ Get lessons (alias) at /api/lessons/mine`);
