@@ -1,4 +1,4 @@
-// src/server.js - Complete application with DeepSeek AI integration, Lipila payments, Notes, Assessments, and Export routes
+// src/server.js - Complete application with DeepSeek AI integration, Lipila payments, Notes, Assessments, Admin routes, and Export routes
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -217,14 +217,12 @@ async function generateDeepSeekJSON(messages, options = {}) {
         throw new Error('DeepSeek returned empty content');
       }
 
-      // Try to parse the content as JSON
       let parsed = null;
       try {
         parsed = JSON.parse(content.trim());
       } catch (parseError) {
         console.warn('⚠️ Direct JSON.parse failed, trying to clean...');
         
-        // Clean the content
         let cleaned = content
           .trim()
           .replace(/^```json\s*/i, '')
@@ -232,7 +230,6 @@ async function generateDeepSeekJSON(messages, options = {}) {
           .replace(/\s*```$/i, '')
           .trim();
         
-        // Find the JSON object
         const firstBrace = cleaned.indexOf('{');
         const lastBrace = cleaned.lastIndexOf('}');
         
@@ -647,7 +644,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE (WITH IMPROVED DEEPSEEK) ============
+// ============ LESSON GENERATION ROUTE ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
@@ -680,7 +677,6 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
     let useFallback = false;
 
     try {
-      // ============ IMPROVED PROMPT WITH EXAMPLES ============
       const prompt = `
 Topic: "${topic}"
 Grade: "${grade}"
@@ -689,7 +685,7 @@ Curriculum: "${curriculumType.toUpperCase()}"
 
 Please generate a ${curriculumType.toUpperCase()} lesson plan for this topic.
 
-EXAMPLE OUTPUT FORMAT:
+Return ONLY valid JSON in this exact format:
 {
   "title": "${topic}",
   "grade": "${grade}",
@@ -715,60 +711,21 @@ EXAMPLE OUTPUT FORMAT:
   "materials": ["Manila paper", "Markers", "Charts", "Worksheet", "Real objects"],
   "expectedStandard": "Topic concepts classified correctly",
   "lessonProgression": [
-    {
-      "stage": "INTRODUCTION",
-      "time": "5 min",
-      "teacherRole": "Ask: 'What do you know about this topic?'",
-      "learnerRole": "Listen, participate, give examples",
-      "assessmentCriteria": "Observation of participation"
-    },
-    {
-      "stage": "LESSON DEVELOPMENT",
-      "time": "10 min",
-      "teacherRole": "Explain key concepts and demonstrate",
-      "learnerRole": "Take notes, ask questions, discuss",
-      "assessmentCriteria": "Correct understanding of concepts"
-    },
-    {
-      "stage": "ACTIVITY 1",
-      "time": "11 min",
-      "teacherRole": "Guide group work and provide materials",
-      "learnerRole": "Work in groups, complete tasks",
-      "assessmentCriteria": "Group collaboration and task completion"
-    },
-    {
-      "stage": "ACTIVITY 2",
-      "time": "16 min",
-      "teacherRole": "Facilitate presentations and consolidate",
-      "learnerRole": "Present findings and correct own work",
-      "assessmentCriteria": "Accurate presentation"
-    },
-    {
-      "stage": "EXERCISE",
-      "time": "20 min",
-      "teacherRole": "Give assessment and monitor",
-      "learnerRole": "Complete assessment individually",
-      "assessmentCriteria": "Correct responses"
-    },
-    {
-      "stage": "CONCLUSION",
-      "time": "10 min",
-      "teacherRole": "Summarize key points",
-      "learnerRole": "Share what they learned",
-      "assessmentCriteria": "Verbal explanation"
-    }
+    {"stage": "INTRODUCTION", "time": "5 min", "teacherRole": "Ask: 'What do you know about this topic?'", "learnerRole": "Listen, participate, give examples", "assessmentCriteria": "Observation of participation"},
+    {"stage": "LESSON DEVELOPMENT", "time": "10 min", "teacherRole": "Explain key concepts and demonstrate", "learnerRole": "Take notes, ask questions, discuss", "assessmentCriteria": "Correct understanding of concepts"},
+    {"stage": "ACTIVITY 1", "time": "11 min", "teacherRole": "Guide group work and provide materials", "learnerRole": "Work in groups, complete tasks", "assessmentCriteria": "Group collaboration and task completion"},
+    {"stage": "ACTIVITY 2", "time": "16 min", "teacherRole": "Facilitate presentations and consolidate", "learnerRole": "Present findings and correct own work", "assessmentCriteria": "Accurate presentation"},
+    {"stage": "EXERCISE", "time": "20 min", "teacherRole": "Give assessment and monitor", "learnerRole": "Complete assessment individually", "assessmentCriteria": "Correct responses"},
+    {"stage": "CONCLUSION", "time": "10 min", "teacherRole": "Summarize key points", "learnerRole": "Share what they learned", "assessmentCriteria": "Verbal explanation"}
   ],
   "homework": "Research and list local examples of ${topic}",
   "lessonEvaluation": "Lesson was successful, key competences were acquired",
   "teacherEvaluation": "Space for teacher's reflections"
 }
-
-Return ONLY valid JSON in this exact format.
 `;
 
       console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson with DeepSeek...`);
 
-      // ============ USE IMPROVED DEEPSEEK GENERATOR ============
       const messages = [
         {
           role: "system",
@@ -792,7 +749,6 @@ Return ONLY the JSON object, no other text.
         temperature: 0.1
       });
       
-      // Merge with fallback to ensure all fields exist
       const fallback = generateFallbackLesson(topic, grade, subject, classSize, curriculumType, user);
       aiContent = { ...fallback, ...aiContent };
 
@@ -882,7 +838,7 @@ Return ONLY the JSON object, no other text.
   }
 });
 
-// ============ SCHEME OF WORK GENERATION ROUTE (WITH IMPROVED DEEPSEEK) ============
+// ============ SCHEME OF WORK GENERATION ROUTE ============
 
 app.post('/api/schemes/generate', authenticate, async (req, res) => {
   try {
@@ -921,7 +877,6 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
     let useFallback = false;
     
     try {
-      // Build custom topics string
       let customTopicsString = '';
       Object.keys(customTopics).forEach(week => {
         if (customTopics[week]) {
@@ -929,7 +884,6 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
         }
       });
 
-      // ============ IMPROVED SCHEME PROMPT WITH EXAMPLES ============
       const prompt = `
 Grade: "${grade}"
 Subject: "${subject}"
@@ -937,9 +891,7 @@ Term: "${term || 'Term 1'}"
 ${customTopicsString ? `User topics:\n${customTopicsString}` : 'Generate appropriate topics for all weeks.'}
 Assessment weeks: ${assessmentWeeksList.join(', ')}
 
-Please generate a Scheme of Work for this subject.
-
-EXAMPLE OUTPUT FORMAT:
+Return ONLY valid JSON with this structure:
 {
   "weeks": [
     {
@@ -957,37 +909,13 @@ EXAMPLE OUTPUT FORMAT:
         }
       ],
       "assessment": null
-    },
-    {
-      "week": 2,
-      "topics": [
-        {
-          "topic": "Another topic",
-          "specificOutcome": "What learners should achieve",
-          "methods": "Teaching methods",
-          "aids": "Teaching aids",
-          "references": "Reference books",
-          "knowledge": "Knowledge gained",
-          "skills": "Skills developed",
-          "values": "Values adopted"
-        }
-      ],
-      "assessment": null
     }
   ],
   "assessmentWeeks": [3, 6, 9, 12],
   "testTopics": ["Mid-term test", "End of term test"]
 }
-
-🔴 RULES:
-- For weeks where the user specified a topic, use that EXACT topic.
-- For assessment weeks, the topic should be "Assessment".
-- Each week can have 1-3 topics.
-- Keep content concise and curriculum-aligned.
-- Return ONLY the JSON object, no other text.
 `;
 
-      // ============ USE IMPROVED DEEPSEEK GENERATOR ============
       const messages = [
         {
           role: "system",
@@ -1038,7 +966,6 @@ Return ONLY the JSON object, no other text.
       assessment: week.assessment || null
     }));
 
-    // Use subtopics if provided
     if (subtopicsList.length > 0) {
       let weekIndex = 0;
       for (let i = 0; i < weeks.length; i++) {
@@ -1538,68 +1465,12 @@ app.delete('/api/assessments/:id', authenticate, async (req, res) => {
   }
 });
 
-// ============ GET ROUTES ============
-
-app.get('/api/lessons', authenticate, async (req, res) => {
-  try {
-    const lessons = await prisma.lesson.findMany({
-      where: { userId: req.userId },
-      orderBy: { createdAt: 'desc' },
-      take: 20
-    });
-    res.json(lessons);
-  } catch (error) {
-    console.error('Error fetching lessons:', error);
-    res.status(500).json({ error: 'Failed to fetch lessons' });
-  }
-});
-
-app.get('/api/lessons/mine', authenticate, async (req, res) => {
-  try {
-    const lessons = await prisma.lesson.findMany({
-      where: { userId: req.userId },
-      orderBy: { createdAt: 'desc' },
-      take: 20
-    });
-    res.json(lessons);
-  } catch (error) {
-    console.error('Error fetching lessons:', error);
-    res.status(500).json({ error: 'Failed to fetch lessons' });
-  }
-});
-
-app.get('/api/schemes', authenticate, async (req, res) => {
-  try {
-    const schemes = await prisma.scheme.findMany({
-      where: { userId: req.userId },
-      orderBy: { createdAt: 'desc' },
-      take: 10
-    });
-    res.json(schemes);
-  } catch (error) {
-    console.error('Error fetching schemes:', error);
-    res.status(500).json({ error: 'Failed to fetch schemes' });
-  }
-});
-
-app.get('/api/schemes/mine', authenticate, async (req, res) => {
-  try {
-    const schemes = await prisma.scheme.findMany({
-      where: { userId: req.userId },
-      orderBy: { createdAt: 'desc' },
-      take: 10
-    });
-    res.json(schemes);
-  } catch (error) {
-    console.error('Error fetching schemes:', error);
-    res.status(500).json({ error: 'Failed to fetch schemes' });
-  }
-});
-
 // ============ PAYMENT ROUTES ============
 
 app.post('/api/payments/initiate', authenticate, async (req, res) => {
   try {
+    console.log('📥 Payment request body:', req.body);
+    
     const { amount, phoneNumber, plan } = req.body;
 
     if (!amount || !phoneNumber) {
@@ -1771,6 +1642,261 @@ app.get('/api/payments/history', authenticate, async (req, res) => {
   }
 });
 
+// ============ ADMIN ROUTES ============
+
+// Check if user is admin middleware
+const isAdmin = async (req, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      select: { role: true }
+    });
+    
+    if (!user || user.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    next();
+  } catch (error) {
+    console.error('Admin check error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// Get admin dashboard stats
+app.get('/api/admin/stats', authenticate, isAdmin, async (req, res) => {
+  try {
+    const [
+      totalUsers,
+      totalLessons,
+      totalSchemes,
+      totalPayments,
+      recentUsers
+    ] = await Promise.all([
+      prisma.user.count(),
+      prisma.lesson.count(),
+      prisma.scheme.count(),
+      prisma.payment.count(),
+      prisma.user.findMany({
+        take: 10,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          school: true,
+          role: true,
+          createdAt: true
+        }
+      })
+    ]);
+
+    res.json({
+      stats: {
+        totalUsers,
+        totalLessons,
+        totalSchemes,
+        totalPayments
+      },
+      recentUsers
+    });
+  } catch (error) {
+    console.error('Admin stats error:', error);
+    res.status(500).json({ error: 'Failed to fetch admin stats' });
+  }
+});
+
+// Get all users (admin only)
+app.get('/api/admin/users', authenticate, isAdmin, async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        school: true,
+        province: true,
+        district: true,
+        role: true,
+        lessonsUsed: true,
+        lessonsLimit: true,
+        schemesUsed: true,
+        schemesLimit: true,
+        createdAt: true,
+        subscriptionEndsAt: true
+      }
+    });
+    res.json(users);
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Update user role (admin only)
+app.put('/api/admin/users/:id/role', authenticate, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    if (!['FREE', 'PRO', 'SCHOOL', 'ADMIN'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role. Must be FREE, PRO, SCHOOL, or ADMIN' });
+    }
+
+    // Prevent removing last admin
+    if (role !== 'ADMIN') {
+      const adminCount = await prisma.user.count({
+        where: { role: 'ADMIN' }
+      });
+      const userToUpdate = await prisma.user.findUnique({
+        where: { id },
+        select: { role: true }
+      });
+      
+      if (adminCount <= 1 && userToUpdate?.role === 'ADMIN' && role !== 'ADMIN') {
+        return res.status(400).json({ error: 'Cannot remove the last admin' });
+      }
+    }
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: { role },
+      select: { id: true, fullName: true, email: true, role: true }
+    });
+
+    res.json(user);
+  } catch (error) {
+    console.error('Error updating user role:', error);
+    res.status(500).json({ error: 'Failed to update user role' });
+  }
+});
+
+// Get all lessons (admin only)
+app.get('/api/admin/lessons', authenticate, isAdmin, async (req, res) => {
+  try {
+    const lessons = await prisma.lesson.findMany({
+      take: 50,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            email: true,
+            school: true
+          }
+        }
+      }
+    });
+    res.json(lessons);
+  } catch (error) {
+    console.error('Error fetching lessons:', error);
+    res.status(500).json({ error: 'Failed to fetch lessons' });
+  }
+});
+
+// Get all schemes (admin only)
+app.get('/api/admin/schemes', authenticate, isAdmin, async (req, res) => {
+  try {
+    const schemes = await prisma.scheme.findMany({
+      take: 50,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            email: true,
+            school: true
+          }
+        }
+      }
+    });
+    res.json(schemes);
+  } catch (error) {
+    console.error('Error fetching schemes:', error);
+    res.status(500).json({ error: 'Failed to fetch schemes' });
+  }
+});
+
+// Get all payments (admin only)
+app.get('/api/admin/payments', authenticate, isAdmin, async (req, res) => {
+  try {
+    const payments = await prisma.payment.findMany({
+      take: 50,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            email: true
+          }
+        }
+      }
+    });
+    res.json(payments);
+  } catch (error) {
+    console.error('Error fetching payments:', error);
+    res.status(500).json({ error: 'Failed to fetch payments' });
+  }
+});
+
+// ============ GET ROUTES ============
+
+app.get('/api/lessons', authenticate, async (req, res) => {
+  try {
+    const lessons = await prisma.lesson.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+    res.json(lessons);
+  } catch (error) {
+    console.error('Error fetching lessons:', error);
+    res.status(500).json({ error: 'Failed to fetch lessons' });
+  }
+});
+
+app.get('/api/lessons/mine', authenticate, async (req, res) => {
+  try {
+    const lessons = await prisma.lesson.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+    res.json(lessons);
+  } catch (error) {
+    console.error('Error fetching lessons:', error);
+    res.status(500).json({ error: 'Failed to fetch lessons' });
+  }
+});
+
+app.get('/api/schemes', authenticate, async (req, res) => {
+  try {
+    const schemes = await prisma.scheme.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 10
+    });
+    res.json(schemes);
+  } catch (error) {
+    console.error('Error fetching schemes:', error);
+    res.status(500).json({ error: 'Failed to fetch schemes' });
+  }
+});
+
+app.get('/api/schemes/mine', authenticate, async (req, res) => {
+  try {
+    const schemes = await prisma.scheme.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 10
+    });
+    res.json(schemes);
+  } catch (error) {
+    console.error('Error fetching schemes:', error);
+    res.status(500).json({ error: 'Failed to fetch schemes' });
+  }
+});
+
 // ============ START SERVER ============
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server running on port ${PORT}`);
@@ -1781,11 +1907,12 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Scheme export available at /api/schemes/export/:id/:format`);
   console.log(`✅ Notes routes available at /api/notes`);
   console.log(`✅ Assessments routes available at /api/assessments`);
+  console.log(`✅ Payment routes available at /api/payments/*`);
+  console.log(`✅ Admin routes available at /api/admin/*`);
   console.log(`✅ Get lessons at /api/lessons`);
   console.log(`✅ Get schemes at /api/schemes`);
   console.log(`✅ Get lessons (alias) at /api/lessons/mine`);
   console.log(`✅ Get schemes (alias) at /api/schemes/mine`);
-  console.log(`✅ Payment routes available at /api/payments/*`);
   console.log(`✅ DeepSeek AI integration enabled`);
   console.log(`✅ Lipila payment integration enabled`);
   console.log(`✅ CORS enabled for Vercel and Render frontend`);
