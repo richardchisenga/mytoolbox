@@ -11,6 +11,9 @@ export default function PricingPage() {
   const [paymentError, setPaymentError] = useState("");
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [selectedPlan, setSelectedPlan] = useState<string>("");
+  const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -42,7 +45,14 @@ export default function PricingPage() {
     fetchUser();
   }, [router]);
 
-  const handleUpgrade = async (plan: string, phoneNumber: string) => {
+  const handleUpgrade = async (plan: string) => {
+    // Validate phone number
+    const cleanNumber = phoneNumber.replace(/\s/g, '');
+    if (!cleanNumber.match(/^260[0-9]{9}$/)) {
+      setPaymentError("Please enter a valid Zambian phone number (e.g., 260977123456)");
+      return;
+    }
+
     setLoading(true);
     setPaymentError("");
     setPaymentSuccess(false);
@@ -50,6 +60,10 @@ export default function PricingPage() {
 
     try {
       const token = localStorage.getItem("token");
+      
+      // Set amount based on plan
+      const planAmount = plan === "school" ? 500 : 150;
+
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/payments/initiate`,
         {
@@ -60,7 +74,8 @@ export default function PricingPage() {
           },
           body: JSON.stringify({
             plan: plan,
-            phoneNumber: phoneNumber,
+            phoneNumber: cleanNumber,
+            amount: planAmount,
           }),
         }
       );
@@ -73,14 +88,8 @@ export default function PricingPage() {
 
       setStatusMessage("⏳ Payment initiated... Waiting for confirmation...");
 
-      if (data.mockMode) {
-        setStatusMessage("🧪 Mock Mode: Auto-completing in 5 seconds...");
-        // Mock mode - poll status
-        pollPaymentStatus(data.transactionId);
-      } else {
-        setStatusMessage("📱 Please complete the payment on your phone.");
-        // Real mode - poll status
-        pollPaymentStatus(data.transactionId);
+      if (data.payment?.referenceId) {
+        pollPaymentStatus(data.payment.referenceId);
       }
 
     } catch (error: any) {
@@ -90,7 +99,7 @@ export default function PricingPage() {
     }
   };
 
-  const pollPaymentStatus = async (transactionId: string) => {
+  const pollPaymentStatus = async (referenceId: string) => {
     const token = localStorage.getItem("token");
     const maxAttempts = 30; // 30 * 3 seconds = 90 seconds
     let attempts = 0;
@@ -100,7 +109,7 @@ export default function PricingPage() {
     const checkStatus = setInterval(async () => {
       try {
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/payments/status/${transactionId}`,
+          `${process.env.NEXT_PUBLIC_API_URL}/api/payments/${referenceId}/status`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -110,14 +119,16 @@ export default function PricingPage() {
           const data = await response.json();
           console.log("Payment status:", data);
 
-          if (data.status === "completed") {
+          if (data.payment?.status === "completed") {
             clearInterval(checkStatus);
             setPaymentSuccess(true);
             setStatusMessage("✅ Payment successful! You've been upgraded to Pro!");
+            setLoading(false);
+            setShowModal(false);
             setTimeout(() => {
               router.push("/dashboard");
             }, 2000);
-          } else if (data.status === "failed") {
+          } else if (data.payment?.status === "failed") {
             clearInterval(checkStatus);
             setPaymentError("Payment failed. Please try again.");
             setStatusMessage("");
@@ -138,11 +149,26 @@ export default function PricingPage() {
     }, 3000); // Check every 3 seconds
   };
 
+  const openPaymentModal = (plan: string) => {
+    setSelectedPlan(plan);
+    setPhoneNumber("");
+    setPaymentError("");
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setPhoneNumber("");
+    setPaymentError("");
+  };
+
   const getRemainingLessons = () => {
     if (!user) return 0;
     if (user.role === "PRO" || user.role === "SCHOOL") return "♾️ Unlimited";
     return (user.lessonsLimit || 5) - (user.lessonsUsed || 0);
   };
+
+  const isProOrSchool = user?.role === "PRO" || user?.role === "SCHOOL";
 
   return (
     <div className="min-h-screen bg-cream p-8">
@@ -177,7 +203,7 @@ export default function PricingPage() {
           </div>
         )}
 
-        {paymentError && (
+        {paymentError && !showModal && (
           <div className="max-w-2xl mx-auto mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
             ❌ {paymentError}
           </div>
@@ -203,7 +229,7 @@ export default function PricingPage() {
               <li className="flex items-center gap-2 text-gray-400">❌ Assessment weeks</li>
               <li className="flex items-center gap-2 text-gray-400">❌ Priority support</li>
             </ul>
-            {user?.role === "FREE" || user?.role === null ? (
+            {user?.role === "FREE" || !user?.role ? (
               <button
                 className="mt-4 w-full py-2 border border-gray-300 rounded-md text-gray-500 cursor-default"
                 disabled
@@ -236,7 +262,7 @@ export default function PricingPage() {
               <li className="flex items-center gap-2">✅ Assessment weeks</li>
               <li className="flex items-center gap-2">✅ Priority support</li>
             </ul>
-            {user?.role === "PRO" || user?.role === "SCHOOL" ? (
+            {isProOrSchool ? (
               <button
                 className="mt-4 w-full bg-green-500 text-white py-2 rounded-md cursor-default"
                 disabled
@@ -244,33 +270,17 @@ export default function PricingPage() {
                 ✅ Active
               </button>
             ) : (
-              <div>
-                <input
-                  type="tel"
-                  id="phone-pro"
-                  placeholder="260XXXXXXXXX"
-                  className="w-full p-2 border border-gray-300 rounded-md text-sm"
-                  pattern="260[0-9]{9}"
-                />
-                <button
-                  onClick={() => {
-                    const phone = (document.getElementById("phone-pro") as HTMLInputElement)?.value;
-                    if (!phone || phone.length < 10) {
-                      alert("Please enter a valid phone number (260XXXXXXXXX)");
-                      return;
-                    }
-                    handleUpgrade("pro", phone);
-                  }}
-                  disabled={loading}
-                  className="mt-2 w-full bg-yellow-500 text-black py-2 rounded-md hover:bg-yellow-400 disabled:opacity-50"
-                >
-                  {loading ? "Processing..." : "🚀 Upgrade to Pro"}
-                </button>
-                <p className="text-xs text-gray-400 mt-1 text-center">
-                  🔒 Secure mobile-money payment via Lipila
-                </p>
-              </div>
+              <button
+                onClick={() => openPaymentModal("pro")}
+                disabled={loading}
+                className="mt-4 w-full bg-yellow-500 text-black py-2 rounded-md hover:bg-yellow-400 disabled:opacity-50 transition-colors"
+              >
+                {loading ? "Processing..." : "🚀 Upgrade to Pro"}
+              </button>
             )}
+            <p className="text-xs text-gray-400 mt-2 text-center">
+              🔒 Secure mobile-money payment via Lipila
+            </p>
           </div>
 
           {/* School Plan */}
@@ -293,33 +303,17 @@ export default function PricingPage() {
                 ✅ Active
               </button>
             ) : (
-              <div>
-                <input
-                  type="tel"
-                  id="phone-school"
-                  placeholder="260XXXXXXXXX"
-                  className="w-full p-2 border border-gray-300 rounded-md text-sm"
-                  pattern="260[0-9]{9}"
-                />
-                <button
-                  onClick={() => {
-                    const phone = (document.getElementById("phone-school") as HTMLInputElement)?.value;
-                    if (!phone || phone.length < 10) {
-                      alert("Please enter a valid phone number (260XXXXXXXXX)");
-                      return;
-                    }
-                    handleUpgrade("school", phone);
-                  }}
-                  disabled={loading}
-                  className="mt-2 w-full bg-primary text-white py-2 rounded-md hover:bg-primary/80 disabled:opacity-50"
-                >
-                  {loading ? "Processing..." : "🏫 Contact Sales"}
-                </button>
-                <p className="text-xs text-gray-400 mt-1 text-center">
-                  🔒 Secure mobile-money payment via Lipila
-                </p>
-              </div>
+              <button
+                onClick={() => openPaymentModal("school")}
+                disabled={loading}
+                className="mt-4 w-full bg-primary text-white py-2 rounded-md hover:bg-primary/80 disabled:opacity-50 transition-colors"
+              >
+                {loading ? "Processing..." : "🏫 Contact Sales"}
+              </button>
             )}
+            <p className="text-xs text-gray-400 mt-2 text-center">
+              🔒 Secure mobile-money payment via Lipila
+            </p>
           </div>
         </div>
 
@@ -329,6 +323,75 @@ export default function PricingPage() {
           </Link>
         </div>
       </div>
+
+      {/* Payment Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">
+                {selectedPlan === "school" ? "School" : "Pro"} Plan
+              </h2>
+              <button
+                onClick={closeModal}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-gray-600 mb-4">
+              Amount: <span className="font-bold">ZMW {selectedPlan === "school" ? "500" : "150"}</span> per month
+            </p>
+
+            {paymentError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+                ❌ {paymentError}
+              </div>
+            )}
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Phone Number (Lipila)
+              </label>
+              <input
+                type="tel"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="e.g., 260977123456"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-secondary"
+                disabled={loading}
+                required
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Enter your mobile money phone number (Zambia only)
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={closeModal}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleUpgrade(selectedPlan)}
+                disabled={loading || !phoneNumber}
+                className="flex-1 bg-yellow-500 text-black px-4 py-2 rounded-md hover:bg-yellow-400 disabled:opacity-50 transition-colors"
+              >
+                {loading ? "Processing..." : "Pay Now"}
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-400 mt-3 text-center">
+              🔒 Your payment is secure and processed by Lipila
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
