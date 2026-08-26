@@ -1,4 +1,4 @@
-// src/server.js - Complete application with DeepSeek AI integration, Lipila payments, Notes, Assessments, and Export routes
+// src/server.js - Complete application with OpenAI ChatGPT API, Lipila payments, Notes, Assessments, and Export routes
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -14,10 +14,9 @@ const PORT = process.env.PORT || 3000;
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET;
 
-// ============ DEEPSEEK AI CLIENT ============
-const deepseek = new OpenAI({
-  apiKey: process.env.DEEPSEEK_API_KEY,
-  baseURL: "https://api.deepseek.com"
+// ============ OPENAI CHATGPT CLIENT ============
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
 });
 
 // ============ LIPILA PAYMENT SERVICE ============
@@ -133,11 +132,11 @@ app.get('/', (req, res) => {
   res.json({ message: 'MyToolbox API is running' });
 });
 
-// ============ ROBUST DEEPSEEK JSON PARSER ============
+// ============ ROBUST JSON PARSING HELPER ============
 
 function safeParseJSON(content) {
   if (!content || typeof content !== 'string') {
-    console.error('❌ DeepSeek returned empty or invalid content');
+    console.error('❌ API returned empty or invalid content');
     return null;
   }
 
@@ -159,7 +158,7 @@ function safeParseJSON(content) {
     const lastBrace = cleaned.lastIndexOf('}');
 
     if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
-      console.error('❌ No JSON object found in DeepSeek response');
+      console.error('❌ No JSON object found in response');
       console.error('Response:', content.substring(0, 1000));
       return null;
     }
@@ -180,20 +179,20 @@ function safeParseJSON(content) {
   }
 }
 
-// ============ DEEPSEEK GENERATE FUNCTION ============
+// ============ OPENAI GENERATE FUNCTION ============
 
-async function generateDeepSeekJSON(messages, options = {}) {
+async function generateOpenAIJSON(messages, options = {}) {
   const maxAttempts = 2;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      console.log(`🤖 DeepSeek attempt ${attempt}/${maxAttempts}`);
+      console.log(`🤖 OpenAI attempt ${attempt}/${maxAttempts}`);
 
-      const response = await deepseek.chat.completions.create({
-        model: 'deepseek-chat',
+      const response = await openai.chat.completions.create({
+        model: options.model || 'gpt-4o',
         messages,
-        temperature: 0.2,
-        max_tokens: options.max_tokens || 4000,
+        temperature: options.temperature || 0.5,
+        max_tokens: options.max_tokens || 4096,
         response_format: {
           type: 'json_object'
         }
@@ -202,31 +201,31 @@ async function generateDeepSeekJSON(messages, options = {}) {
       const choice = response?.choices?.[0];
 
       if (!choice) {
-        throw new Error('DeepSeek returned no choices');
+        throw new Error('OpenAI returned no choices');
       }
 
       console.log(`🤖 Finish reason: ${choice.finish_reason || 'unknown'}`);
 
       if (choice.finish_reason === 'length') {
-        throw new Error('DeepSeek response was truncated');
+        throw new Error('OpenAI response was truncated');
       }
 
       const content = choice?.message?.content;
 
       if (!content) {
-        throw new Error('DeepSeek returned empty content');
+        throw new Error('OpenAI returned empty content');
       }
 
       const parsed = safeParseJSON(content);
 
       if (!parsed) {
-        throw new Error('DeepSeek returned invalid JSON');
+        throw new Error('OpenAI returned invalid JSON');
       }
 
       return parsed;
 
     } catch (error) {
-      console.error(`⚠️ DeepSeek attempt ${attempt} failed:`, error.message);
+      console.error(`⚠️ OpenAI attempt ${attempt} failed:`, error.message);
 
       if (attempt === maxAttempts) {
         throw error;
@@ -276,13 +275,13 @@ function generateFallbackLesson(topic, grade, subject, classSize, curriculumType
       lessonDevelopment: [
         {
           content: `Introduction to ${topic} and key concepts`,
-          teacherActivity: `Teacher writes the example on the board and explains the concept of ${topic}`,
+          teacherActivity: `Teacher writes the example on the board and explains the concept of ${topic} using real-world examples`,
           pupilActivity: "Learners to write the example in their exercise books and listen attentively",
           methods: "Teacher Exposition, Demonstration"
         },
         {
           content: `Main content and examples of ${topic}`,
-          teacherActivity: `Teacher solves ${topic} problems on the board and allows learners to ask questions`,
+          teacherActivity: `Teacher solves ${topic} problems on the board step-by-step and allows learners to ask questions`,
           pupilActivity: "Learners to listen attentively and volunteer learners to go and solve on the board",
           methods: "Question and answer, group discussion"
         },
@@ -620,7 +619,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE (WITH ROBUST DEEPSEEK) ============
+// ============ LESSON GENERATION ROUTE (WITH OPENAI) ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
@@ -657,9 +656,10 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       
       if (curriculumType === 'obc') {
         prompt = `
-You are an expert Zambian teacher creating an OBC lesson plan for ${grade} ${subject} on: "${topic}".
+You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
 
-Return ONLY valid JSON:
+⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this OBC structure:
+
 {
   "title": "${topic}",
   "grade": "${grade}",
@@ -672,27 +672,76 @@ Return ONLY valid JSON:
   "boys": ${boys},
   "girls": ${girls},
   "subtopic": "",
-  "references": ["Textbook", "Teacher's Guide"],
-  "teachingAids": ["Chalk board", "Chart"],
-  "rationale": "This lesson develops knowledge of ${topic}.",
-  "learningOutcomes": ["Define ${topic}", "Apply ${topic}", "Analyze ${topic}"],
-  "prerequisiteKnowledge": "Basic knowledge",
-  "lessonIntroduction": "Teacher revises previous lesson",
-  "lessonDevelopment": [
-    {"content": "Introduction", "teacherActivity": "Explain", "pupilActivity": "Listen", "methods": "Lecture"}
+  "references": [
+    "Progress in ${subject} Grade ${grade} pg 78",
+    "${subject} Grade ${grade} Textbook",
+    "Teacher's Guide"
   ],
-  "learnersEvaluation": ["Define ${topic}", "Give examples"],
-  "expectedAnswers": ["Correct definition", "Valid examples"],
-  "lessonConclusion": "Teacher concludes lesson",
-  "teacherEvaluation": "Lesson was successful"
+  "teachingAids": ["Learners book", "Chalk board", "Chart", "Diagrams"],
+  "rationale": "This lesson is on ${topic}. Teacher Exposition, Demonstration, Question and answer and group or class discussion methods will be used. This lesson will develop learners knowledge of ${topic}. The skill of identification and application of ${topic} methods. The value of logical thinking and accuracy in computing ${topic}.",
+  "learningOutcomes": [
+    "By the end of this lesson, learners should be able to:",
+    "Define ${topic}",
+    "Explain the concept of ${topic}",
+    "Apply ${topic} to solve problems",
+    "Analyze real-world applications of ${topic}"
+  ],
+  "prerequisiteKnowledge": "Learners have ideas about the topic being taught.",
+  "lessonIntroduction": "Teacher revises through the previous lesson",
+  "lessonDevelopment": [
+    {
+      "content": "Introduction to ${topic} and key concepts",
+      "teacherActivity": "Teacher writes the example on the board and explains the concept of ${topic}",
+      "pupilActivity": "Learners to write the example in their exercise books and listen attentively",
+      "methods": "Teacher Exposition, Demonstration"
+    },
+    {
+      "content": "Main content and examples of ${topic}",
+      "teacherActivity": "Teacher solves ${topic} problems on the board and allows learners to ask questions",
+      "pupilActivity": "Learners to listen attentively and volunteer learners to go and solve on the board",
+      "methods": "Question and answer, group discussion"
+    },
+    {
+      "content": "Practice problems on ${topic}",
+      "teacherActivity": "Teacher writes ${topic} exercise on the board and asks volunteer learners to go and solve",
+      "pupilActivity": "Learners to write the exercise in their exercise books and volunteer to solve on the board",
+      "methods": "Group work, individual practice"
+    },
+    {
+      "content": "Summary and conclusion of ${topic}",
+      "teacherActivity": "Teacher consolidates learners responses and writes the summary on the board",
+      "pupilActivity": "Learners to listen attentively and write the summary",
+      "methods": "Review and consolidation"
+    }
+  ],
+  "learnersEvaluation": [
+    "Define ${topic} in your own words",
+    "Give two examples of ${topic}",
+    "Solve a ${topic} problem: Determine the key features of ${topic}",
+    "Explain the importance of ${topic}"
+  ],
+  "expectedAnswers": [
+    "Correct definition of ${topic}",
+    "Two valid examples of ${topic}",
+    "Correct solution to the ${topic} problem",
+    "Clear explanation of the importance of ${topic}"
+  ],
+  "lessonConclusion": "Teacher concludes lesson by revising through the lesson with learners to help remedial learners",
+  "learnersEvaluationText": "Space for teacher's assessment of learner performance",
+  "teacherEvaluation": "The lesson was well delivered. The majority of the learners were able to grasp the concept and could work out problems involving ${topic}. Remedial work was given to those who had challenges."
 }
-Keep it SHORT. Valid JSON only.
+
+🔴 RULES:
+- Make content specific to ${grade} ${subject} on "${topic}".
+- Include realistic examples and practice problems.
+- Return ONLY the JSON object, no other text.
 `;
       } else {
         prompt = `
-You are an expert Zambian teacher creating a CBC lesson plan for ${grade} ${subject} on: "${topic}".
+You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
 
-Return ONLY valid JSON:
+⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this CBC structure:
+
 {
   "title": "${topic}",
   "grade": "${grade}",
@@ -708,29 +757,74 @@ Return ONLY valid JSON:
   "boys": ${boys},
   "girls": ${girls},
   "subtopic": "",
-  "generalCompetences": ["Critical thinking", "Communication", "Collaboration"],
-  "specificCompetence": "Understand ${topic}",
-  "lessonGoal": "By the end, learners will understand ${topic}",
-  "rationale": "${topic} is important for learners",
-  "priorKnowledge": "Basic knowledge",
-  "references": ["Textbook", "Teacher's Guide"],
-  "learningEnvironment": "Classroom",
-  "materials": ["Whiteboard", "Markers"],
-  "expectedStandard": "Demonstrate understanding",
+  "generalCompetences": ["Analytical thinking", "Collaboration", "Communication", "Critical thinking"],
+  "specificCompetence": "Classify and explain the types of ${topic}",
+  "lessonGoal": "By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}",
+  "rationale": "Understanding ${topic} is essential for learners to make informed decisions and develop critical thinking skills.",
+  "priorKnowledge": "Learners have basic knowledge of the topic from previous lessons",
+  "references": ["2026 Teaching Module", "Curriculum Guide", "${subject} Grade ${grade} Textbook"],
+  "learningEnvironment": "Classroom, laboratory, school garden",
+  "materials": ["Manila paper", "Markers", "Charts", "Worksheet", "Real objects"],
+  "expectedStandard": "Topic concepts classified correctly",
   "lessonProgression": [
-    {"stage": "INTRODUCTION", "time": "5 min", "teacherRole": "Introduce", "learnerRole": "Listen", "assessmentCriteria": "Participation"}
+    {
+      "stage": "INTRODUCTION",
+      "time": "5 min",
+      "teacherRole": "Ask: 'What do you know about this topic?'",
+      "learnerRole": "Listen, participate, give examples",
+      "assessmentCriteria": "Observation of participation"
+    },
+    {
+      "stage": "LESSON DEVELOPMENT",
+      "time": "10 min",
+      "teacherRole": "Explain key concepts and demonstrate",
+      "learnerRole": "Take notes, ask questions, discuss",
+      "assessmentCriteria": "Correct understanding of concepts"
+    },
+    {
+      "stage": "ACTIVITY 1",
+      "time": "11 min",
+      "teacherRole": "Guide group work and provide materials",
+      "learnerRole": "Work in groups, complete tasks",
+      "assessmentCriteria": "Group collaboration and task completion"
+    },
+    {
+      "stage": "ACTIVITY 2",
+      "time": "16 min",
+      "teacherRole": "Facilitate presentations and consolidate",
+      "learnerRole": "Present findings and correct own work",
+      "assessmentCriteria": "Accurate presentation"
+    },
+    {
+      "stage": "EXERCISE",
+      "time": "20 min",
+      "teacherRole": "Give assessment and monitor",
+      "learnerRole": "Complete assessment individually",
+      "assessmentCriteria": "Correct responses"
+    },
+    {
+      "stage": "CONCLUSION",
+      "time": "10 min",
+      "teacherRole": "Summarize key points",
+      "learnerRole": "Share what they learned",
+      "assessmentCriteria": "Verbal explanation"
+    }
   ],
-  "homework": "Research ${topic}",
-  "lessonEvaluation": "Successful",
-  "teacherEvaluation": "To be filled"
+  "homework": "Research and list local examples of ${topic}",
+  "lessonEvaluation": "Lesson was successful, key competences were acquired",
+  "teacherEvaluation": "Space for teacher's reflections"
 }
-Keep it SHORT. Valid JSON only.
+
+🔴 RULES:
+- Make content specific to ${grade} ${subject} on "${topic}".
+- Include realistic examples relevant to Zambian schools.
+- Return ONLY the JSON object, no other text.
 `;
       }
 
-      console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson...`);
+      console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson with OpenAI...`);
 
-      // ============ USE ROBUST DEEPSEEK GENERATOR ============
+      // ============ USE OPENAI JSON MODE ============
       const messages = [
         {
           role: "system",
@@ -751,16 +845,19 @@ The response must be a single JSON object.
         }
       ];
 
-      aiContent = await generateDeepSeekJSON(messages, { max_tokens: 1500 });
+      aiContent = await generateOpenAIJSON(messages, { 
+        max_tokens: 4096,
+        temperature: 0.5
+      });
       
       // Merge with fallback to ensure all fields exist
       const fallback = generateFallbackLesson(topic, grade, subject, classSize, curriculumType, user);
       aiContent = { ...fallback, ...aiContent };
 
-      console.log(`✅ ${curriculumType.toUpperCase()} lesson generated`);
+      console.log(`✅ ${curriculumType.toUpperCase()} lesson generated with OpenAI`);
 
     } catch (error) {
-      console.log('⚠️ DeepSeek error, using fallback:', error.message);
+      console.log('⚠️ OpenAI error, using fallback:', error.message);
       useFallback = true;
     }
 
@@ -843,7 +940,7 @@ The response must be a single JSON object.
   }
 });
 
-// ============ SCHEME OF WORK GENERATION ROUTE (WITH ROBUST DEEPSEEK) ============
+// ============ SCHEME OF WORK GENERATION ROUTE (WITH OPENAI) ============
 
 app.post('/api/schemes/generate', authenticate, async (req, res) => {
   try {
@@ -871,7 +968,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       });
     }
 
-    console.log('📝 Generating scheme...');
+    console.log('📝 Generating scheme with OpenAI...');
     
     const assessmentWeeksList = assessmentWeeks || [3, 6, 9, 12];
     const customTopics = weekTopics || {};
@@ -929,9 +1026,7 @@ Return ONLY valid JSON with this structure:
 - Return ONLY the JSON object, no other text.
 `;
 
-      console.log('📝 Generating scheme with DeepSeek...');
-
-      // ============ USE ROBUST DEEPSEEK GENERATOR ============
+      // ============ USE OPENAI JSON MODE ============
       const messages = [
         {
           role: "system",
@@ -952,12 +1047,15 @@ The response must be a single JSON object.
         }
       ];
 
-      aiContent = await generateDeepSeekJSON(messages, { max_tokens: 3000 });
+      aiContent = await generateOpenAIJSON(messages, { 
+        max_tokens: 3000,
+        temperature: 0.5
+      });
       
-      console.log('✅ DeepSeek generated scheme successfully');
+      console.log('✅ OpenAI generated scheme successfully');
 
     } catch (error) {
-      console.log('⚠️ DeepSeek error, using fallback:', error.message);
+      console.log('⚠️ OpenAI error, using fallback:', error.message);
       useFallback = true;
     }
     
@@ -1729,7 +1827,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Get lessons (alias) at /api/lessons/mine`);
   console.log(`✅ Get schemes (alias) at /api/schemes/mine`);
   console.log(`✅ Payment routes available at /api/payments/*`);
-  console.log(`✅ DeepSeek AI integration enabled`);
+  console.log(`✅ OpenAI ChatGPT API integration enabled`);
   console.log(`✅ Lipila payment integration enabled`);
   console.log(`✅ CORS enabled for Vercel and Render frontend`);
 });
