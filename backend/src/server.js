@@ -1,4 +1,4 @@
-// src/server.js - Complete application with DeepSeek AI integration, Lipila payments, Notes, and Assessments
+// src/server.js - Complete application with DeepSeek AI integration, Lipila payments, Notes, Assessments, and Export routes
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -139,16 +139,13 @@ function safeParseJSON(content) {
   try {
     if (!content) return null;
     
-    // Remove markdown code blocks
     let cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
     
-    // Try to find JSON object
     let jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       cleaned = jsonMatch[0];
     }
     
-    // Fix common JSON issues
     cleaned = cleaned.replace(/,\s*([}\]])/g, '$1');
     cleaned = cleaned.replace(/'/g, '"');
     cleaned = cleaned.replace(/\\n/g, ' ');
@@ -164,7 +161,6 @@ function safeParseJSON(content) {
     cleaned = cleaned.replace(/\}\s*"/g, '},"');
     cleaned = cleaned.replace(/"\s*\{/g, '",{');
     
-    // Handle incomplete JSON - count brackets and add missing ones
     let openBraces = (cleaned.match(/\{/g) || []).length;
     let closeBraces = (cleaned.match(/\}/g) || []).length;
     let openBrackets = (cleaned.match(/\[/g) || []).length;
@@ -322,123 +318,32 @@ function generateFallbackScheme(grade, subject, term, user, customTopics = {}) {
   
   const subjectTopics = {
     'Biology': [
-      'Cell Structure and Function',
-      'Genetics and Heredity',
-      'Ecology and Environment',
-      'Human Anatomy',
-      'Plant Physiology',
-      'Sense Organs and Locomotion',
-      'Reproduction',
-      'Nutrition',
-      'Transport Systems',
-      'Respiration',
-      'Excretion',
-      'Nervous System',
-      'Endocrine System',
-      'Immunity and Disease',
-      'Evolution'
+      'Cell Structure and Function', 'Genetics and Heredity', 'Ecology and Environment',
+      'Human Anatomy', 'Plant Physiology', 'Sense Organs and Locomotion',
+      'Reproduction', 'Nutrition', 'Transport Systems',
+      'Respiration', 'Excretion', 'Nervous System',
+      'Endocrine System', 'Immunity and Disease', 'Evolution'
     ],
     'Mathematics': [
-      'Algebra and Equations',
-      'Geometry and Trigonometry',
-      'Statistics and Probability',
-      'Calculus',
-      'Vectors and Matrices',
-      'Sets and Logic',
-      'Number Theory',
-      'Graphs and Functions',
-      'Sequences and Series',
-      'Differentiation',
-      'Integration',
-      'Complex Numbers',
-      'Linear Programming',
-      'Financial Mathematics',
-      'Mechanics'
+      'Algebra and Equations', 'Geometry and Trigonometry', 'Statistics and Probability',
+      'Calculus', 'Vectors and Matrices', 'Sets and Logic',
+      'Number Theory', 'Graphs and Functions', 'Sequences and Series',
+      'Differentiation', 'Integration', 'Complex Numbers',
+      'Linear Programming', 'Financial Mathematics', 'Mechanics'
     ],
     'Chemistry': [
-      'Atomic Structure',
-      'Chemical Bonding',
-      'Organic Chemistry',
-      'Acids and Bases',
-      'Periodic Table',
-      'Stoichiometry',
-      'Thermodynamics',
-      'Kinetics',
-      'Electrochemistry',
-      'Equilibrium',
-      'Chemical Reactions',
-      'States of Matter',
-      'Solutions',
-      'Environmental Chemistry',
-      'Biochemistry'
+      'Atomic Structure', 'Chemical Bonding', 'Organic Chemistry',
+      'Acids and Bases', 'Periodic Table', 'Stoichiometry',
+      'Thermodynamics', 'Kinetics', 'Electrochemistry',
+      'Equilibrium', 'Chemical Reactions', 'States of Matter',
+      'Solutions', 'Environmental Chemistry', 'Biochemistry'
     ],
     'Physics': [
-      'Mechanics',
-      'Thermodynamics',
-      'Waves and Sound',
-      'Electricity and Magnetism',
-      'Optics',
-      'Nuclear Physics',
-      'Kinematics',
-      'Dynamics',
-      'Gravitation',
-      'Quantum Physics',
-      'Astrophysics',
-      'Fluid Mechanics',
-      'Relativity',
-      'Electronics',
-      'Energy and Power'
-    ],
-    'English': [
-      'Grammar and Usage',
-      'Literature',
-      'Composition Writing',
-      'Vocabulary Development',
-      'Reading Comprehension',
-      'Speech and Drama',
-      'Poetry',
-      'Novel Studies',
-      'Essay Writing',
-      'Creative Writing',
-      'Journalism',
-      'Public Speaking',
-      'Debate',
-      'Media Studies',
-      'Communication Skills'
-    ],
-    'History': [
-      'Pre-Colonial History',
-      'Colonial Era',
-      'Independence Movements',
-      'Post-Colonial Development',
-      'World Wars',
-      'Ancient Civilizations',
-      'African History',
-      'Zambian History',
-      'Economic Development',
-      'Political Systems',
-      'Social Movements',
-      'Cultural Heritage',
-      'International Relations',
-      'Democracy',
-      'Human Rights'
-    ],
-    'Geography': [
-      'Physical Geography',
-      'Human Geography',
-      'Map Reading',
-      'Climate and Weather',
-      'Population Studies',
-      'Environmental Geography',
-      'Economic Geography',
-      'Settlement Geography',
-      'Transport and Trade',
-      'Development Geography',
-      'Geographical Information Systems',
-      'Natural Disasters',
-      'Conservation',
-      'Urbanization',
-      'Globalization'
+      'Mechanics', 'Thermodynamics', 'Waves and Sound',
+      'Electricity and Magnetism', 'Optics', 'Nuclear Physics',
+      'Kinematics', 'Dynamics', 'Gravitation',
+      'Quantum Physics', 'Astrophysics', 'Fluid Mechanics',
+      'Relativity', 'Electronics', 'Energy and Power'
     ]
   };
 
@@ -447,17 +352,7 @@ function generateFallbackScheme(grade, subject, term, user, customTopics = {}) {
     `Basic concepts of ${subject}`,
     `Advanced ${subject} topics`,
     `Practical applications of ${subject}`,
-    `Review and assessment of ${subject}`,
-    `Further studies in ${subject}`,
-    `Special topics in ${subject}`,
-    `Research in ${subject}`,
-    `Applied ${subject}`,
-    `Future directions in ${subject}`,
-    `Case studies in ${subject}`,
-    `Innovations in ${subject}`,
-    `Challenges in ${subject}`,
-    `Solutions in ${subject}`,
-    `Global perspectives on ${subject}`
+    `Review and assessment of ${subject}`
   ];
 
   const shuffledTopics = [...topicsList];
@@ -891,7 +786,7 @@ Keep it SHORT. Valid JSON only.
   }
 });
 
-// ============ SCHEME OF WORK GENERATION ROUTE ============
+// ============ SCHEME OF WORK GENERATION ROUTE (RELIABLE - NO DEEPSEEK) ============
 
 app.post('/api/schemes/generate', authenticate, async (req, res) => {
   try {
@@ -919,83 +814,174 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       });
     }
 
-    console.log('📝 Generating scheme...');
+    console.log('📝 Generating scheme (reliable mode)...');
     
     const assessmentWeeksList = assessmentWeeks || [3, 6, 9, 12];
     const customTopics = weekTopics || {};
     const totalWeeksCount = totalWeeks || 13;
     const subtopicsList = subtopic ? subtopic.split(',').map(s => s.trim()) : [];
     
-    let aiContent = null;
-    let useFallback = false;
+    const weeks = [];
     
-    try {
-      const prompt = `
-Create a Scheme of Work for ${grade} ${subject}. Return JSON:
-{
-  "weeks": [
-    {"week": 1, "topics": [{"topic": "Topic", "specificOutcome": "Outcome", "methods": "Methods", "aids": "Aids", "references": "References", "knowledge": "Knowledge", "skills": "Skills", "values": "Values"}], "assessment": null}
-  ],
-  "assessmentWeeks": [3, 6, 9, 12],
-  "testTopics": ["Mid-term", "End of term"]
-}
-Keep it SHORT. Valid JSON only.
-`;
-      
-      const response = await deepseek.chat.completions.create({
-        model: "deepseek-chat",
-        messages: [
-          { role: "system", content: "Return valid JSON only. Keep it short." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.3,
-        max_tokens: 1000,
-        response_format: { type: "json_object" }
-      });
-      
-      aiContent = safeParseJSON(response.choices[0].message.content);
-      
-      if (aiContent) {
-        console.log('✅ DeepSeek generated scheme successfully');
-      } else {
-        useFallback = true;
-      }
-    } catch (error) {
-      console.log('⚠️ DeepSeek error, using fallback');
-      useFallback = true;
-    }
-    
-    if (!aiContent || useFallback) {
-      console.log('📝 Using fallback scheme generator');
-      aiContent = generateFallbackScheme(grade, subject, term, user, customTopics);
-    }
-    
-    const weeks = aiContent.weeks.map(week => ({
-      week: week.week,
-      topics: week.topics.map(topic => ({
-        topic: topic.topic || '',
-        specificOutcome: topic.specificOutcome || '',
-        methods: topic.methods || '',
-        aids: topic.aids || '',
-        references: topic.references || '',
-        knowledge: topic.knowledge || '',
-        skills: topic.skills || '',
-        values: topic.values || ''
-      })),
-      assessment: week.assessment || null
-    }));
+    const subjectTopics = {
+      'Biology': [
+        'Cell Structure and Function', 'Genetics and Heredity', 'Ecology and Environment',
+        'Human Anatomy', 'Plant Physiology', 'Sense Organs and Locomotion',
+        'Reproduction', 'Nutrition', 'Transport Systems',
+        'Respiration', 'Excretion', 'Nervous System',
+        'Endocrine System', 'Immunity and Disease', 'Evolution'
+      ],
+      'Mathematics': [
+        'Algebra and Equations', 'Geometry and Trigonometry', 'Statistics and Probability',
+        'Calculus', 'Vectors and Matrices', 'Sets and Logic',
+        'Number Theory', 'Graphs and Functions', 'Sequences and Series',
+        'Differentiation', 'Integration', 'Complex Numbers',
+        'Linear Programming', 'Financial Mathematics', 'Mechanics'
+      ],
+      'Chemistry': [
+        'Atomic Structure', 'Chemical Bonding', 'Organic Chemistry',
+        'Acids and Bases', 'Periodic Table', 'Stoichiometry',
+        'Thermodynamics', 'Kinetics', 'Electrochemistry',
+        'Equilibrium', 'Chemical Reactions', 'States of Matter',
+        'Solutions', 'Environmental Chemistry', 'Biochemistry'
+      ],
+      'Physics': [
+        'Mechanics', 'Thermodynamics', 'Waves and Sound',
+        'Electricity and Magnetism', 'Optics', 'Nuclear Physics',
+        'Kinematics', 'Dynamics', 'Gravitation',
+        'Quantum Physics', 'Astrophysics', 'Fluid Mechanics',
+        'Relativity', 'Electronics', 'Energy and Power'
+      ]
+    };
 
-    if (subtopicsList.length > 0) {
-      let weekIndex = 0;
-      for (let i = 0; i < weeks.length; i++) {
-        if (!assessmentWeeksList.includes(weeks[i].week) && ![1, 5, 9].includes(weeks[i].week)) {
-          if (weekIndex < subtopicsList.length) {
-            weeks[i].topics[0].topic = subtopicsList[weekIndex];
-            weeks[i].topics[0].specificOutcome = `By the end of this lesson, learners will be able to understand and explain ${subtopicsList[weekIndex]}`;
-            weekIndex++;
-          }
+    const defaultTopics = subjectTopics[subject] || [
+      `Introduction to ${subject}`,
+      `Basic concepts of ${subject}`,
+      `Advanced ${subject} topics`,
+      `Practical applications of ${subject}`,
+      `Review and assessment of ${subject}`
+    ];
+
+    const shuffledTopics = [...defaultTopics];
+    for (let i = shuffledTopics.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffledTopics[i], shuffledTopics[j]] = [shuffledTopics[j], shuffledTopics[i]];
+    }
+
+    const extendedTopics = [...shuffledTopics];
+    while (extendedTopics.length < totalWeeksCount) {
+      extendedTopics.push(...defaultTopics);
+    }
+
+    const methodOptions = [
+      "Lecture, discussion, group work, question and answer",
+      "Experimentation, group work, question and answer",
+      "Demonstration, group work, think, pair and share",
+      "Experimentation, discussion, question and answer",
+      "Role play, group work, question and answer"
+    ];
+    
+    const aidsOptions = [
+      "Whiteboard, charts, textbooks, diagrams",
+      "Laboratory equipment, models, charts",
+      "Charts, diagrams, models, specimens",
+      "Multi-media, charts, textbooks",
+      "Field trips, specimens, cameras"
+    ];
+    
+    const valuesOptions = [
+      "Responsibility, teamwork, curiosity",
+      "Scientific inquiry, honesty, creativity",
+      "Respect, cooperation, critical thinking",
+      "Integrity, diligence, innovation",
+      "Accountability, empathy, resilience"
+    ];
+    
+    const skillsOptions = [
+      "Critical thinking, analysis, collaboration",
+      "Problem solving, research, presentation",
+      "Communication, creativity, teamwork",
+      "Leadership, innovation, adaptability",
+      "Self-study, collaboration, evaluation"
+    ];
+
+    let topicIndex = 0;
+    
+    for (let i = 1; i <= totalWeeksCount; i++) {
+      const weekNumber = i;
+      const customTopic = customTopics[weekNumber];
+      const isRevision = [1, 5, 9].includes(i);
+      const isAssessment = assessmentWeeksList.includes(i);
+      
+      let weekTopics = [];
+      
+      if (isRevision) {
+        weekTopics = [{
+          topic: 'REVISION WEEK',
+          specificOutcome: 'Correct their past misconceptions',
+          methods: 'Class discussion, Question and answer, Group work',
+          aids: 'Test papers, Revision notes',
+          references: 'Test papers, Marking keys',
+          knowledge: '',
+          skills: '',
+          values: ''
+        }];
+      } else if (isAssessment) {
+        weekTopics = [{
+          topic: 'ASSESSMENT',
+          specificOutcome: 'Demonstrate understanding of the topics covered',
+          methods: 'Test, Examination, Practical assessment',
+          aids: 'Examination papers, Answer sheets',
+          references: 'Teacher\'s guide, Marking scheme',
+          knowledge: '',
+          skills: '',
+          values: ''
+        }];
+      } else if (customTopic) {
+        weekTopics = [{
+          topic: customTopic,
+          specificOutcome: `By the end of this lesson, learners will be able to understand and apply knowledge of ${customTopic}`,
+          methods: "Lecture, discussion, group work, question and answer",
+          aids: "Whiteboard, charts, textbooks, diagrams",
+          references: "Textbook, Teacher's Guide",
+          knowledge: `Comprehensive knowledge of ${customTopic}`,
+          skills: "Critical thinking, analysis, collaboration",
+          values: "Responsibility, teamwork, curiosity"
+        }];
+      } else {
+        // Use subtopics if provided
+        let topicName;
+        if (subtopicsList.length > 0 && topicIndex < subtopicsList.length) {
+          topicName = subtopicsList[topicIndex];
+          topicIndex++;
+        } else {
+          // Use default topics
+          const defaultIndex = (i - 1) % extendedTopics.length;
+          topicName = extendedTopics[defaultIndex];
         }
+        
+        const methodIndex = (i - 1) % methodOptions.length;
+        const aidsIndex = (i - 1) % aidsOptions.length;
+        const skillsIndex = (i - 1) % skillsOptions.length;
+        const valuesIndex = (i - 1) % valuesOptions.length;
+        
+        weekTopics = [{
+          topic: topicName,
+          specificOutcome: `By the end of this lesson, learners will be able to understand and explain ${topicName}`,
+          methods: methodOptions[methodIndex],
+          aids: aidsOptions[aidsIndex],
+          references: `${subject} Grade ${grade} Textbook, Teacher's Guide`,
+          knowledge: `Comprehensive knowledge of ${topicName}`,
+          skills: skillsOptions[skillsIndex],
+          values: valuesOptions[valuesIndex]
+        }];
       }
+      
+      weeks.push({
+        week: i,
+        topics: weekTopics,
+        assessment: isAssessment ? `End of Week ${i} Assessment` : null
+      });
     }
 
     const generatedScheme = {
@@ -1053,6 +1039,7 @@ Keep it SHORT. Valid JSON only.
 
 // ============ SCHEME EXPORT ROUTES ============
 
+// Export Scheme as Word (DOC)
 app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1167,6 +1154,7 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
   }
 });
 
+// Export Scheme as PDF
 app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
