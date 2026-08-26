@@ -133,53 +133,107 @@ app.get('/', (req, res) => {
   res.json({ message: 'MyToolbox API is running' });
 });
 
-// ============ IMPROVED JSON PARSING HELPER ============
+// ============ ROBUST DEEPSEEK JSON PARSER ============
 
 function safeParseJSON(content) {
-  try {
-    if (!content) return null;
-    
-    let cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    let jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      cleaned = jsonMatch[0];
-    }
-    
-    cleaned = cleaned.replace(/,\s*([}\]])/g, '$1');
-    cleaned = cleaned.replace(/'/g, '"');
-    cleaned = cleaned.replace(/\\n/g, ' ');
-    cleaned = cleaned.replace(/\\r/g, ' ');
-    cleaned = cleaned.replace(/\\t/g, ' ');
-    cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
-    cleaned = cleaned.replace(/(\{|\,)\s*([a-zA-Z0-9_]+)\s*:/g, '$1"$2":');
-    
-    // Fix missing commas between array elements
-    cleaned = cleaned.replace(/\}\s*\{/g, '},{');
-    cleaned = cleaned.replace(/\]\s*\[/g, '],[');
-    cleaned = cleaned.replace(/"\s*"/g, '","');
-    cleaned = cleaned.replace(/\}\s*"/g, '},"');
-    cleaned = cleaned.replace(/"\s*\{/g, '",{');
-    
-    let openBraces = (cleaned.match(/\{/g) || []).length;
-    let closeBraces = (cleaned.match(/\}/g) || []).length;
-    let openBrackets = (cleaned.match(/\[/g) || []).length;
-    let closeBrackets = (cleaned.match(/\]/g) || []).length;
-    
-    while (closeBraces < openBraces) {
-      cleaned += '}';
-      closeBraces++;
-    }
-    while (closeBrackets < openBrackets) {
-      cleaned += ']';
-      closeBrackets++;
-    }
-    
-    return JSON.parse(cleaned);
-  } catch (error) {
-    console.log('⚠️ JSON parse failed:', error.message);
-    console.log('📝 Content preview:', content.substring(0, 300));
+  if (!content || typeof content !== 'string') {
+    console.error('❌ DeepSeek returned empty or invalid content');
     return null;
+  }
+
+  try {
+    return JSON.parse(content.trim());
+  } catch (firstError) {
+    console.warn('⚠️ Direct JSON.parse failed:', firstError.message);
+  }
+
+  try {
+    let cleaned = content
+      .trim()
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+
+    if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+      console.error('❌ No JSON object found in DeepSeek response');
+      console.error('Response:', content.substring(0, 1000));
+      return null;
+    }
+
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+
+    try {
+      return JSON.parse(cleaned);
+    } catch (secondError) {
+      console.warn('⚠️ Cleaned JSON.parse failed:', secondError.message);
+      console.error('Cleaned response:', cleaned.substring(0, 1500));
+      return null;
+    }
+
+  } catch (error) {
+    console.error('❌ JSON cleanup failed:', error.message);
+    return null;
+  }
+}
+
+// ============ DEEPSEEK GENERATE FUNCTION ============
+
+async function generateDeepSeekJSON(messages, options = {}) {
+  const maxAttempts = 2;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`🤖 DeepSeek attempt ${attempt}/${maxAttempts}`);
+
+      const response = await deepseek.chat.completions.create({
+        model: 'deepseek-chat',
+        messages,
+        temperature: 0.2,
+        max_tokens: options.max_tokens || 4000,
+        response_format: {
+          type: 'json_object'
+        }
+      });
+
+      const choice = response?.choices?.[0];
+
+      if (!choice) {
+        throw new Error('DeepSeek returned no choices');
+      }
+
+      console.log(`🤖 Finish reason: ${choice.finish_reason || 'unknown'}`);
+
+      if (choice.finish_reason === 'length') {
+        throw new Error('DeepSeek response was truncated');
+      }
+
+      const content = choice?.message?.content;
+
+      if (!content) {
+        throw new Error('DeepSeek returned empty content');
+      }
+
+      const parsed = safeParseJSON(content);
+
+      if (!parsed) {
+        throw new Error('DeepSeek returned invalid JSON');
+      }
+
+      return parsed;
+
+    } catch (error) {
+      console.error(`⚠️ DeepSeek attempt ${attempt} failed:`, error.message);
+
+      if (attempt === maxAttempts) {
+        throw error;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
   }
 }
 
@@ -566,7 +620,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE ============
+// ============ LESSON GENERATION ROUTE (WITH ROBUST DEEPSEEK) ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
@@ -676,34 +730,37 @@ Keep it SHORT. Valid JSON only.
 
       console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson...`);
 
-      const response = await deepseek.chat.completions.create({
-        model: "deepseek-chat",
-        messages: [
-          { role: "system", content: "Return valid JSON only. Keep it short." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.3,
-        max_tokens: 1500,
-        response_format: { type: "json_object" }
-      });
+      // ============ USE ROBUST DEEPSEEK GENERATOR ============
+      const messages = [
+        {
+          role: "system",
+          content: `
+You are an expert Zambian teacher.
 
-      let content = response.choices[0].message.content;
-      content = content.replace(/```json/g, '').replace(/```/g, '').trim();
+Return ONLY valid JSON.
+Do not use markdown.
+Do not use code fences.
+Do not add explanations before or after the JSON.
+
+The response must be a single JSON object.
+`
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ];
+
+      aiContent = await generateDeepSeekJSON(messages, { max_tokens: 1500 });
       
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        content = jsonMatch[0];
-      }
-      
-      aiContent = JSON.parse(content);
-      
+      // Merge with fallback to ensure all fields exist
       const fallback = generateFallbackLesson(topic, grade, subject, classSize, curriculumType, user);
       aiContent = { ...fallback, ...aiContent };
 
       console.log(`✅ ${curriculumType.toUpperCase()} lesson generated`);
 
     } catch (error) {
-      console.log('⚠️ Error, using fallback:', error.message);
+      console.log('⚠️ DeepSeek error, using fallback:', error.message);
       useFallback = true;
     }
 
@@ -786,7 +843,7 @@ Keep it SHORT. Valid JSON only.
   }
 });
 
-// ============ SCHEME OF WORK GENERATION ROUTE (RELIABLE - NO DEEPSEEK) ============
+// ============ SCHEME OF WORK GENERATION ROUTE (WITH ROBUST DEEPSEEK) ============
 
 app.post('/api/schemes/generate', authenticate, async (req, res) => {
   try {
@@ -814,174 +871,128 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       });
     }
 
-    console.log('📝 Generating scheme (reliable mode)...');
+    console.log('📝 Generating scheme...');
     
     const assessmentWeeksList = assessmentWeeks || [3, 6, 9, 12];
     const customTopics = weekTopics || {};
     const totalWeeksCount = totalWeeks || 13;
     const subtopicsList = subtopic ? subtopic.split(',').map(s => s.trim()) : [];
     
-    const weeks = [];
+    let aiContent = null;
+    let useFallback = false;
     
-    const subjectTopics = {
-      'Biology': [
-        'Cell Structure and Function', 'Genetics and Heredity', 'Ecology and Environment',
-        'Human Anatomy', 'Plant Physiology', 'Sense Organs and Locomotion',
-        'Reproduction', 'Nutrition', 'Transport Systems',
-        'Respiration', 'Excretion', 'Nervous System',
-        'Endocrine System', 'Immunity and Disease', 'Evolution'
-      ],
-      'Mathematics': [
-        'Algebra and Equations', 'Geometry and Trigonometry', 'Statistics and Probability',
-        'Calculus', 'Vectors and Matrices', 'Sets and Logic',
-        'Number Theory', 'Graphs and Functions', 'Sequences and Series',
-        'Differentiation', 'Integration', 'Complex Numbers',
-        'Linear Programming', 'Financial Mathematics', 'Mechanics'
-      ],
-      'Chemistry': [
-        'Atomic Structure', 'Chemical Bonding', 'Organic Chemistry',
-        'Acids and Bases', 'Periodic Table', 'Stoichiometry',
-        'Thermodynamics', 'Kinetics', 'Electrochemistry',
-        'Equilibrium', 'Chemical Reactions', 'States of Matter',
-        'Solutions', 'Environmental Chemistry', 'Biochemistry'
-      ],
-      'Physics': [
-        'Mechanics', 'Thermodynamics', 'Waves and Sound',
-        'Electricity and Magnetism', 'Optics', 'Nuclear Physics',
-        'Kinematics', 'Dynamics', 'Gravitation',
-        'Quantum Physics', 'Astrophysics', 'Fluid Mechanics',
-        'Relativity', 'Electronics', 'Energy and Power'
-      ]
-    };
-
-    const defaultTopics = subjectTopics[subject] || [
-      `Introduction to ${subject}`,
-      `Basic concepts of ${subject}`,
-      `Advanced ${subject} topics`,
-      `Practical applications of ${subject}`,
-      `Review and assessment of ${subject}`
-    ];
-
-    const shuffledTopics = [...defaultTopics];
-    for (let i = shuffledTopics.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffledTopics[i], shuffledTopics[j]] = [shuffledTopics[j], shuffledTopics[i]];
-    }
-
-    const extendedTopics = [...shuffledTopics];
-    while (extendedTopics.length < totalWeeksCount) {
-      extendedTopics.push(...defaultTopics);
-    }
-
-    const methodOptions = [
-      "Lecture, discussion, group work, question and answer",
-      "Experimentation, group work, question and answer",
-      "Demonstration, group work, think, pair and share",
-      "Experimentation, discussion, question and answer",
-      "Role play, group work, question and answer"
-    ];
-    
-    const aidsOptions = [
-      "Whiteboard, charts, textbooks, diagrams",
-      "Laboratory equipment, models, charts",
-      "Charts, diagrams, models, specimens",
-      "Multi-media, charts, textbooks",
-      "Field trips, specimens, cameras"
-    ];
-    
-    const valuesOptions = [
-      "Responsibility, teamwork, curiosity",
-      "Scientific inquiry, honesty, creativity",
-      "Respect, cooperation, critical thinking",
-      "Integrity, diligence, innovation",
-      "Accountability, empathy, resilience"
-    ];
-    
-    const skillsOptions = [
-      "Critical thinking, analysis, collaboration",
-      "Problem solving, research, presentation",
-      "Communication, creativity, teamwork",
-      "Leadership, innovation, adaptability",
-      "Self-study, collaboration, evaluation"
-    ];
-
-    let topicIndex = 0;
-    
-    for (let i = 1; i <= totalWeeksCount; i++) {
-      const weekNumber = i;
-      const customTopic = customTopics[weekNumber];
-      const isRevision = [1, 5, 9].includes(i);
-      const isAssessment = assessmentWeeksList.includes(i);
-      
-      let weekTopics = [];
-      
-      if (isRevision) {
-        weekTopics = [{
-          topic: 'REVISION WEEK',
-          specificOutcome: 'Correct their past misconceptions',
-          methods: 'Class discussion, Question and answer, Group work',
-          aids: 'Test papers, Revision notes',
-          references: 'Test papers, Marking keys',
-          knowledge: '',
-          skills: '',
-          values: ''
-        }];
-      } else if (isAssessment) {
-        weekTopics = [{
-          topic: 'ASSESSMENT',
-          specificOutcome: 'Demonstrate understanding of the topics covered',
-          methods: 'Test, Examination, Practical assessment',
-          aids: 'Examination papers, Answer sheets',
-          references: 'Teacher\'s guide, Marking scheme',
-          knowledge: '',
-          skills: '',
-          values: ''
-        }];
-      } else if (customTopic) {
-        weekTopics = [{
-          topic: customTopic,
-          specificOutcome: `By the end of this lesson, learners will be able to understand and apply knowledge of ${customTopic}`,
-          methods: "Lecture, discussion, group work, question and answer",
-          aids: "Whiteboard, charts, textbooks, diagrams",
-          references: "Textbook, Teacher's Guide",
-          knowledge: `Comprehensive knowledge of ${customTopic}`,
-          skills: "Critical thinking, analysis, collaboration",
-          values: "Responsibility, teamwork, curiosity"
-        }];
-      } else {
-        // Use subtopics if provided
-        let topicName;
-        if (subtopicsList.length > 0 && topicIndex < subtopicsList.length) {
-          topicName = subtopicsList[topicIndex];
-          topicIndex++;
-        } else {
-          // Use default topics
-          const defaultIndex = (i - 1) % extendedTopics.length;
-          topicName = extendedTopics[defaultIndex];
+    try {
+      // Build custom topics string
+      let customTopicsString = '';
+      Object.keys(customTopics).forEach(week => {
+        if (customTopics[week]) {
+          customTopicsString += `Week ${week}: ${customTopics[week]}\n`;
         }
-        
-        const methodIndex = (i - 1) % methodOptions.length;
-        const aidsIndex = (i - 1) % aidsOptions.length;
-        const skillsIndex = (i - 1) % skillsOptions.length;
-        const valuesIndex = (i - 1) % valuesOptions.length;
-        
-        weekTopics = [{
-          topic: topicName,
-          specificOutcome: `By the end of this lesson, learners will be able to understand and explain ${topicName}`,
-          methods: methodOptions[methodIndex],
-          aids: aidsOptions[aidsIndex],
-          references: `${subject} Grade ${grade} Textbook, Teacher's Guide`,
-          knowledge: `Comprehensive knowledge of ${topicName}`,
-          skills: skillsOptions[skillsIndex],
-          values: valuesOptions[valuesIndex]
-        }];
-      }
-      
-      weeks.push({
-        week: i,
-        topics: weekTopics,
-        assessment: isAssessment ? `End of Week ${i} Assessment` : null
       });
+
+      const prompt = `
+You are an expert curriculum planner for Zambian schools. Create a Scheme of Work for Grade ${grade} ${subject} for ${term || 'Term 1'}.
+
+${customTopicsString ? `The user has specified these topics:\n${customTopicsString}` : 'Generate appropriate topics for all weeks.'}
+
+Assessment weeks are: ${assessmentWeeksList.join(', ')}
+
+Return ONLY valid JSON with this structure:
+{
+  "weeks": [
+    {
+      "week": 1,
+      "topics": [
+        {
+          "topic": "Topic name",
+          "specificOutcome": "What learners should achieve",
+          "methods": "Teaching methods",
+          "aids": "Teaching aids",
+          "references": "Reference books",
+          "knowledge": "Knowledge gained",
+          "skills": "Skills developed",
+          "values": "Values adopted"
+        }
+      ],
+      "assessment": "Assessment for this week (null for non-assessment weeks)"
+    }
+  ],
+  "assessmentWeeks": [3, 6, 9, 12],
+  "testTopics": ["Mid-term test", "End of term test"]
+}
+
+🔴 RULES:
+- For weeks where the user specified a topic, use that EXACT topic.
+- For assessment weeks, the topic should be "Assessment".
+- Each week can have 1-3 topics.
+- Keep content concise and curriculum-aligned.
+- Return ONLY the JSON object, no other text.
+`;
+
+      console.log('📝 Generating scheme with DeepSeek...');
+
+      // ============ USE ROBUST DEEPSEEK GENERATOR ============
+      const messages = [
+        {
+          role: "system",
+          content: `
+You are an expert curriculum planner for Zambian schools.
+
+Return ONLY valid JSON.
+Do not use markdown.
+Do not use code fences.
+Do not add explanations before or after the JSON.
+
+The response must be a single JSON object.
+`
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ];
+
+      aiContent = await generateDeepSeekJSON(messages, { max_tokens: 3000 });
+      
+      console.log('✅ DeepSeek generated scheme successfully');
+
+    } catch (error) {
+      console.log('⚠️ DeepSeek error, using fallback:', error.message);
+      useFallback = true;
+    }
+    
+    if (!aiContent || useFallback) {
+      console.log('📝 Using fallback scheme generator');
+      aiContent = generateFallbackScheme(grade, subject, term, user, customTopics);
+    }
+    
+    const weeks = aiContent.weeks.map(week => ({
+      week: week.week,
+      topics: week.topics.map(topic => ({
+        topic: topic.topic || '',
+        specificOutcome: topic.specificOutcome || '',
+        methods: topic.methods || '',
+        aids: topic.aids || '',
+        references: topic.references || '',
+        knowledge: topic.knowledge || '',
+        skills: topic.skills || '',
+        values: topic.values || ''
+      })),
+      assessment: week.assessment || null
+    }));
+
+    // Use subtopics if provided
+    if (subtopicsList.length > 0) {
+      let weekIndex = 0;
+      for (let i = 0; i < weeks.length; i++) {
+        if (!assessmentWeeksList.includes(weeks[i].week) && ![1, 5, 9].includes(weeks[i].week)) {
+          if (weekIndex < subtopicsList.length) {
+            weeks[i].topics[0].topic = subtopicsList[weekIndex];
+            weeks[i].topics[0].specificOutcome = `By the end of this lesson, learners will be able to understand and explain ${subtopicsList[weekIndex]}`;
+            weekIndex++;
+          }
+        }
+      }
     }
 
     const generatedScheme = {
@@ -1039,7 +1050,6 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
 
 // ============ SCHEME EXPORT ROUTES ============
 
-// Export Scheme as Word (DOC)
 app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1154,7 +1164,6 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
   }
 });
 
-// Export Scheme as PDF
 app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1261,7 +1270,6 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
 
 // ============ NOTES ROUTES ============
 
-// Get all notes for the current user
 app.get('/api/notes', authenticate, async (req, res) => {
   try {
     const notes = await prisma.note.findMany({
@@ -1276,7 +1284,6 @@ app.get('/api/notes', authenticate, async (req, res) => {
   }
 });
 
-// Get a specific note by ID
 app.get('/api/notes/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1296,7 +1303,6 @@ app.get('/api/notes/:id', authenticate, async (req, res) => {
   }
 });
 
-// Create a new note
 app.post('/api/notes', authenticate, async (req, res) => {
   try {
     const { title, content, subject, grade } = req.body;
@@ -1319,7 +1325,6 @@ app.post('/api/notes', authenticate, async (req, res) => {
   }
 });
 
-// Update a note
 app.put('/api/notes/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1344,7 +1349,6 @@ app.put('/api/notes/:id', authenticate, async (req, res) => {
   }
 });
 
-// Delete a note
 app.delete('/api/notes/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1369,7 +1373,6 @@ app.delete('/api/notes/:id', authenticate, async (req, res) => {
 
 // ============ ASSESSMENTS ROUTES ============
 
-// Get all assessments for the current user
 app.get('/api/assessments', authenticate, async (req, res) => {
   try {
     const assessments = await prisma.assessment.findMany({
@@ -1384,7 +1387,6 @@ app.get('/api/assessments', authenticate, async (req, res) => {
   }
 });
 
-// Get a specific assessment by ID
 app.get('/api/assessments/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1404,7 +1406,6 @@ app.get('/api/assessments/:id', authenticate, async (req, res) => {
   }
 });
 
-// Create a new assessment
 app.post('/api/assessments', authenticate, async (req, res) => {
   try {
     const { title, type, subject, grade, description, questions, maxScore } = req.body;
@@ -1430,7 +1431,6 @@ app.post('/api/assessments', authenticate, async (req, res) => {
   }
 });
 
-// Submit/complete an assessment
 app.post('/api/assessments/:id/submit', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1459,7 +1459,6 @@ app.post('/api/assessments/:id/submit', authenticate, async (req, res) => {
   }
 });
 
-// Delete an assessment
 app.delete('/api/assessments/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
