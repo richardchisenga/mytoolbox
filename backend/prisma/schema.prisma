@@ -152,3 +152,30 @@ model Assessment {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+model Note {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  content   String
+  subject   String?
+  grade     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+model Assessment {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  type        String   // quiz, test, exam, assignment
+  subject     String?
+  grade       String?
+  description String?
+  questions   Json?
+  score       Float?
+  maxScore    Float?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
