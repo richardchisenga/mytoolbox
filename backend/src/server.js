@@ -8,6 +8,8 @@ const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 const OpenAI = require('openai');
 const axios = require('axios');
+const { Document, Packer, Paragraph, Table, TableRow, TableCell, HeadingLevel, AlignmentType, WidthType } = require('docx');
+const PDFDocument = require('pdfkit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,7 +28,7 @@ class LipilaService {
     this.apiKey = process.env.LIPILA_API_KEY || process.env.LIPIJA_API_KEY;
     const isSandbox = this.apiKey?.startsWith('lsk_');
     this.baseURL = isSandbox 
-      ? 'https://sandbox-api.lipila.com' 
+      ? 'https://sandbox.lipila.com' 
       : 'https://api.lipila.com';
     
     this.client = axios.create({
@@ -356,11 +358,16 @@ function generateFallbackLesson(topic, grade, subject, classSize, curriculumType
       boys: boys,
       girls: girls,
       subtopic: '',
-      generalCompetences: ["Analytical thinking", "Collaboration", "Communication", "Critical thinking"],
-      specificCompetence: `By the end of this lesson, learners will be able to understand and explain ${topic}`,
-      lessonGoal: `By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}`,
+      generalCompetences: [
+        "Analytical thinking: Breaking down complex information into parts",
+        "Collaboration: Working effectively in groups",
+        "Communication: Expressing ideas clearly",
+        "Critical thinking: Evaluating information and making decisions"
+      ],
+      specificCompetence: `By the end of this lesson, learners will be able to demonstrate understanding of ${topic} through explanation and application.`,
+      lessonGoal: `By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}.`,
       rationale: `Understanding ${topic} is essential for learners to develop critical thinking skills and make informed decisions.`,
-      priorKnowledge: "Learners have basic knowledge of the topic from previous lessons",
+      priorKnowledge: "Learners have basic knowledge of the topic from previous lessons.",
       references: ["2026 Teaching Module", "Curriculum Guide", `${subject} Grade ${grade} Textbook`],
       learningEnvironment: "Classroom with adequate resources",
       materials: ["Manila paper", "Markers", "Charts", "Worksheet", "Real objects"],
@@ -644,7 +651,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE ============
+// ============ LESSON GENERATION ROUTE (UPDATED WITH DETAILED PROMPTS) ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
@@ -677,15 +684,93 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
     let useFallback = false;
 
     try {
-      const prompt = `
-Topic: "${topic}"
-Grade: "${grade}"
-Subject: "${subject}"
-Curriculum: "${curriculumType.toUpperCase()}"
+      let prompt;
+      
+      if (curriculumType === 'obc') {
+        // ============ DETAILED OBC PROMPT ============
+        prompt = `
+You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
 
-Please generate a ${curriculumType.toUpperCase()} lesson plan for this topic.
+⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this detailed OBC structure:
 
-Return ONLY valid JSON in this exact format:
+{
+  "title": "${topic}",
+  "grade": "${grade}",
+  "subject": "${subject}",
+  "teacherName": "${user.fullName || 'MR/MRS'}",
+  "school": "${user.school || 'KASHINAKAZHI SECONDARY SCHOOL'}",
+  "date": "${new Date().toISOString().split('T')[0]}",
+  "duration": "80 MINUTES",
+  "classSize": ${size},
+  "boys": ${boys},
+  "girls": ${girls},
+  "subtopic": "",
+  "references": [
+    "Progress in ${subject} Grade ${grade} pg 78",
+    "${subject} Grade ${grade} Textbook",
+    "Teacher's Guide"
+  ],
+  "teachingAids": ["Learners book", "Chalk board", "Chart", "Diagrams"],
+  "rationale": "This lesson is on ${topic}. Teacher Exposition, Demonstration, Question and answer and group or class discussion methods will be used. This lesson will develop learners knowledge of ${topic}. The skill of identification and application of ${topic} methods. The value of logical thinking and accuracy in computing ${topic}.",
+  "learningOutcomes": [
+    "By the end of this lesson, learners should be able to:",
+    "Define ${topic}",
+    "Explain the concept of ${topic}",
+    "Apply ${topic} to solve problems",
+    "Analyze real-world applications of ${topic}"
+  ],
+  "prerequisiteKnowledge": "Learners have ideas about the topic being taught.",
+  "lessonIntroduction": "Teacher revises through the previous lesson",
+  "lessonDevelopment": [
+    {
+      "content": "Introduction to ${topic} and key concepts",
+      "teacherActivity": "Teacher writes the example on the board and explains the concept of ${topic} using real-world examples",
+      "pupilActivity": "Learners to write the example in their exercise books and listen attentively",
+      "methods": "Teacher Exposition, Demonstration"
+    },
+    {
+      "content": "Main content and examples of ${topic}",
+      "teacherActivity": "Teacher solves ${topic} problems on the board step-by-step and allows learners to ask questions",
+      "pupilActivity": "Learners to listen attentively and volunteer learners to go and solve on the board",
+      "methods": "Question and answer, group discussion"
+    },
+    {
+      "content": "Practice problems on ${topic}",
+      "teacherActivity": "Teacher writes ${topic} exercise on the board and asks volunteer learners to go and solve",
+      "pupilActivity": "Learners to write the exercise in their exercise books and volunteer to solve on the board",
+      "methods": "Group work, individual practice"
+    },
+    {
+      "content": "Summary and conclusion of ${topic}",
+      "teacherActivity": "Teacher consolidates learners responses and writes the summary on the board",
+      "pupilActivity": "Learners to listen attentively and write the summary",
+      "methods": "Review and consolidation"
+    }
+  ],
+  "learnersEvaluation": [
+    "Define ${topic} in your own words",
+    "Give two examples of ${topic}",
+    "Solve a ${topic} problem: Determine the key features of ${topic}",
+    "Explain the importance of ${topic}"
+  ],
+  "expectedAnswers": [
+    "Correct definition of ${topic}",
+    "Two valid examples of ${topic}",
+    "Correct solution to the ${topic} problem",
+    "Clear explanation of the importance of ${topic}"
+  ],
+  "lessonConclusion": "Teacher concludes lesson by revising through the lesson with learners to help remedial learners",
+  "learnersEvaluationText": "Space for teacher's assessment of learner performance",
+  "teacherEvaluation": "The lesson was well delivered. The majority of the learners were able to grasp the concept and could work out problems involving ${topic}. Remedial work was given to those who had challenges."
+}
+`;
+      } else {
+        // ============ DETAILED CBC PROMPT ============
+        prompt = `
+You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
+
+⚠️ CRITICAL: Return ONLY valid JSON that EXACTLY matches this detailed CBC structure. Each section must contain specific, detailed content:
+
 {
   "title": "${topic}",
   "grade": "${grade}",
@@ -696,33 +781,75 @@ Return ONLY valid JSON in this exact format:
   "district": "${user.district || 'Itezhi-Tezhi'}",
   "date": "${new Date().toISOString().split('T')[0]}",
   "time": "08:00-08:40",
-  "duration": "${curriculumType === 'obc' ? '80 MINUTES' : '40 min'}",
+  "duration": "40 min",
   "classSize": ${size},
   "boys": ${boys},
   "girls": ${girls},
   "subtopic": "",
-  "generalCompetences": ["Analytical thinking", "Collaboration", "Communication", "Critical thinking"],
-  "specificCompetence": "Classify and explain the types of ${topic}",
-  "lessonGoal": "By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}",
-  "rationale": "Understanding ${topic} is essential for learners to make informed decisions and develop critical thinking skills.",
-  "priorKnowledge": "Learners have basic knowledge of the topic from previous lessons",
-  "references": ["2026 Teaching Module", "Curriculum Guide", "${subject} Grade ${grade} Textbook"],
-  "learningEnvironment": "Classroom, laboratory, school garden",
-  "materials": ["Manila paper", "Markers", "Charts", "Worksheet", "Real objects"],
-  "expectedStandard": "Topic concepts classified correctly",
-  "lessonProgression": [
-    {"stage": "INTRODUCTION", "time": "5 min", "teacherRole": "Ask: 'What do you know about this topic?'", "learnerRole": "Listen, participate, give examples", "assessmentCriteria": "Observation of participation"},
-    {"stage": "LESSON DEVELOPMENT", "time": "10 min", "teacherRole": "Explain key concepts and demonstrate", "learnerRole": "Take notes, ask questions, discuss", "assessmentCriteria": "Correct understanding of concepts"},
-    {"stage": "ACTIVITY 1", "time": "11 min", "teacherRole": "Guide group work and provide materials", "learnerRole": "Work in groups, complete tasks", "assessmentCriteria": "Group collaboration and task completion"},
-    {"stage": "ACTIVITY 2", "time": "16 min", "teacherRole": "Facilitate presentations and consolidate", "learnerRole": "Present findings and correct own work", "assessmentCriteria": "Accurate presentation"},
-    {"stage": "EXERCISE", "time": "20 min", "teacherRole": "Give assessment and monitor", "learnerRole": "Complete assessment individually", "assessmentCriteria": "Correct responses"},
-    {"stage": "CONCLUSION", "time": "10 min", "teacherRole": "Summarize key points", "learnerRole": "Share what they learned", "assessmentCriteria": "Verbal explanation"}
+  "generalCompetences": [
+    "Analytical thinking: Breaking down complex information into parts",
+    "Collaboration: Working effectively in groups",
+    "Communication: Expressing ideas clearly",
+    "Critical thinking: Evaluating information and making decisions"
   ],
-  "homework": "Research and list local examples of ${topic}",
+  "specificCompetence": "By the end of this lesson, learners will be able to demonstrate understanding of ${topic} through explanation and application.",
+  "lessonGoal": "By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}.",
+  "rationale": "Understanding ${topic} is essential for learners to develop critical thinking skills and make informed decisions.",
+  "priorKnowledge": "Learners have basic knowledge of the topic from previous lessons.",
+  "references": ["2026 Teaching Module", "Curriculum Guide", "${subject} Grade ${grade} Textbook"],
+  "learningEnvironment": "Classroom with adequate resources",
+  "materials": ["Manila paper", "Markers", "Charts", "Worksheet", "Real objects"],
+  "expectedStandard": "Topic concepts explained correctly",
+  "lessonProgression": [
+    {
+      "stage": "INTRODUCTION",
+      "time": "5 min",
+      "teacherRole": "Ask engaging questions to introduce the topic",
+      "learnerRole": "Listen, participate, give examples",
+      "assessmentCriteria": "Observation of participation"
+    },
+    {
+      "stage": "LESSON DEVELOPMENT",
+      "time": "10 min",
+      "teacherRole": "Explain key concepts and demonstrate",
+      "learnerRole": "Take notes, ask questions, discuss",
+      "assessmentCriteria": "Correct understanding of concepts"
+    },
+    {
+      "stage": "ACTIVITY 1",
+      "time": "11 min",
+      "teacherRole": "Guide group work and provide materials",
+      "learnerRole": "Work in groups, complete tasks",
+      "assessmentCriteria": "Group collaboration and task completion"
+    },
+    {
+      "stage": "ACTIVITY 2",
+      "time": "16 min",
+      "teacherRole": "Facilitate presentations and consolidate",
+      "learnerRole": "Present findings and correct own work",
+      "assessmentCriteria": "Accurate presentation"
+    },
+    {
+      "stage": "EXERCISE",
+      "time": "20 min",
+      "teacherRole": "Give assessment and monitor",
+      "learnerRole": "Complete assessment individually",
+      "assessmentCriteria": "Correct responses"
+    },
+    {
+      "stage": "CONCLUSION",
+      "time": "10 min",
+      "teacherRole": "Summarize key points",
+      "learnerRole": "Share what they learned",
+      "assessmentCriteria": "Verbal explanation"
+    }
+  ],
+  "homework": "Research and list examples of ${topic}",
   "lessonEvaluation": "Lesson was successful, key competences were acquired",
   "teacherEvaluation": "Space for teacher's reflections"
 }
 `;
+      }
 
       console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson with DeepSeek...`);
 
@@ -1032,8 +1159,9 @@ Return ONLY the JSON object, no other text.
   }
 });
 
-// ============ SCHEME EXPORT ROUTES ============
+// ============ SCHEME EXPORT ROUTES (FIXED - PROPER WORD AND PDF) ============
 
+// Export Scheme as Word (DOCX) - FIXED
 app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1050,97 +1178,95 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    let html = `
-      <html xmlns:o='urn:schemas-microsoft-com:office:office' 
-            xmlns:w='urn:schemas-microsoft-com:office:word' 
-            xmlns='http://www.w3.org/TR/REC-html40'>
-      <head>
-        <meta charset="utf-8">
-        <title>Scheme of Work</title>
-        <!--[if gte mso 9]>
-        <xml>
-          <w:WordDocument>
-            <w:View>Print</w:View>
-            <w:Zoom>100</w:Zoom>
-          </w:WordDocument>
-        </xml>
-        <![endif]-->
-        <style>
-          body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; margin: 40px; }
-          h1 { text-align: center; font-size: 18pt; }
-          h2 { text-align: center; font-size: 16pt; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th { background-color: #e0e0e0; font-weight: bold; border: 1px solid #000; padding: 6px; }
-          td { border: 1px solid #000; padding: 6px; vertical-align: top; }
-          .footer { text-align: center; margin-top: 30px; font-size: 10pt; }
-        </style>
-      </head>
-      <body>
-        <h1>MINISTRY OF EDUCATION</h1>
-        <h2>SCHEME OF WORK</h2>
-        <p style="text-align: center;"><strong>School:</strong> ${scheme.school || 'School Name'}</p>
-        <p style="text-align: center;"><strong>Subject:</strong> ${scheme.subject}</p>
-        <p style="text-align: center;"><strong>Grade:</strong> ${scheme.grade}</p>
-        <p style="text-align: center;"><strong>Term:</strong> ${scheme.term}</p>
-        <p style="text-align: center;"><strong>Year:</strong> ${scheme.year}</p>
-        <p style="text-align: center;"><strong>Assessment Weeks:</strong> ${scheme.assessmentWeeks?.join(', ') || 'None'}</p>
-        <hr>
-        <table>
-          <thead>
-            <tr>
-              <th>WEEK</th>
-              <th>TOPIC</th>
-              <th>SPECIFIC OUTCOME</th>
-              <th>METHODS</th>
-              <th>AIDS</th>
-              <th>REFERENCES</th>
-              <th>KNOWLEDGE</th>
-              <th>SKILLS</th>
-              <th>VALUES</th>
-            </tr>
-          </thead>
-          <tbody>
-    `;
+    // Build table rows
+    const tableRows = [];
 
+    // Add header row
+    const headerRow = new TableRow({
+      children: [
+        new TableCell({ children: [new Paragraph({ text: 'WEEK', bold: true })], width: { size: 5, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'TOPIC', bold: true })], width: { size: 20, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'SPECIFIC OUTCOME', bold: true })], width: { size: 20, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'METHODS', bold: true })], width: { size: 15, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'AIDS', bold: true })], width: { size: 10, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'REFERENCES', bold: true })], width: { size: 10, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'KNOWLEDGE', bold: true })], width: { size: 10, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'SKILLS', bold: true })], width: { size: 5, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'VALUES', bold: true })], width: { size: 5, type: WidthType.PERCENTAGE } }),
+      ],
+    });
+    tableRows.push(headerRow);
+
+    // Add data rows
     scheme.weeks.forEach(week => {
       const topics = week.topics || [];
-      const topicText = topics.map(t => t.topic || '').join('; ');
-      const outcomeText = topics.map(t => t.specificOutcome || '').join('; ');
-      const methodsText = topics.map(t => t.methods || '').join('; ');
-      const aidsText = topics.map(t => t.aids || '').join('; ');
-      const refsText = topics.map(t => t.references || '').join('; ');
-      const knowledgeText = topics.map(t => t.knowledge || '').join('; ');
-      const skillsText = topics.map(t => t.skills || '').join('; ');
-      const valuesText = topics.map(t => t.values || '').join('; ');
+      
+      const topicText = topics.map(t => t.topic || '').join('\n');
+      const outcomeText = topics.map(t => t.specificOutcome || '').join('\n');
+      const methodsText = topics.map(t => t.methods || '').join('\n');
+      const aidsText = topics.map(t => t.aids || '').join('\n');
+      const refsText = topics.map(t => t.references || '').join('\n');
+      const knowledgeText = topics.map(t => t.knowledge || '').join('\n');
+      const skillsText = topics.map(t => t.skills || '').join('\n');
+      const valuesText = topics.map(t => t.values || '').join('\n');
 
-      html += `
-        <tr>
-          <td style="text-align: center;">${week.week}</td>
-          <td>${topicText || '-'}</td>
-          <td>${outcomeText || '-'}</td>
-          <td>${methodsText || '-'}</td>
-          <td>${aidsText || '-'}</td>
-          <td>${refsText || '-'}</td>
-          <td>${knowledgeText || '-'}</td>
-          <td>${skillsText || '-'}</td>
-          <td>${valuesText || '-'}</td>
-        </tr>
-      `;
+      const dataRow = new TableRow({
+        children: [
+          new TableCell({ children: [new Paragraph({ text: String(week.week) })] }),
+          new TableCell({ children: [new Paragraph({ text: topicText || '-' })] }),
+          new TableCell({ children: [new Paragraph({ text: outcomeText || '-' })] }),
+          new TableCell({ children: [new Paragraph({ text: methodsText || '-' })] }),
+          new TableCell({ children: [new Paragraph({ text: aidsText || '-' })] }),
+          new TableCell({ children: [new Paragraph({ text: refsText || '-' })] }),
+          new TableCell({ children: [new Paragraph({ text: knowledgeText || '-' })] }),
+          new TableCell({ children: [new Paragraph({ text: skillsText || '-' })] }),
+          new TableCell({ children: [new Paragraph({ text: valuesText || '-' })] }),
+        ],
+      });
+      tableRows.push(dataRow);
     });
 
-    html += `
-          </tbody>
-        </table>
-        <div class="footer">
-          <p>© 2026 mytoolbox - Made for teachers in Zambia</p>
-        </div>
-      </body>
-      </html>
-    `;
+    // Create the document
+    const doc = new Document({
+      sections: [{
+        properties: {},
+        children: [
+          new Paragraph({
+            text: 'MINISTRY OF EDUCATION',
+            heading: HeadingLevel.HEADING_1,
+            alignment: AlignmentType.CENTER,
+          }),
+          new Paragraph({
+            text: 'SCHEME OF WORK',
+            heading: HeadingLevel.HEADING_2,
+            alignment: AlignmentType.CENTER,
+          }),
+          new Paragraph({ text: '' }),
+          new Paragraph({ text: `School: ${scheme.school || 'School Name'}`, alignment: AlignmentType.CENTER }),
+          new Paragraph({ text: `Subject: ${scheme.subject}`, alignment: AlignmentType.CENTER }),
+          new Paragraph({ text: `Grade: ${scheme.grade}`, alignment: AlignmentType.CENTER }),
+          new Paragraph({ text: `Term: ${scheme.term}`, alignment: AlignmentType.CENTER }),
+          new Paragraph({ text: `Year: ${scheme.year}`, alignment: AlignmentType.CENTER }),
+          new Paragraph({ text: `Assessment Weeks: ${scheme.assessmentWeeks?.join(', ') || 'None'}`, alignment: AlignmentType.CENTER }),
+          new Paragraph({ text: '' }),
+          new Table({
+            rows: tableRows,
+            width: { size: 100, type: WidthType.PERCENTAGE },
+          }),
+          new Paragraph({ text: '' }),
+          new Paragraph({
+            text: '© 2026 mytoolbox - Made for teachers in Zambia',
+            alignment: AlignmentType.CENTER,
+          }),
+        ],
+      }],
+    });
 
-    res.setHeader('Content-Type', 'application/msword');
-    res.setHeader('Content-Disposition', `attachment; filename="scheme_${scheme.id}.doc"`);
-    res.send(html);
+    const buffer = await Packer.toBuffer(doc);
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="scheme_${scheme.id}.docx"`);
+    res.send(buffer);
 
   } catch (error) {
     console.error('❌ Word export error:', error);
@@ -1148,6 +1274,7 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
   }
 });
 
+// Export Scheme as PDF - FIXED
 app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1164,87 +1291,100 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    let html = `
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Scheme of Work</title>
-        <style>
-          body { font-family: Arial, sans-serif; font-size: 12pt; margin: 40px; }
-          h1 { text-align: center; font-size: 18pt; }
-          h2 { text-align: center; font-size: 16pt; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 10pt; }
-          th { background-color: #e0e0e0; font-weight: bold; border: 1px solid #000; padding: 6px; }
-          td { border: 1px solid #000; padding: 6px; vertical-align: top; }
-          .footer { text-align: center; margin-top: 30px; font-size: 10pt; }
-        </style>
-      </head>
-      <body>
-        <h1>MINISTRY OF EDUCATION</h1>
-        <h2>SCHEME OF WORK</h2>
-        <p style="text-align: center;"><strong>School:</strong> ${scheme.school || 'School Name'}</p>
-        <p style="text-align: center;"><strong>Subject:</strong> ${scheme.subject}</p>
-        <p style="text-align: center;"><strong>Grade:</strong> ${scheme.grade}</p>
-        <p style="text-align: center;"><strong>Term:</strong> ${scheme.term}</p>
-        <p style="text-align: center;"><strong>Year:</strong> ${scheme.year}</p>
-        <p style="text-align: center;"><strong>Assessment Weeks:</strong> ${scheme.assessmentWeeks?.join(', ') || 'None'}</p>
-        <hr>
-        <table>
-          <thead>
-            <tr>
-              <th>WEEK</th>
-              <th>TOPIC</th>
-              <th>SPECIFIC OUTCOME</th>
-              <th>METHODS</th>
-              <th>AIDS</th>
-              <th>REFERENCES</th>
-              <th>KNOWLEDGE</th>
-              <th>SKILLS</th>
-              <th>VALUES</th>
-            </tr>
-          </thead>
-          <tbody>
-    `;
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="scheme_${scheme.id}.pdf"`);
+    doc.pipe(res);
 
+    // Title
+    doc.fontSize(18).text('MINISTRY OF EDUCATION', { align: 'center' });
+    doc.fontSize(14).text('SCHEME OF WORK', { align: 'center' });
+    doc.moveDown();
+
+    doc.fontSize(12).text(`School: ${scheme.school || 'School Name'}`, { align: 'center' });
+    doc.text(`Subject: ${scheme.subject}`, { align: 'center' });
+    doc.text(`Grade: ${scheme.grade}`, { align: 'center' });
+    doc.text(`Term: ${scheme.term}`, { align: 'center' });
+    doc.text(`Year: ${scheme.year}`, { align: 'center' });
+    doc.text(`Assessment Weeks: ${scheme.assessmentWeeks?.join(', ') || 'None'}`, { align: 'center' });
+    doc.moveDown();
+
+    // Table
+    const tableTop = doc.y;
+    const columnWidths = [40, 70, 80, 70, 60, 60, 60, 50, 50];
+    const headers = ['WEEK', 'TOPIC', 'SPECIFIC OUTCOME', 'METHODS', 'AIDS', 'REFERENCES', 'KNOWLEDGE', 'SKILLS', 'VALUES'];
+    
+    // Draw headers
+    let x = 50;
+    let y = tableTop;
+    
+    // Header background
+    doc.rect(50, y - 5, 495, 25).fill('#e0e0e0');
+    doc.fillColor('black');
+    
+    headers.forEach((header, i) => {
+      doc.fontSize(9).text(header, x, y, { width: columnWidths[i], align: 'center' });
+      x += columnWidths[i];
+    });
+    
+    y += 25;
+    
+    // Draw rows
     scheme.weeks.forEach(week => {
       const topics = week.topics || [];
-      const topicText = topics.map(t => t.topic || '').join('; ');
-      const outcomeText = topics.map(t => t.specificOutcome || '').join('; ');
-      const methodsText = topics.map(t => t.methods || '').join('; ');
-      const aidsText = topics.map(t => t.aids || '').join('; ');
-      const refsText = topics.map(t => t.references || '').join('; ');
-      const knowledgeText = topics.map(t => t.knowledge || '').join('; ');
-      const skillsText = topics.map(t => t.skills || '').join('; ');
-      const valuesText = topics.map(t => t.values || '').join('; ');
-
-      html += `
-        <tr>
-          <td style="text-align: center;">${week.week}</td>
-          <td>${topicText || '-'}</td>
-          <td>${outcomeText || '-'}</td>
-          <td>${methodsText || '-'}</td>
-          <td>${aidsText || '-'}</td>
-          <td>${refsText || '-'}</td>
-          <td>${knowledgeText || '-'}</td>
-          <td>${skillsText || '-'}</td>
-          <td>${valuesText || '-'}</td>
-        </tr>
-      `;
+      const topicText = topics.map(t => t.topic || '').join('\n');
+      const outcomeText = topics.map(t => t.specificOutcome || '').join('\n');
+      const methodsText = topics.map(t => t.methods || '').join('\n');
+      const aidsText = topics.map(t => t.aids || '').join('\n');
+      const refsText = topics.map(t => t.references || '').join('\n');
+      const knowledgeText = topics.map(t => t.knowledge || '').join('\n');
+      const skillsText = topics.map(t => t.skills || '').join('\n');
+      const valuesText = topics.map(t => t.values || '').join('\n');
+      
+      const rowData = [
+        String(week.week),
+        topicText || '-',
+        outcomeText || '-',
+        methodsText || '-',
+        aidsText || '-',
+        refsText || '-',
+        knowledgeText || '-',
+        skillsText || '-',
+        valuesText || '-'
+      ];
+      
+      let maxHeight = 20;
+      rowData.forEach((text, i) => {
+        const lines = doc.fontSize(8).text(text, 50 + columnWidths.slice(0, i).reduce((a, b) => a + b, 0), y, {
+          width: columnWidths[i],
+          align: 'left',
+          ellipsis: true,
+        });
+        const height = doc.heightOfString(text, { width: columnWidths[i] });
+        if (height > maxHeight) maxHeight = height;
+      });
+      
+      // Draw row borders
+      let currentX = 50;
+      rowData.forEach((text, i) => {
+        doc.rect(currentX, y, columnWidths[i], maxHeight + 5).stroke();
+        currentX += columnWidths[i];
+      });
+      
+      y += maxHeight + 10;
+      
+      // Check for page break
+      if (y > 750) {
+        doc.addPage();
+        y = 50;
+      }
     });
-
-    html += `
-          </tbody>
-        </table>
-        <div class="footer">
-          <p>© 2026 mytoolbox - Made for teachers in Zambia</p>
-        </div>
-      </body>
-      </html>
-    `;
-
-    res.setHeader('Content-Type', 'text/html');
-    res.setHeader('Content-Disposition', `attachment; filename="scheme_${scheme.id}.html"`);
-    res.send(html);
+    
+    // Footer
+    doc.moveDown();
+    doc.fontSize(10).text('© 2026 mytoolbox - Made for teachers in Zambia', { align: 'center' });
+    
+    doc.end();
 
   } catch (error) {
     console.error('❌ PDF export error:', error);
@@ -1741,21 +1881,6 @@ app.put('/api/admin/users/:id/role', authenticate, isAdmin, async (req, res) => 
 
     if (!['FREE', 'PRO', 'SCHOOL', 'ADMIN'].includes(role)) {
       return res.status(400).json({ error: 'Invalid role. Must be FREE, PRO, SCHOOL, or ADMIN' });
-    }
-
-    // Prevent removing last admin
-    if (role !== 'ADMIN') {
-      const adminCount = await prisma.user.count({
-        where: { role: 'ADMIN' }
-      });
-      const userToUpdate = await prisma.user.findUnique({
-        where: { id },
-        select: { role: true }
-      });
-      
-      if (adminCount <= 1 && userToUpdate?.role === 'ADMIN' && role !== 'ADMIN') {
-        return res.status(400).json({ error: 'Cannot remove the last admin' });
-      }
     }
 
     const user = await prisma.user.update({
