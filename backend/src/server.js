@@ -1,4 +1,4 @@
-// src/server.js - Complete application with OpenAI ChatGPT API, Lipila payments, Notes, Assessments, and Export routes
+// src/server.js - Complete application with DeepSeek AI integration, Lipila payments, Notes, Assessments, and Export routes
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -14,9 +14,10 @@ const PORT = process.env.PORT || 3000;
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET;
 
-// ============ OPENAI CHATGPT CLIENT ============
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+// ============ DEEPSEEK AI CLIENT ============
+const deepseek = new OpenAI({
+  apiKey: process.env.DEEPSEEK_API_KEY,
+  baseURL: "https://api.deepseek.com"
 });
 
 // ============ LIPILA PAYMENT SERVICE ============
@@ -132,11 +133,11 @@ app.get('/', (req, res) => {
   res.json({ message: 'MyToolbox API is running' });
 });
 
-// ============ ROBUST JSON PARSING HELPER ============
+// ============ ROBUST DEEPSEEK JSON PARSER ============
 
 function safeParseJSON(content) {
   if (!content || typeof content !== 'string') {
-    console.error('❌ API returned empty or invalid content');
+    console.error('❌ DeepSeek returned empty or invalid content');
     return null;
   }
 
@@ -158,7 +159,7 @@ function safeParseJSON(content) {
     const lastBrace = cleaned.lastIndexOf('}');
 
     if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
-      console.error('❌ No JSON object found in response');
+      console.error('❌ No JSON object found in DeepSeek response');
       console.error('Response:', content.substring(0, 1000));
       return null;
     }
@@ -179,19 +180,19 @@ function safeParseJSON(content) {
   }
 }
 
-// ============ OPENAI GENERATE FUNCTION ============
+// ============ IMPROVED DEEPSEEK GENERATE FUNCTION ============
 
-async function generateOpenAIJSON(messages, options = {}) {
+async function generateDeepSeekJSON(messages, options = {}) {
   const maxAttempts = 2;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      console.log(`🤖 OpenAI attempt ${attempt}/${maxAttempts}`);
+      console.log(`🤖 DeepSeek attempt ${attempt}/${maxAttempts}`);
 
-      const response = await openai.chat.completions.create({
-        model: options.model || 'gpt-4o',
+      const response = await deepseek.chat.completions.create({
+        model: options.model || 'deepseek-chat',
         messages,
-        temperature: options.temperature || 0.5,
+        temperature: options.temperature || 0.1,
         max_tokens: options.max_tokens || 4096,
         response_format: {
           type: 'json_object'
@@ -201,31 +202,58 @@ async function generateOpenAIJSON(messages, options = {}) {
       const choice = response?.choices?.[0];
 
       if (!choice) {
-        throw new Error('OpenAI returned no choices');
+        throw new Error('DeepSeek returned no choices');
       }
 
       console.log(`🤖 Finish reason: ${choice.finish_reason || 'unknown'}`);
 
       if (choice.finish_reason === 'length') {
-        throw new Error('OpenAI response was truncated');
+        throw new Error('DeepSeek response was truncated');
       }
 
       const content = choice?.message?.content;
 
       if (!content) {
-        throw new Error('OpenAI returned empty content');
+        throw new Error('DeepSeek returned empty content');
       }
 
-      const parsed = safeParseJSON(content);
+      // Try to parse the content as JSON
+      let parsed = null;
+      try {
+        parsed = JSON.parse(content.trim());
+      } catch (parseError) {
+        console.warn('⚠️ Direct JSON.parse failed, trying to clean...');
+        
+        // Clean the content
+        let cleaned = content
+          .trim()
+          .replace(/^```json\s*/i, '')
+          .replace(/^```\s*/i, '')
+          .replace(/\s*```$/i, '')
+          .trim();
+        
+        // Find the JSON object
+        const firstBrace = cleaned.indexOf('{');
+        const lastBrace = cleaned.lastIndexOf('}');
+        
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+          try {
+            parsed = JSON.parse(cleaned);
+          } catch (e) {
+            console.error('❌ Cleaned JSON.parse also failed:', e.message);
+          }
+        }
+      }
 
       if (!parsed) {
-        throw new Error('OpenAI returned invalid JSON');
+        throw new Error('DeepSeek returned invalid JSON');
       }
 
       return parsed;
 
     } catch (error) {
-      console.error(`⚠️ OpenAI attempt ${attempt} failed:`, error.message);
+      console.error(`⚠️ DeepSeek attempt ${attempt} failed:`, error.message);
 
       if (attempt === maxAttempts) {
         throw error;
@@ -619,7 +647,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE (WITH OPENAI) ============
+// ============ LESSON GENERATION ROUTE (WITH IMPROVED DEEPSEEK) ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
@@ -652,96 +680,16 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
     let useFallback = false;
 
     try {
-      let prompt;
-      
-      if (curriculumType === 'obc') {
-        prompt = `
-You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
+      // ============ IMPROVED PROMPT WITH EXAMPLES ============
+      const prompt = `
+Topic: "${topic}"
+Grade: "${grade}"
+Subject: "${subject}"
+Curriculum: "${curriculumType.toUpperCase()}"
 
-⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this OBC structure:
+Please generate a ${curriculumType.toUpperCase()} lesson plan for this topic.
 
-{
-  "title": "${topic}",
-  "grade": "${grade}",
-  "subject": "${subject}",
-  "teacherName": "${user.fullName || 'MR/MRS'}",
-  "school": "${user.school || 'KASHINAKAZHI SECONDARY SCHOOL'}",
-  "date": "${new Date().toISOString().split('T')[0]}",
-  "duration": "80 MINUTES",
-  "classSize": ${size},
-  "boys": ${boys},
-  "girls": ${girls},
-  "subtopic": "",
-  "references": [
-    "Progress in ${subject} Grade ${grade} pg 78",
-    "${subject} Grade ${grade} Textbook",
-    "Teacher's Guide"
-  ],
-  "teachingAids": ["Learners book", "Chalk board", "Chart", "Diagrams"],
-  "rationale": "This lesson is on ${topic}. Teacher Exposition, Demonstration, Question and answer and group or class discussion methods will be used. This lesson will develop learners knowledge of ${topic}. The skill of identification and application of ${topic} methods. The value of logical thinking and accuracy in computing ${topic}.",
-  "learningOutcomes": [
-    "By the end of this lesson, learners should be able to:",
-    "Define ${topic}",
-    "Explain the concept of ${topic}",
-    "Apply ${topic} to solve problems",
-    "Analyze real-world applications of ${topic}"
-  ],
-  "prerequisiteKnowledge": "Learners have ideas about the topic being taught.",
-  "lessonIntroduction": "Teacher revises through the previous lesson",
-  "lessonDevelopment": [
-    {
-      "content": "Introduction to ${topic} and key concepts",
-      "teacherActivity": "Teacher writes the example on the board and explains the concept of ${topic}",
-      "pupilActivity": "Learners to write the example in their exercise books and listen attentively",
-      "methods": "Teacher Exposition, Demonstration"
-    },
-    {
-      "content": "Main content and examples of ${topic}",
-      "teacherActivity": "Teacher solves ${topic} problems on the board and allows learners to ask questions",
-      "pupilActivity": "Learners to listen attentively and volunteer learners to go and solve on the board",
-      "methods": "Question and answer, group discussion"
-    },
-    {
-      "content": "Practice problems on ${topic}",
-      "teacherActivity": "Teacher writes ${topic} exercise on the board and asks volunteer learners to go and solve",
-      "pupilActivity": "Learners to write the exercise in their exercise books and volunteer to solve on the board",
-      "methods": "Group work, individual practice"
-    },
-    {
-      "content": "Summary and conclusion of ${topic}",
-      "teacherActivity": "Teacher consolidates learners responses and writes the summary on the board",
-      "pupilActivity": "Learners to listen attentively and write the summary",
-      "methods": "Review and consolidation"
-    }
-  ],
-  "learnersEvaluation": [
-    "Define ${topic} in your own words",
-    "Give two examples of ${topic}",
-    "Solve a ${topic} problem: Determine the key features of ${topic}",
-    "Explain the importance of ${topic}"
-  ],
-  "expectedAnswers": [
-    "Correct definition of ${topic}",
-    "Two valid examples of ${topic}",
-    "Correct solution to the ${topic} problem",
-    "Clear explanation of the importance of ${topic}"
-  ],
-  "lessonConclusion": "Teacher concludes lesson by revising through the lesson with learners to help remedial learners",
-  "learnersEvaluationText": "Space for teacher's assessment of learner performance",
-  "teacherEvaluation": "The lesson was well delivered. The majority of the learners were able to grasp the concept and could work out problems involving ${topic}. Remedial work was given to those who had challenges."
-}
-
-🔴 RULES:
-- Make content specific to ${grade} ${subject} on "${topic}".
-- Include realistic examples and practice problems.
-- Return ONLY the JSON object, no other text.
-`;
-      } else {
-        prompt = `
-You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
-
-⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this CBC structure:
-
+EXAMPLE OUTPUT FORMAT:
 {
   "title": "${topic}",
   "grade": "${grade}",
@@ -752,7 +700,7 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
   "district": "${user.district || 'Itezhi-Tezhi'}",
   "date": "${new Date().toISOString().split('T')[0]}",
   "time": "08:00-08:40",
-  "duration": "40 min",
+  "duration": "${curriculumType === 'obc' ? '80 MINUTES' : '40 min'}",
   "classSize": ${size},
   "boys": ${boys},
   "girls": ${girls},
@@ -815,28 +763,22 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
   "teacherEvaluation": "Space for teacher's reflections"
 }
 
-🔴 RULES:
-- Make content specific to ${grade} ${subject} on "${topic}".
-- Include realistic examples relevant to Zambian schools.
-- Return ONLY the JSON object, no other text.
+Return ONLY valid JSON in this exact format.
 `;
-      }
 
-      console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson with OpenAI...`);
+      console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson with DeepSeek...`);
 
-      // ============ USE OPENAI JSON MODE ============
+      // ============ USE IMPROVED DEEPSEEK GENERATOR ============
       const messages = [
         {
           role: "system",
           content: `
 You are an expert Zambian teacher.
 
-Return ONLY valid JSON.
-Do not use markdown.
-Do not use code fences.
-Do not add explanations before or after the JSON.
+The user will provide a topic and requirements for a lesson plan.
+Parse the information and output it in valid JSON format.
 
-The response must be a single JSON object.
+Return ONLY the JSON object, no other text.
 `
         },
         {
@@ -845,19 +787,19 @@ The response must be a single JSON object.
         }
       ];
 
-      aiContent = await generateOpenAIJSON(messages, { 
+      aiContent = await generateDeepSeekJSON(messages, { 
         max_tokens: 4096,
-        temperature: 0.5
+        temperature: 0.1
       });
       
       // Merge with fallback to ensure all fields exist
       const fallback = generateFallbackLesson(topic, grade, subject, classSize, curriculumType, user);
       aiContent = { ...fallback, ...aiContent };
 
-      console.log(`✅ ${curriculumType.toUpperCase()} lesson generated with OpenAI`);
+      console.log(`✅ ${curriculumType.toUpperCase()} lesson generated with DeepSeek`);
 
     } catch (error) {
-      console.log('⚠️ OpenAI error, using fallback:', error.message);
+      console.log('⚠️ DeepSeek error, using fallback:', error.message);
       useFallback = true;
     }
 
@@ -940,7 +882,7 @@ The response must be a single JSON object.
   }
 });
 
-// ============ SCHEME OF WORK GENERATION ROUTE (WITH OPENAI) ============
+// ============ SCHEME OF WORK GENERATION ROUTE (WITH IMPROVED DEEPSEEK) ============
 
 app.post('/api/schemes/generate', authenticate, async (req, res) => {
   try {
@@ -968,7 +910,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       });
     }
 
-    console.log('📝 Generating scheme with OpenAI...');
+    console.log('📝 Generating scheme with DeepSeek...');
     
     const assessmentWeeksList = assessmentWeeks || [3, 6, 9, 12];
     const customTopics = weekTopics || {};
@@ -987,14 +929,17 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
         }
       });
 
+      // ============ IMPROVED SCHEME PROMPT WITH EXAMPLES ============
       const prompt = `
-You are an expert curriculum planner for Zambian schools. Create a Scheme of Work for Grade ${grade} ${subject} for ${term || 'Term 1'}.
+Grade: "${grade}"
+Subject: "${subject}"
+Term: "${term || 'Term 1'}"
+${customTopicsString ? `User topics:\n${customTopicsString}` : 'Generate appropriate topics for all weeks.'}
+Assessment weeks: ${assessmentWeeksList.join(', ')}
 
-${customTopicsString ? `The user has specified these topics:\n${customTopicsString}` : 'Generate appropriate topics for all weeks.'}
+Please generate a Scheme of Work for this subject.
 
-Assessment weeks are: ${assessmentWeeksList.join(', ')}
-
-Return ONLY valid JSON with this structure:
+EXAMPLE OUTPUT FORMAT:
 {
   "weeks": [
     {
@@ -1011,7 +956,23 @@ Return ONLY valid JSON with this structure:
           "values": "Values adopted"
         }
       ],
-      "assessment": "Assessment for this week (null for non-assessment weeks)"
+      "assessment": null
+    },
+    {
+      "week": 2,
+      "topics": [
+        {
+          "topic": "Another topic",
+          "specificOutcome": "What learners should achieve",
+          "methods": "Teaching methods",
+          "aids": "Teaching aids",
+          "references": "Reference books",
+          "knowledge": "Knowledge gained",
+          "skills": "Skills developed",
+          "values": "Values adopted"
+        }
+      ],
+      "assessment": null
     }
   ],
   "assessmentWeeks": [3, 6, 9, 12],
@@ -1026,19 +987,17 @@ Return ONLY valid JSON with this structure:
 - Return ONLY the JSON object, no other text.
 `;
 
-      // ============ USE OPENAI JSON MODE ============
+      // ============ USE IMPROVED DEEPSEEK GENERATOR ============
       const messages = [
         {
           role: "system",
           content: `
 You are an expert curriculum planner for Zambian schools.
 
-Return ONLY valid JSON.
-Do not use markdown.
-Do not use code fences.
-Do not add explanations before or after the JSON.
+The user will provide grade, subject, and term information.
+Parse the information and output it in valid JSON format.
 
-The response must be a single JSON object.
+Return ONLY the JSON object, no other text.
 `
         },
         {
@@ -1047,15 +1006,15 @@ The response must be a single JSON object.
         }
       ];
 
-      aiContent = await generateOpenAIJSON(messages, { 
+      aiContent = await generateDeepSeekJSON(messages, { 
         max_tokens: 3000,
-        temperature: 0.5
+        temperature: 0.1
       });
       
-      console.log('✅ OpenAI generated scheme successfully');
+      console.log('✅ DeepSeek generated scheme successfully');
 
     } catch (error) {
-      console.log('⚠️ OpenAI error, using fallback:', error.message);
+      console.log('⚠️ DeepSeek error, using fallback:', error.message);
       useFallback = true;
     }
     
@@ -1827,7 +1786,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Get lessons (alias) at /api/lessons/mine`);
   console.log(`✅ Get schemes (alias) at /api/schemes/mine`);
   console.log(`✅ Payment routes available at /api/payments/*`);
-  console.log(`✅ OpenAI ChatGPT API integration enabled`);
+  console.log(`✅ DeepSeek AI integration enabled`);
   console.log(`✅ Lipila payment integration enabled`);
   console.log(`✅ CORS enabled for Vercel and Render frontend`);
 });
