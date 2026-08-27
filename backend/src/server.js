@@ -191,7 +191,6 @@ async function generateDeepSeekJSON(messages, options = {}) {
     try {
       console.log(`🤖 DeepSeek attempt ${attempt}/${maxAttempts}`);
 
-      // Use a smaller max_tokens to avoid truncation
       const maxTokens = options.max_tokens || 3000;
       
       const response = await deepseek.chat.completions.create({
@@ -199,7 +198,6 @@ async function generateDeepSeekJSON(messages, options = {}) {
         messages,
         temperature: options.temperature || 0.1,
         max_tokens: maxTokens,
-        // Remove response_format as it may not be supported by all DeepSeek models
       });
 
       const choice = response?.choices?.[0];
@@ -266,7 +264,6 @@ async function generateDeepSeekJSON(messages, options = {}) {
 
 // ============ HELPER FUNCTION: GENERATE LESSON CONTENT ============
 function generateLessonContent(topic, subject, grade) {
-  // Handle empty or undefined topic
   if (!topic || topic.trim() === '') {
     return [
       {
@@ -298,7 +295,6 @@ function generateLessonContent(topic, subject, grade) {
 
   const topicLower = topic.toLowerCase();
   
-  // Check if topic is about mensuration/areas
   if (topicLower.includes('mensuration') || 
       topicLower.includes('area') ||
       topicLower.includes('perimeter') ||
@@ -331,7 +327,6 @@ function generateLessonContent(topic, subject, grade) {
     ];
   }
 
-  // Check if topic is about quadratic equations
   if (topicLower.includes('quadratic')) {
     return [
       {
@@ -361,7 +356,6 @@ function generateLessonContent(topic, subject, grade) {
     ];
   }
 
-  // Check if topic is about trigonometry
   if (topicLower.includes('trig') || topicLower.includes('sine') || topicLower.includes('cosine') || topicLower.includes('tangent')) {
     return [
       {
@@ -391,7 +385,6 @@ function generateLessonContent(topic, subject, grade) {
     ];
   }
 
-  // Default content for other topics - with limited length to avoid token issues
   return [
     {
       content: `INTRODUCTION TO ${topic.toUpperCase()}\n\n${topic} is an important concept in ${subject}. It involves understanding the fundamental principles and applications in real-life situations.\n\nKEY CONCEPTS:\n- Understanding the basic principles\n- Identifying different types and categories\n- Applying concepts to solve problems\n\n${topic} plays a crucial role in developing critical thinking and problem-solving skills.`,
@@ -422,7 +415,6 @@ function generateLessonContent(topic, subject, grade) {
 
 // ============ LESSON PROMPT GENERATORS ============
 
-// ============ CBC LESSON PROMPT ============
 function generateCBCPrompt(topic, grade, subject, classSize, user, subtopic) {
   const size = parseInt(classSize) || 40;
   const boys = Math.floor(size / 2) || 18;
@@ -529,15 +521,12 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
 `;
 }
 
-// ============ OBC LESSON PROMPT ============
 function generateOBCPrompt(topic, grade, subject, classSize, user, subtopic) {
   const size = parseInt(classSize) || 40;
   const boys = Math.floor(size / 2) || 18;
   const girls = Math.ceil(size / 2) || 22;
   
-  // Generate lesson development content based on topic - limit length to avoid token issues
   const lessonContent = generateLessonContent(topic, subject, grade);
-  // Simplify content for the prompt to avoid token limits
   const simplifiedContent = lessonContent.map(item => ({
     content: item.content.substring(0, 800) + (item.content.length > 800 ? '\n... (continued in lesson)' : ''),
     teacherActivity: item.teacherActivity.substring(0, 500) + (item.teacherActivity.length > 500 ? '...' : ''),
@@ -713,7 +702,6 @@ function generateCBCScheme(grade, subject, term, user, customTopics = {}) {
   const weeks = [];
   const totalWeeks = 13;
   
-  // Subject-specific topics aligned with CBC syllabus
   const subjectTopics = {
     'Biology': {
       topics: [
@@ -866,7 +854,6 @@ function generateCBCScheme(grade, subject, term, user, customTopics = {}) {
     }
   };
 
-  // Get subject data or use default
   const subjectData = subjectTopics[subject] || {
     topics: [
       { topic: `1.1.0 Introduction to ${subject}`, subtopic: `1.1.1 Nature of ${subject}`, specificCompetence: `Apply scientific inquiry in ${subject} investigations` },
@@ -906,7 +893,6 @@ function generateCBCScheme(grade, subject, term, user, customTopics = {}) {
   const valuesOptions = subjectData.valuesOptions || ["Responsibility, teamwork, curiosity, scientific inquiry"];
   const skillsOptions = subjectData.skillsOptions || ["Critical thinking, analysis, collaboration, observation"];
 
-  // Shuffle topics for variety
   const shuffledTopics = [...topicsList];
   for (let i = shuffledTopics.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -997,8 +983,6 @@ function generateCBCScheme(grade, subject, term, user, customTopics = {}) {
     curriculum: 'cbc'
   };
 }
-
-// ============ OBC SCHEME GENERATOR ============
 
 function generateOBCScheme(grade, subject, term, user, customTopics = {}) {
   const weeks = [];
@@ -1319,7 +1303,6 @@ Return ONLY the JSON object, no other text.
         }
       ];
 
-      // Use smaller max_tokens to avoid truncation
       aiContent = await generateDeepSeekJSON(messages, { 
         max_tokens: 3000,
         temperature: 0.1
@@ -1366,7 +1349,6 @@ Return ONLY the JSON object, no other text.
       }
     }
 
-    // Ensure all required fields exist with fallbacks
     const referencesArray = Array.isArray(aiContent.references) 
       ? aiContent.references 
       : (aiContent.references ? [aiContent.references] : ["Textbook", "Teacher's Guide"]);
@@ -1410,7 +1392,6 @@ Return ONLY the JSON object, no other text.
       lessonDevelopmentArray = generateLessonContent(topic, subject, grade);
     }
 
-    // Create lesson in database
     const lesson = await prisma.lesson.create({
       data: {
         userId: req.userId,
@@ -2372,6 +2353,9 @@ const isAdmin = async (req, res, next) => {
   }
 };
 
+// ============ ADMIN ROUTES ============
+
+// Admin Stats (basic)
 app.get('/api/admin/stats', authenticate, isAdmin, async (req, res) => {
   try {
     const [
@@ -2414,6 +2398,7 @@ app.get('/api/admin/stats', authenticate, isAdmin, async (req, res) => {
   }
 });
 
+// Admin Users (basic)
 app.get('/api/admin/users', authenticate, isAdmin, async (req, res) => {
   try {
     const users = await prisma.user.findMany({
@@ -2441,6 +2426,288 @@ app.get('/api/admin/users', authenticate, isAdmin, async (req, res) => {
   }
 });
 
+// Admin Detailed Users (for admin dashboard with counts)
+app.get('/api/admin/users/detailed', authenticate, isAdmin, async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        school: true,
+        province: true,
+        district: true,
+        role: true,
+        lessonsUsed: true,
+        lessonsLimit: true,
+        schemesUsed: true,
+        schemesLimit: true,
+        createdAt: true,
+        subscriptionEndsAt: true,
+        lastActive: true,
+        _count: {
+          select: {
+            lessons: true,
+            schemes: true,
+            payments: true,
+            notes: true,
+            assessments: true
+          }
+        }
+      }
+    });
+
+    const formattedUsers = users.map(user => ({
+      ...user,
+      totalLessons: user._count.lessons,
+      totalSchemes: user._count.schemes,
+      totalPayments: user._count.payments,
+      totalNotes: user._count.notes,
+      totalAssessments: user._count.assessments,
+      _count: undefined
+    }));
+
+    res.json({
+      success: true,
+      users: formattedUsers,
+      total: formattedUsers.length
+    });
+  } catch (error) {
+    console.error('❌ Error fetching detailed users:', error);
+    res.status(500).json({
+      error: 'Failed to fetch administrator data',
+      details: error.message
+    });
+  }
+});
+
+// Admin User Stats (detailed user information)
+app.get('/api/admin/users/:id/stats', authenticate, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        school: true,
+        province: true,
+        district: true,
+        role: true,
+        lessonsUsed: true,
+        lessonsLimit: true,
+        schemesUsed: true,
+        schemesLimit: true,
+        createdAt: true,
+        subscriptionEndsAt: true,
+        lastActive: true,
+        _count: {
+          select: {
+            lessons: true,
+            schemes: true,
+            payments: true,
+            notes: true,
+            assessments: true
+          }
+        }
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const recentLessons = await prisma.lesson.findMany({
+      where: { userId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: {
+        id: true,
+        topic: true,
+        subject: true,
+        grade: true,
+        createdAt: true
+      }
+    });
+
+    const recentPayments = await prisma.payment.findMany({
+      where: { userId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        createdAt: true,
+        plan: true
+      }
+    });
+
+    const recentSchemes = await prisma.scheme.findMany({
+      where: { userId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: {
+        id: true,
+        subject: true,
+        grade: true,
+        term: true,
+        createdAt: true
+      }
+    });
+
+    res.json({
+      user: {
+        ...user,
+        _count: undefined
+      },
+      stats: {
+        totalLessons: user._count.lessons,
+        totalSchemes: user._count.schemes,
+        totalPayments: user._count.payments,
+        totalNotes: user._count.notes,
+        totalAssessments: user._count.assessments
+      },
+      recentLessons,
+      recentPayments,
+      recentSchemes
+    });
+  } catch (error) {
+    console.error('❌ Error fetching user stats:', error);
+    res.status(500).json({
+      error: 'Failed to fetch user statistics',
+      details: error.message
+    });
+  }
+});
+
+// Admin System Stats (comprehensive dashboard data)
+app.get('/api/admin/system/stats', authenticate, isAdmin, async (req, res) => {
+  try {
+    const [
+      totalUsers,
+      totalLessons,
+      totalSchemes,
+      totalPayments,
+      totalNotes,
+      totalAssessments,
+      recentUsers,
+      recentLessons,
+      recentPayments,
+      totalRevenue
+    ] = await Promise.all([
+      prisma.user.count(),
+      prisma.lesson.count(),
+      prisma.scheme.count(),
+      prisma.payment.count(),
+      prisma.note.count(),
+      prisma.assessment.count(),
+      prisma.user.findMany({
+        take: 10,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          school: true,
+          role: true,
+          createdAt: true,
+          lessonsUsed: true,
+          schemesUsed: true
+        }
+      }),
+      prisma.lesson.findMany({
+        take: 10,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: {
+            select: {
+              fullName: true,
+              email: true,
+              school: true
+            }
+          }
+        }
+      }),
+      prisma.payment.findMany({
+        where: { status: 'completed' },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        include: {
+          user: {
+            select: {
+              fullName: true,
+              email: true
+            }
+          }
+        }
+      }),
+      prisma.payment.aggregate({
+        where: { status: 'completed' },
+        _sum: { amount: true }
+      })
+    ]);
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const newUsersLast30Days = await prisma.user.count({
+      where: {
+        createdAt: { gte: thirtyDaysAgo }
+      }
+    });
+
+    const proUsers = await prisma.user.count({
+      where: { role: 'PRO' }
+    });
+    const schoolUsers = await prisma.user.count({
+      where: { role: 'SCHOOL' }
+    });
+    const freeUsers = await prisma.user.count({
+      where: { role: 'FREE' }
+    });
+    const adminUsers = await prisma.user.count({
+      where: { role: 'ADMIN' }
+    });
+
+    res.json({
+      totals: {
+        users: totalUsers,
+        lessons: totalLessons,
+        schemes: totalSchemes,
+        payments: totalPayments,
+        notes: totalNotes,
+        assessments: totalAssessments,
+        revenue: totalRevenue._sum.amount || 0
+      },
+      growth: {
+        newUsersLast30Days
+      },
+      subscriptions: {
+        free: freeUsers,
+        pro: proUsers,
+        school: schoolUsers,
+        admin: adminUsers
+      },
+      recent: {
+        users: recentUsers,
+        lessons: recentLessons,
+        payments: recentPayments
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error fetching system stats:', error);
+    res.status(500).json({
+      error: 'Failed to fetch system statistics',
+      details: error.message
+    });
+  }
+});
+
+// Admin Update User Role
 app.put('/api/admin/users/:id/role', authenticate, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -2463,6 +2730,7 @@ app.put('/api/admin/users/:id/role', authenticate, isAdmin, async (req, res) => 
   }
 });
 
+// Admin Lessons
 app.get('/api/admin/lessons', authenticate, isAdmin, async (req, res) => {
   try {
     const lessons = await prisma.lesson.findMany({
@@ -2485,6 +2753,7 @@ app.get('/api/admin/lessons', authenticate, isAdmin, async (req, res) => {
   }
 });
 
+// Admin Schemes
 app.get('/api/admin/schemes', authenticate, isAdmin, async (req, res) => {
   try {
     const schemes = await prisma.scheme.findMany({
@@ -2507,6 +2776,7 @@ app.get('/api/admin/schemes', authenticate, isAdmin, async (req, res) => {
   }
 });
 
+// Admin Payments
 app.get('/api/admin/payments', authenticate, isAdmin, async (req, res) => {
   try {
     const payments = await prisma.payment.findMany({
@@ -2525,6 +2795,72 @@ app.get('/api/admin/payments', authenticate, isAdmin, async (req, res) => {
   } catch (error) {
     console.error('Error fetching payments:', error);
     res.status(500).json({ error: 'Failed to fetch payments' });
+  }
+});
+
+// Admin Delete User (with safety checks)
+app.delete('/api/admin/users/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (id === req.userId) {
+      return res.status(400).json({ error: 'Cannot delete your own account' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    await prisma.user.delete({
+      where: { id }
+    });
+
+    res.json({ success: true, message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// Admin System Health Check
+app.get('/api/admin/health', authenticate, isAdmin, async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    
+    let deepseekStatus = 'unknown';
+    try {
+      await deepseek.chat.completions.create({
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: 'test' }],
+        max_tokens: 5
+      });
+      deepseekStatus = 'healthy';
+    } catch (error) {
+      deepseekStatus = 'unhealthy';
+    }
+
+    res.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      services: {
+        database: 'connected',
+        deepseek: deepseekStatus,
+        lipila: 'configured'
+      },
+      memory: process.memoryUsage(),
+      version: process.version
+    });
+  } catch (error) {
+    console.error('Health check error:', error);
+    res.status(500).json({
+      status: 'unhealthy',
+      error: error.message
+    });
   }
 });
 
@@ -2607,7 +2943,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ CORS enabled for Vercel and Render frontend`);
 });
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, closing server...');
   prisma.$disconnect();
