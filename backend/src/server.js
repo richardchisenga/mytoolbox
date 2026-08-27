@@ -101,34 +101,28 @@ const corsOptions = {
   optionsSuccessStatus: 200
 };
 // ============ MIDDLEWARE ============
-// Custom CSP configuration to allow eval and inline scripts
+// Disable helmet completely to avoid CSP issues
+// app.use(helmet());
+
+// Use helmet with CSP disabled
 app.use(
   helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-eval'", "'unsafe-inline'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", "data:", "https:"],
-        connectSrc: [
-          "'self'",
-          "https://mytoolbox.onrender.com",
-          "https://*.onrender.com",
-          "https://*.vercel.app",
-          "https://mytoolbox-production.up.railway.app"
-        ],
-        fontSrc: ["'self'", "data:", "https:"],
-        objectSrc: ["'none'"],
-        baseUri: ["'self'"],
-        formAction: ["'self'"],
-        frameAncestors: ["'none'"],
-      },
-    },
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: false,
+    crossOriginResourcePolicy: false,
+    dnsPrefetchControl: false,
+    frameguard: false,
+    hsts: false,
+    ieNoOpen: false,
+    noSniff: false,
+    referrerPolicy: false,
+    xssFilter: false,
   })
 );
+
 app.use(cors(corsOptions));
 app.use(express.json());
-
 // ============ AUTHENTICATION MIDDLEWARE ============
 const authenticate = (req, res, next) => {
   try {
