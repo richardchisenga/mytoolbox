@@ -286,10 +286,10 @@ function generateFallbackCBC(topic, grade, subject, classSize, user) {
     girls: girls,
     subtopic: '',
     generalCompetences: [
-      "Analytical thinking: Breaking down complex information into parts",
-      "Collaboration: Working effectively in groups",
-      "Communication: Expressing ideas clearly",
-      "Critical thinking: Evaluating information and making decisions"
+      "Analytical thinking",
+      "Collaboration",
+      "Communication",
+      "Critical thinking"
     ],
     specificCompetence: `By the end of this lesson, learners will be able to understand and explain ${topic}`,
     lessonGoal: `By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}`,
@@ -655,7 +655,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE (UPDATED WITH EXACT FORMATS) ============
+// ============ LESSON GENERATION ROUTE (FIXED) ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
@@ -691,7 +691,6 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       let prompt;
       
       if (curriculumType === 'cbc') {
-        // ============ CBC PROMPT (FOLLOWS YOUR BIOLOGY FORMAT) ============
         prompt = `
 You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
 
@@ -720,60 +719,23 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
   "lessonGoal": "By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}",
   "rationale": "Understanding ${topic} is essential for learners to make informed decisions and develop critical thinking skills.",
   "priorKnowledge": "Learners have basic knowledge of the topic from previous lessons",
-  "references": "2026 Teaching Module, pages 71-78; ${subject} Module 2, Term 2",
+  "references": ["2026 Teaching Module", "Curriculum Guide", "${subject} Grade ${grade} Textbook"],
   "learningEnvironment": "Natural: school garden / market area. Artificial: classroom, laboratory. Technological: tablets with charts",
-  "materials": "Assorted local materials, packaging labels, manila paper, markers, flip chart",
+  "materials": ["Assorted local materials", "Packaging labels", "Manila paper", "Markers", "Flip chart"],
   "expectedStandard": "Topic concepts classified correctly",
   "lessonProgression": [
-    {
-      "stage": "INTRODUCTION",
-      "time": "5 min",
-      "teacherRole": "Ask: 'What do you know about this topic?' Explain and define key concepts",
-      "learnerRole": "Listen, participate, give examples",
-      "assessmentCriteria": "Observation of participation"
-    },
-    {
-      "stage": "LESSON DEVELOPMENT",
-      "time": "10 min",
-      "teacherRole": "Put learners into groups of 4-5. Ask them to identify essential concepts using displayed materials",
-      "learnerRole": "In groups, handle materials and identify key concepts",
-      "assessmentCriteria": "Group collaboration"
-    },
-    {
-      "stage": "Activity 1",
-      "time": "11 min",
-      "teacherRole": "Display different materials. Ask groups to record name, main concept, and other details",
-      "learnerRole": "Observe, discuss, fill chart",
-      "assessmentCriteria": "Correct recording of content"
-    },
-    {
-      "stage": "Activity 2",
-      "time": "16 min",
-      "teacherRole": "Ask each group to present findings. Consolidate by listing key points on the board",
-      "learnerRole": "Present chart to class; correct own work",
-      "assessmentCriteria": "Accurate presentation and participation"
-    },
-    {
-      "stage": "EXERCISE",
-      "time": "20 min",
-      "teacherRole": "Give a quiz: match concepts to functions and give examples",
-      "learnerRole": "Complete quiz individually",
-      "assessmentCriteria": "Correct classification"
-    },
-    {
-      "stage": "CONCLUSION",
-      "time": "10 min",
-      "teacherRole": "Summarise key points",
-      "learnerRole": "Share what they learned",
-      "assessmentCriteria": "Verbal explanation"
-    }
+    { "stage": "INTRODUCTION", "time": "5 min", "teacherRole": "Ask: 'What do you know about this topic?' Explain and define key concepts", "learnerRole": "Listen, participate, give examples", "assessmentCriteria": "Observation of participation" },
+    { "stage": "LESSON DEVELOPMENT", "time": "10 min", "teacherRole": "Put learners into groups of 4-5. Ask them to identify essential concepts using displayed materials", "learnerRole": "In groups, handle materials and identify key concepts", "assessmentCriteria": "Group collaboration" },
+    { "stage": "Activity 1", "time": "11 min", "teacherRole": "Display different materials. Ask groups to record name, main concept, and other details", "learnerRole": "Observe, discuss, fill chart", "assessmentCriteria": "Correct recording of content" },
+    { "stage": "Activity 2", "time": "16 min", "teacherRole": "Ask each group to present findings. Consolidate by listing key points on the board", "learnerRole": "Present chart to class; correct own work", "assessmentCriteria": "Accurate presentation and participation" },
+    { "stage": "EXERCISE", "time": "20 min", "teacherRole": "Give a quiz: match concepts to functions and give examples", "learnerRole": "Complete quiz individually", "assessmentCriteria": "Correct classification" },
+    { "stage": "CONCLUSION", "time": "10 min", "teacherRole": "Summarise key points", "learnerRole": "Share what they learned", "assessmentCriteria": "Verbal explanation" }
   ],
   "homework": "Research and list local examples of ${topic}",
   "lessonEvaluation": "Lesson was successful, key competences were acquired"
 }
 `;
       } else {
-        // ============ OBC PROMPT (FOLLOWS YOUR MATHEMATICS FORMAT) ============
         prompt = `
 You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
 
@@ -877,7 +839,6 @@ Return ONLY the JSON object, no other text.
         temperature: 0.1
       });
       
-      // Merge with appropriate fallback
       let fallback;
       if (curriculumType === 'cbc') {
         fallback = generateFallbackCBC(topic, grade, subject, classSize, user);
@@ -902,10 +863,47 @@ Return ONLY the JSON object, no other text.
       }
     }
 
-    // Ensure references is an array
+    // ============ FIX: ENSURE ALL ARRAY FIELDS ARE ARRAYS ============
     const referencesArray = Array.isArray(aiContent.references) 
       ? aiContent.references 
       : (aiContent.references ? [aiContent.references] : ["Textbook", "Teacher's Guide"]);
+
+    const materialsArray = Array.isArray(aiContent.materials) 
+      ? aiContent.materials 
+      : (aiContent.materials ? [aiContent.materials] : ["Manila paper", "Markers", "Charts", "Worksheet", "Real objects"]);
+
+    const teachingAidsArray = Array.isArray(aiContent.teachingAids) 
+      ? aiContent.teachingAids 
+      : (aiContent.teachingAids ? [aiContent.teachingAids] : ["Whiteboard", "Charts", "Diagrams"]);
+
+    const generalCompetencesArray = Array.isArray(aiContent.generalCompetences) 
+      ? aiContent.generalCompetences 
+      : ["Analytical thinking", "Collaboration", "Communication", "Critical thinking"];
+
+    const learningOutcomesArray = Array.isArray(aiContent.learningOutcomes) 
+      ? aiContent.learningOutcomes 
+      : [`Understand ${topic}`, `Apply ${topic}`, `Analyze ${topic}`];
+
+    const learnersEvaluationArray = Array.isArray(aiContent.learnersEvaluation) 
+      ? aiContent.learnersEvaluation 
+      : [`Define ${topic}`, `Give examples of ${topic}`, `Explain the importance of ${topic}`];
+
+    const lessonProgressionArray = Array.isArray(aiContent.lessonProgression) 
+      ? aiContent.lessonProgression 
+      : [
+          { stage: "INTRODUCTION", time: "5 min", teacherRole: "Ask engaging questions", learnerRole: "Listen and participate", assessmentCriteria: "Participation" },
+          { stage: "LESSON DEVELOPMENT", time: "10 min", teacherRole: "Explain key concepts", learnerRole: "Take notes and discuss", assessmentCriteria: "Understanding" },
+          { stage: "ACTIVITY", time: "11 min", teacherRole: "Guide group work", learnerRole: "Work in groups", assessmentCriteria: "Collaboration" },
+          { stage: "EXERCISE", time: "20 min", teacherRole: "Give assessment", learnerRole: "Complete individually", assessmentCriteria: "Correct responses" },
+          { stage: "CONCLUSION", time: "10 min", teacherRole: "Summarize", learnerRole: "Share learning", assessmentCriteria: "Verbal explanation" }
+        ];
+
+    const lessonDevelopmentArray = Array.isArray(aiContent.lessonDevelopment) 
+      ? aiContent.lessonDevelopment 
+      : [
+          { content: `Introduction to ${topic}`, teacherActivity: "Explain the concept", pupilActivity: "Listen and take notes", methods: "Lecture" },
+          { content: `Practice ${topic}`, teacherActivity: "Guide students", pupilActivity: "Work in groups", methods: "Group work" }
+        ];
 
     const lesson = await prisma.lesson.create({
       data: {
@@ -918,25 +916,25 @@ Return ONLY the JSON object, no other text.
         classSize: size,
         duration: aiContent.duration || '40 min',
         curriculum: curriculumType,
-        objectives: aiContent.learningOutcomes || [`Understand ${topic}`],
-        development: aiContent.lessonDevelopment?.map(d => d.learningPoints || d.content) || [],
-        activities: aiContent.lessonDevelopment?.map(d => d.pupilActivity || d.pupilActivities) || [],
-        assessment: aiContent.learnersEvaluation?.join(', ') || '',
+        objectives: learningOutcomesArray,
+        development: lessonDevelopmentArray.map(d => d.learningPoints || d.content) || [],
+        activities: lessonDevelopmentArray.map(d => d.pupilActivity || d.pupilActivities) || [],
+        assessment: learnersEvaluationArray.join(', ') || '',
         curriculumCodes: [`${subject}-${grade}-${topic.substring(0, 3)}`],
         provinceContext: user.province || '',
-        lessonDevelopment: aiContent.lessonDevelopment || [],
-        lessonProgression: aiContent.lessonProgression || [],
-        learningOutcomes: aiContent.learningOutcomes || [],
-        learnersEvaluation: aiContent.learnersEvaluation || [],
+        lessonDevelopment: lessonDevelopmentArray,
+        lessonProgression: lessonProgressionArray,
+        learningOutcomes: learningOutcomesArray,
+        learnersEvaluation: learnersEvaluationArray,
         teacherEvaluation: aiContent.teacherEvaluation || '',
-        generalCompetences: aiContent.generalCompetences || [],
+        generalCompetences: generalCompetencesArray,
         specificCompetence: aiContent.specificCompetence || '',
         lessonGoal: aiContent.lessonGoal || '',
         rationale: aiContent.rationale || '',
         priorKnowledge: aiContent.priorKnowledge || '',
-        references: referencesArray, // ✅ Fixed - ensures array
+        references: referencesArray,
         learningEnvironment: aiContent.learningEnvironment || '',
-        materials: aiContent.materials || [],
+        materials: materialsArray,
         expectedStandard: aiContent.expectedStandard || '',
         homework: aiContent.homework || '',
         lessonEvaluation: aiContent.lessonEvaluation || '',
@@ -948,7 +946,7 @@ Return ONLY the JSON object, no other text.
         time: aiContent.time || '',
         boys: aiContent.boys || 0,
         girls: aiContent.girls || 0,
-        teachingAids: aiContent.teachingAids || []
+        teachingAids: teachingAidsArray
       }
     });
 
@@ -1175,9 +1173,8 @@ Return ONLY the JSON object, no other text.
   }
 });
 
-// ============ SCHEME EXPORT ROUTES (FIXED - PROPER WORD AND PDF) ============
+// ============ SCHEME EXPORT ROUTES ============
 
-// Export Scheme as Word (DOCX) - FIXED
 app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1194,10 +1191,8 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    // Build table rows
     const tableRows = [];
 
-    // Add header row
     const headerRow = new TableRow({
       children: [
         new TableCell({ children: [new Paragraph({ text: 'WEEK', bold: true })], width: { size: 5, type: WidthType.PERCENTAGE } }),
@@ -1213,7 +1208,6 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
     });
     tableRows.push(headerRow);
 
-    // Add data rows
     scheme.weeks.forEach(week => {
       const topics = week.topics || [];
       
@@ -1242,21 +1236,12 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
       tableRows.push(dataRow);
     });
 
-    // Create the document
     const doc = new Document({
       sections: [{
         properties: {},
         children: [
-          new Paragraph({
-            text: 'MINISTRY OF EDUCATION',
-            heading: HeadingLevel.HEADING_1,
-            alignment: AlignmentType.CENTER,
-          }),
-          new Paragraph({
-            text: 'SCHEME OF WORK',
-            heading: HeadingLevel.HEADING_2,
-            alignment: AlignmentType.CENTER,
-          }),
+          new Paragraph({ text: 'MINISTRY OF EDUCATION', heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER }),
+          new Paragraph({ text: 'SCHEME OF WORK', heading: HeadingLevel.HEADING_2, alignment: AlignmentType.CENTER }),
           new Paragraph({ text: '' }),
           new Paragraph({ text: `School: ${scheme.school || 'School Name'}`, alignment: AlignmentType.CENTER }),
           new Paragraph({ text: `Subject: ${scheme.subject}`, alignment: AlignmentType.CENTER }),
@@ -1265,15 +1250,9 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
           new Paragraph({ text: `Year: ${scheme.year}`, alignment: AlignmentType.CENTER }),
           new Paragraph({ text: `Assessment Weeks: ${scheme.assessmentWeeks?.join(', ') || 'None'}`, alignment: AlignmentType.CENTER }),
           new Paragraph({ text: '' }),
-          new Table({
-            rows: tableRows,
-            width: { size: 100, type: WidthType.PERCENTAGE },
-          }),
+          new Table({ rows: tableRows, width: { size: 100, type: WidthType.PERCENTAGE } }),
           new Paragraph({ text: '' }),
-          new Paragraph({
-            text: '© 2026 mytoolbox - Made for teachers in Zambia',
-            alignment: AlignmentType.CENTER,
-          }),
+          new Paragraph({ text: '© 2026 mytoolbox - Made for teachers in Zambia', alignment: AlignmentType.CENTER }),
         ],
       }],
     });
@@ -1290,7 +1269,6 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
   }
 });
 
-// Export Scheme as PDF - FIXED
 app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1312,7 +1290,6 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="scheme_${scheme.id}.pdf"`);
     doc.pipe(res);
 
-    // Title
     doc.fontSize(18).text('MINISTRY OF EDUCATION', { align: 'center' });
     doc.fontSize(14).text('SCHEME OF WORK', { align: 'center' });
     doc.moveDown();
@@ -1325,16 +1302,13 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
     doc.text(`Assessment Weeks: ${scheme.assessmentWeeks?.join(', ') || 'None'}`, { align: 'center' });
     doc.moveDown();
 
-    // Table
     const tableTop = doc.y;
     const columnWidths = [40, 70, 80, 70, 60, 60, 60, 50, 50];
     const headers = ['WEEK', 'TOPIC', 'SPECIFIC OUTCOME', 'METHODS', 'AIDS', 'REFERENCES', 'KNOWLEDGE', 'SKILLS', 'VALUES'];
     
-    // Draw headers
     let x = 50;
     let y = tableTop;
     
-    // Header background
     doc.rect(50, y - 5, 495, 25).fill('#e0e0e0');
     doc.fillColor('black');
     
@@ -1345,7 +1319,6 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
     
     y += 25;
     
-    // Draw rows
     scheme.weeks.forEach(week => {
       const topics = week.topics || [];
       const topicText = topics.map(t => t.topic || '').join('\n');
@@ -1380,7 +1353,6 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
         if (height > maxHeight) maxHeight = height;
       });
       
-      // Draw row borders
       let currentX = 50;
       rowData.forEach((text, i) => {
         doc.rect(currentX, y, columnWidths[i], maxHeight + 5).stroke();
@@ -1389,14 +1361,12 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
       
       y += maxHeight + 10;
       
-      // Check for page break
       if (y > 750) {
         doc.addPage();
         y = 50;
       }
     });
     
-    // Footer
     doc.moveDown();
     doc.fontSize(10).text('© 2026 mytoolbox - Made for teachers in Zambia', { align: 'center' });
     
@@ -1800,7 +1770,6 @@ app.get('/api/payments/history', authenticate, async (req, res) => {
 
 // ============ ADMIN ROUTES ============
 
-// Check if user is admin middleware
 const isAdmin = async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({
@@ -1818,7 +1787,6 @@ const isAdmin = async (req, res, next) => {
   }
 };
 
-// Get admin dashboard stats
 app.get('/api/admin/stats', authenticate, isAdmin, async (req, res) => {
   try {
     const [
@@ -1861,7 +1829,6 @@ app.get('/api/admin/stats', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Get all users (admin only)
 app.get('/api/admin/users', authenticate, isAdmin, async (req, res) => {
   try {
     const users = await prisma.user.findMany({
@@ -1889,7 +1856,6 @@ app.get('/api/admin/users', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Update user role (admin only)
 app.put('/api/admin/users/:id/role', authenticate, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1912,7 +1878,6 @@ app.put('/api/admin/users/:id/role', authenticate, isAdmin, async (req, res) => 
   }
 });
 
-// Get all lessons (admin only)
 app.get('/api/admin/lessons', authenticate, isAdmin, async (req, res) => {
   try {
     const lessons = await prisma.lesson.findMany({
@@ -1935,7 +1900,6 @@ app.get('/api/admin/lessons', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Get all schemes (admin only)
 app.get('/api/admin/schemes', authenticate, isAdmin, async (req, res) => {
   try {
     const schemes = await prisma.scheme.findMany({
@@ -1958,7 +1922,6 @@ app.get('/api/admin/schemes', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Get all payments (admin only)
 app.get('/api/admin/payments', authenticate, isAdmin, async (req, res) => {
   try {
     const payments = await prisma.payment.findMany({
