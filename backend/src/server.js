@@ -80,12 +80,33 @@ class LipilaService {
 
 const lipilaService = new LipilaService();
 
-// ============ CORS CONFIGURATION ============
+
+// ============ MIDDLEWARE ============
+app.use(helmet());
+app.use(cors(corsOptions));
+app.use(express.json());
+
+// ============ AUTHENTICATION MIDDLEWARE ============
+const authenticate = (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.userId = decoded.id;
+    next();
+  } catch (error) {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+};
+// ============ CORS CONFIGURATION (FIXED FOR RENDER) ============
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
+    // List of allowed origins
     const allowedOrigins = [
       'https://mytoolbox-1.onrender.com',
       'https://mytoolbox-frontend.onrender.com',
@@ -108,6 +129,7 @@ const corsOptions = {
     if (isAllowed) {
       callback(null, true);
     } else {
+      console.log('❌ CORS blocked for origin:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -118,25 +140,6 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-// ============ MIDDLEWARE ============
-app.use(helmet());
-app.use(cors(corsOptions));
-app.use(express.json());
-
-// ============ AUTHENTICATION MIDDLEWARE ============
-const authenticate = (req, res, next) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.userId = decoded.id;
-    next();
-  } catch (error) {
-    res.status(401).json({ error: 'Invalid token' });
-  }
-};
 
 // ============ HEALTH CHECK ============
 app.get('/health', (req, res) => {
