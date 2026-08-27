@@ -100,9 +100,32 @@ const corsOptions = {
   credentials: true,
   optionsSuccessStatus: 200
 };
-
 // ============ MIDDLEWARE ============
-app.use(helmet());
+// Custom CSP configuration to allow eval and inline scripts
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-eval'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: [
+          "'self'",
+          "https://mytoolbox.onrender.com",
+          "https://*.onrender.com",
+          "https://*.vercel.app",
+          "https://mytoolbox-production.up.railway.app"
+        ],
+        fontSrc: ["'self'", "data:", "https:"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        frameAncestors: ["'none'"],
+      },
+    },
+  })
+);
 app.use(cors(corsOptions));
 app.use(express.json());
 
