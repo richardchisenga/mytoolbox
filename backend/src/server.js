@@ -80,27 +80,7 @@ class LipilaService {
 
 const lipilaService = new LipilaService();
 
-
-// ============ MIDDLEWARE ============
-app.use(helmet());
-app.use(cors(corsOptions));
-app.use(express.json());
-
-// ============ AUTHENTICATION MIDDLEWARE ============
-const authenticate = (req, res, next) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.userId = decoded.id;
-    next();
-  } catch (error) {
-    res.status(401).json({ error: 'Invalid token' });
-  }
-};
-// ============ CORS CONFIGURATION (FIXED FOR RENDER) ============
+// ============ CORS CONFIGURATION (FIXED - MOVED BEFORE MIDDLEWARE) ============
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
@@ -139,7 +119,25 @@ const corsOptions = {
   optionsSuccessStatus: 200
 };
 
+// ============ MIDDLEWARE ============
+app.use(helmet());
 app.use(cors(corsOptions));
+app.use(express.json());
+
+// ============ AUTHENTICATION MIDDLEWARE ============
+const authenticate = (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.userId = decoded.id;
+    next();
+  } catch (error) {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+};
 
 // ============ HEALTH CHECK ============
 app.get('/health', (req, res) => {
