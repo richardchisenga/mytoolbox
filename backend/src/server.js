@@ -80,16 +80,25 @@ class LipilaService {
 
 const lipilaService = new LipilaService();
 
-// ============ CORS CONFIGURATION ============
+// ============ CORS CONFIGURATION (UPDATED FOR RENDER) ============
 const corsOptions = {
   origin: [
+    // Render frontend URLs
+    'https://mytoolbox-frontend.onrender.com',
     'https://mytoolbox-1.onrender.com',
     'https://mytoolbox.onrender.com',
     /\.onrender\.com$/,
+    
+    // Vercel frontend URLs (backup)
     'https://mytoolbox-nine.vercel.app',
     'https://mytoolbox-0e80w147vy-ryichietechn.vercel.app',
     /\.vercel\.app$/,
+    
+    // Backend URLs
+    'https://mytoolbox-api.onrender.com',
     'https://mytoolbox-production.up.railway.app',
+    
+    // Local development
     'http://localhost:3000',
     'http://localhost:5173',
     'http://localhost:8080',
@@ -655,7 +664,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE (UPDATED WITH EXACT FORMATS) ============
+// ============ LESSON GENERATION ROUTE ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
@@ -691,7 +700,6 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       let prompt;
       
       if (curriculumType === 'cbc') {
-        // ============ CBC PROMPT (FOLLOWS YOUR BIOLOGY FORMAT) ============
         prompt = `
 You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
 
@@ -773,7 +781,6 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
 }
 `;
       } else {
-        // ============ OBC PROMPT (FOLLOWS YOUR MATHEMATICS FORMAT) ============
         prompt = `
 You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
 
@@ -877,7 +884,6 @@ Return ONLY the JSON object, no other text.
         temperature: 0.1
       });
       
-      // Merge with appropriate fallback
       let fallback;
       if (curriculumType === 'cbc') {
         fallback = generateFallbackCBC(topic, grade, subject, classSize, user);
@@ -902,7 +908,6 @@ Return ONLY the JSON object, no other text.
       }
     }
 
-    // Ensure references is an array
     const referencesArray = Array.isArray(aiContent.references) 
       ? aiContent.references 
       : (aiContent.references ? [aiContent.references] : ["Textbook", "Teacher's Guide"]);
@@ -934,7 +939,7 @@ Return ONLY the JSON object, no other text.
         lessonGoal: aiContent.lessonGoal || '',
         rationale: aiContent.rationale || '',
         priorKnowledge: aiContent.priorKnowledge || '',
-        references: referencesArray, // ✅ Fixed - ensures array
+        references: referencesArray,
         learningEnvironment: aiContent.learningEnvironment || '',
         materials: aiContent.materials || [],
         expectedStandard: aiContent.expectedStandard || '',
@@ -1175,9 +1180,8 @@ Return ONLY the JSON object, no other text.
   }
 });
 
-// ============ SCHEME EXPORT ROUTES (FIXED - PROPER WORD AND PDF) ============
+// ============ SCHEME EXPORT ROUTES ============
 
-// Export Scheme as Word (DOCX) - FIXED
 app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1194,10 +1198,8 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    // Build table rows
     const tableRows = [];
 
-    // Add header row
     const headerRow = new TableRow({
       children: [
         new TableCell({ children: [new Paragraph({ text: 'WEEK', bold: true })], width: { size: 5, type: WidthType.PERCENTAGE } }),
@@ -1213,7 +1215,6 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
     });
     tableRows.push(headerRow);
 
-    // Add data rows
     scheme.weeks.forEach(week => {
       const topics = week.topics || [];
       
@@ -1242,7 +1243,6 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
       tableRows.push(dataRow);
     });
 
-    // Create the document
     const doc = new Document({
       sections: [{
         properties: {},
@@ -1290,7 +1290,6 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
   }
 });
 
-// Export Scheme as PDF - FIXED
 app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1312,7 +1311,6 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="scheme_${scheme.id}.pdf"`);
     doc.pipe(res);
 
-    // Title
     doc.fontSize(18).text('MINISTRY OF EDUCATION', { align: 'center' });
     doc.fontSize(14).text('SCHEME OF WORK', { align: 'center' });
     doc.moveDown();
@@ -1325,16 +1323,13 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
     doc.text(`Assessment Weeks: ${scheme.assessmentWeeks?.join(', ') || 'None'}`, { align: 'center' });
     doc.moveDown();
 
-    // Table
     const tableTop = doc.y;
     const columnWidths = [40, 70, 80, 70, 60, 60, 60, 50, 50];
     const headers = ['WEEK', 'TOPIC', 'SPECIFIC OUTCOME', 'METHODS', 'AIDS', 'REFERENCES', 'KNOWLEDGE', 'SKILLS', 'VALUES'];
     
-    // Draw headers
     let x = 50;
     let y = tableTop;
     
-    // Header background
     doc.rect(50, y - 5, 495, 25).fill('#e0e0e0');
     doc.fillColor('black');
     
@@ -1345,7 +1340,6 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
     
     y += 25;
     
-    // Draw rows
     scheme.weeks.forEach(week => {
       const topics = week.topics || [];
       const topicText = topics.map(t => t.topic || '').join('\n');
@@ -1380,7 +1374,6 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
         if (height > maxHeight) maxHeight = height;
       });
       
-      // Draw row borders
       let currentX = 50;
       rowData.forEach((text, i) => {
         doc.rect(currentX, y, columnWidths[i], maxHeight + 5).stroke();
@@ -1389,14 +1382,12 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
       
       y += maxHeight + 10;
       
-      // Check for page break
       if (y > 750) {
         doc.addPage();
         y = 50;
       }
     });
     
-    // Footer
     doc.moveDown();
     doc.fontSize(10).text('© 2026 mytoolbox - Made for teachers in Zambia', { align: 'center' });
     
@@ -1647,7 +1638,7 @@ app.post('/api/payments/initiate', authenticate, async (req, res) => {
     }
 
     const referenceId = `TX-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    const callbackUrl = `${process.env.BACKEND_URL || 'https://mytoolbox-production.up.railway.app'}/api/payments/webhook`;
+    const callbackUrl = `${process.env.BACKEND_URL || 'https://mytoolbox-api.onrender.com'}/api/payments/webhook`;
 
     const payment = await lipilaService.createCollection({
       referenceId,
@@ -1800,7 +1791,6 @@ app.get('/api/payments/history', authenticate, async (req, res) => {
 
 // ============ ADMIN ROUTES ============
 
-// Check if user is admin middleware
 const isAdmin = async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({
@@ -1818,7 +1808,6 @@ const isAdmin = async (req, res, next) => {
   }
 };
 
-// Get admin dashboard stats
 app.get('/api/admin/stats', authenticate, isAdmin, async (req, res) => {
   try {
     const [
@@ -1861,7 +1850,6 @@ app.get('/api/admin/stats', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Get all users (admin only)
 app.get('/api/admin/users', authenticate, isAdmin, async (req, res) => {
   try {
     const users = await prisma.user.findMany({
@@ -1889,7 +1877,6 @@ app.get('/api/admin/users', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Update user role (admin only)
 app.put('/api/admin/users/:id/role', authenticate, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1912,7 +1899,6 @@ app.put('/api/admin/users/:id/role', authenticate, isAdmin, async (req, res) => 
   }
 });
 
-// Get all lessons (admin only)
 app.get('/api/admin/lessons', authenticate, isAdmin, async (req, res) => {
   try {
     const lessons = await prisma.lesson.findMany({
@@ -1935,7 +1921,6 @@ app.get('/api/admin/lessons', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Get all schemes (admin only)
 app.get('/api/admin/schemes', authenticate, isAdmin, async (req, res) => {
   try {
     const schemes = await prisma.scheme.findMany({
@@ -1958,7 +1943,6 @@ app.get('/api/admin/schemes', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Get all payments (admin only)
 app.get('/api/admin/payments', authenticate, isAdmin, async (req, res) => {
   try {
     const payments = await prisma.payment.findMany({
@@ -2050,12 +2034,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Assessments routes available at /api/assessments`);
   console.log(`✅ Payment routes available at /api/payments/*`);
   console.log(`✅ Admin routes available at /api/admin/*`);
-  console.log(`✅ Get lessons at /api/lessons`);
-  console.log(`✅ Get schemes at /api/schemes`);
-  console.log(`✅ Get lessons (alias) at /api/lessons/mine`);
-  console.log(`✅ Get schemes (alias) at /api/schemes/mine`);
-  console.log(`✅ DeepSeek AI integration enabled`);
-  console.log(`✅ Lipila payment integration enabled`);
   console.log(`✅ CORS enabled for Vercel and Render frontend`);
 });
 
