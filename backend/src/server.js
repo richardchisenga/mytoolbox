@@ -2353,8 +2353,6 @@ const isAdmin = async (req, res, next) => {
   }
 };
 
-// ============ ADMIN ROUTES ============
-
 // Admin Stats (basic)
 app.get('/api/admin/stats', authenticate, isAdmin, async (req, res) => {
   try {
@@ -2365,10 +2363,10 @@ app.get('/api/admin/stats', authenticate, isAdmin, async (req, res) => {
       totalPayments,
       recentUsers
     ] = await Promise.all([
-      prisma.user.count(),
-      prisma.lesson.count(),
-      prisma.scheme.count(),
-      prisma.payment.count(),
+      prisma.user.count().catch(() => 0),
+      prisma.lesson.count().catch(() => 0),
+      prisma.scheme.count().catch(() => 0),
+      prisma.payment.count().catch(() => 0),
       prisma.user.findMany({
         take: 10,
         orderBy: { createdAt: 'desc' },
@@ -2380,17 +2378,26 @@ app.get('/api/admin/stats', authenticate, isAdmin, async (req, res) => {
           role: true,
           createdAt: true
         }
-      })
+      }).catch(() => [])
     ]);
+
+    const formattedRecentUsers = recentUsers.map(user => ({
+      id: user.id || '',
+      fullName: user.fullName || '',
+      email: user.email || '',
+      school: user.school || '',
+      role: user.role || 'FREE',
+      createdAt: user.createdAt ? user.createdAt.toISOString() : new Date().toISOString()
+    }));
 
     res.json({
       stats: {
-        totalUsers,
-        totalLessons,
-        totalSchemes,
-        totalPayments
+        totalUsers: totalUsers || 0,
+        totalLessons: totalLessons || 0,
+        totalSchemes: totalSchemes || 0,
+        totalPayments: totalPayments || 0
       },
-      recentUsers
+      recentUsers: formattedRecentUsers
     });
   } catch (error) {
     console.error('Admin stats error:', error);
@@ -2459,13 +2466,25 @@ app.get('/api/admin/users/detailed', authenticate, isAdmin, async (req, res) => 
     });
 
     const formattedUsers = users.map(user => ({
-      ...user,
-      totalLessons: user._count.lessons,
-      totalSchemes: user._count.schemes,
-      totalPayments: user._count.payments,
-      totalNotes: user._count.notes,
-      totalAssessments: user._count.assessments,
-      _count: undefined
+      id: user.id || '',
+      fullName: user.fullName || '',
+      email: user.email || '',
+      school: user.school || '',
+      province: user.province || '',
+      district: user.district || '',
+      role: user.role || 'FREE',
+      lessonsUsed: user.lessonsUsed || 0,
+      lessonsLimit: user.lessonsLimit || 5,
+      schemesUsed: user.schemesUsed || 0,
+      schemesLimit: user.schemesLimit || 3,
+      createdAt: user.createdAt ? user.createdAt.toISOString() : new Date().toISOString(),
+      subscriptionEndsAt: user.subscriptionEndsAt ? user.subscriptionEndsAt.toISOString() : null,
+      lastActive: user.lastActive ? user.lastActive.toISOString() : new Date().toISOString(),
+      totalLessons: user._count?.lessons || 0,
+      totalSchemes: user._count?.schemes || 0,
+      totalPayments: user._count?.payments || 0,
+      totalNotes: user._count?.notes || 0,
+      totalAssessments: user._count?.assessments || 0
     }));
 
     res.json({
@@ -2531,7 +2550,7 @@ app.get('/api/admin/users/:id/stats', authenticate, isAdmin, async (req, res) =>
         grade: true,
         createdAt: true
       }
-    });
+    }).catch(() => []);
 
     const recentPayments = await prisma.payment.findMany({
       where: { userId: id },
@@ -2544,7 +2563,7 @@ app.get('/api/admin/users/:id/stats', authenticate, isAdmin, async (req, res) =>
         createdAt: true,
         plan: true
       }
-    });
+    }).catch(() => []);
 
     const recentSchemes = await prisma.scheme.findMany({
       where: { userId: id },
@@ -2557,7 +2576,7 @@ app.get('/api/admin/users/:id/stats', authenticate, isAdmin, async (req, res) =>
         term: true,
         createdAt: true
       }
-    });
+    }).catch(() => []);
 
     res.json({
       user: {
@@ -2565,15 +2584,33 @@ app.get('/api/admin/users/:id/stats', authenticate, isAdmin, async (req, res) =>
         _count: undefined
       },
       stats: {
-        totalLessons: user._count.lessons,
-        totalSchemes: user._count.schemes,
-        totalPayments: user._count.payments,
-        totalNotes: user._count.notes,
-        totalAssessments: user._count.assessments
+        totalLessons: user._count?.lessons || 0,
+        totalSchemes: user._count?.schemes || 0,
+        totalPayments: user._count?.payments || 0,
+        totalNotes: user._count?.notes || 0,
+        totalAssessments: user._count?.assessments || 0
       },
-      recentLessons,
-      recentPayments,
-      recentSchemes
+      recentLessons: recentLessons.map(l => ({
+        id: l.id || '',
+        topic: l.topic || '',
+        subject: l.subject || '',
+        grade: l.grade || '',
+        createdAt: l.createdAt ? l.createdAt.toISOString() : new Date().toISOString()
+      })),
+      recentPayments: recentPayments.map(p => ({
+        id: p.id || '',
+        amount: p.amount || 0,
+        status: p.status || 'pending',
+        createdAt: p.createdAt ? p.createdAt.toISOString() : new Date().toISOString(),
+        plan: p.plan || 'PRO'
+      })),
+      recentSchemes: recentSchemes.map(s => ({
+        id: s.id || '',
+        subject: s.subject || '',
+        grade: s.grade || '',
+        term: s.term || '',
+        createdAt: s.createdAt ? s.createdAt.toISOString() : new Date().toISOString()
+      }))
     });
   } catch (error) {
     console.error('❌ Error fetching user stats:', error);
@@ -2599,12 +2636,12 @@ app.get('/api/admin/system/stats', authenticate, isAdmin, async (req, res) => {
       recentPayments,
       totalRevenue
     ] = await Promise.all([
-      prisma.user.count(),
-      prisma.lesson.count(),
-      prisma.scheme.count(),
-      prisma.payment.count(),
-      prisma.note.count(),
-      prisma.assessment.count(),
+      prisma.user.count().catch(() => 0),
+      prisma.lesson.count().catch(() => 0),
+      prisma.scheme.count().catch(() => 0),
+      prisma.payment.count().catch(() => 0),
+      prisma.note.count().catch(() => 0),
+      prisma.assessment.count().catch(() => 0),
       prisma.user.findMany({
         take: 10,
         orderBy: { createdAt: 'desc' },
@@ -2618,7 +2655,7 @@ app.get('/api/admin/system/stats', authenticate, isAdmin, async (req, res) => {
           lessonsUsed: true,
           schemesUsed: true
         }
-      }),
+      }).catch(() => []),
       prisma.lesson.findMany({
         take: 10,
         orderBy: { createdAt: 'desc' },
@@ -2631,7 +2668,7 @@ app.get('/api/admin/system/stats', authenticate, isAdmin, async (req, res) => {
             }
           }
         }
-      }),
+      }).catch(() => []),
       prisma.payment.findMany({
         where: { status: 'completed' },
         orderBy: { createdAt: 'desc' },
@@ -2644,11 +2681,11 @@ app.get('/api/admin/system/stats', authenticate, isAdmin, async (req, res) => {
             }
           }
         }
-      }),
+      }).catch(() => []),
       prisma.payment.aggregate({
         where: { status: 'completed' },
         _sum: { amount: true }
-      })
+      }).catch(() => ({ _sum: { amount: 0 } }))
     ]);
 
     const thirtyDaysAgo = new Date();
@@ -2658,44 +2695,83 @@ app.get('/api/admin/system/stats', authenticate, isAdmin, async (req, res) => {
       where: {
         createdAt: { gte: thirtyDaysAgo }
       }
-    });
+    }).catch(() => 0);
 
     const proUsers = await prisma.user.count({
       where: { role: 'PRO' }
-    });
+    }).catch(() => 0);
+    
     const schoolUsers = await prisma.user.count({
       where: { role: 'SCHOOL' }
-    });
+    }).catch(() => 0);
+    
     const freeUsers = await prisma.user.count({
       where: { role: 'FREE' }
-    });
+    }).catch(() => 0);
+    
     const adminUsers = await prisma.user.count({
       where: { role: 'ADMIN' }
-    });
+    }).catch(() => 0);
+
+    const formattedRecentUsers = recentUsers.map(user => ({
+      id: user.id || '',
+      fullName: user.fullName || '',
+      email: user.email || '',
+      school: user.school || '',
+      role: user.role || 'FREE',
+      createdAt: user.createdAt ? user.createdAt.toISOString() : new Date().toISOString(),
+      lessonsUsed: user.lessonsUsed || 0,
+      schemesUsed: user.schemesUsed || 0
+    }));
+
+    const formattedRecentLessons = recentLessons.map(lesson => ({
+      id: lesson.id || '',
+      topic: lesson.topic || '',
+      subject: lesson.subject || '',
+      grade: lesson.grade || '',
+      createdAt: lesson.createdAt ? lesson.createdAt.toISOString() : new Date().toISOString(),
+      user: {
+        fullName: lesson.user?.fullName || '',
+        email: lesson.user?.email || '',
+        school: lesson.user?.school || ''
+      }
+    }));
+
+    const formattedRecentPayments = recentPayments.map(payment => ({
+      id: payment.id || '',
+      amount: payment.amount || 0,
+      status: payment.status || 'pending',
+      createdAt: payment.createdAt ? payment.createdAt.toISOString() : new Date().toISOString(),
+      plan: payment.plan || 'PRO',
+      user: {
+        fullName: payment.user?.fullName || '',
+        email: payment.user?.email || ''
+      }
+    }));
 
     res.json({
       totals: {
-        users: totalUsers,
-        lessons: totalLessons,
-        schemes: totalSchemes,
-        payments: totalPayments,
-        notes: totalNotes,
-        assessments: totalAssessments,
-        revenue: totalRevenue._sum.amount || 0
+        users: totalUsers || 0,
+        lessons: totalLessons || 0,
+        schemes: totalSchemes || 0,
+        payments: totalPayments || 0,
+        notes: totalNotes || 0,
+        assessments: totalAssessments || 0,
+        revenue: totalRevenue?._sum?.amount || 0
       },
       growth: {
-        newUsersLast30Days
+        newUsersLast30Days: newUsersLast30Days || 0
       },
       subscriptions: {
-        free: freeUsers,
-        pro: proUsers,
-        school: schoolUsers,
-        admin: adminUsers
+        free: freeUsers || 0,
+        pro: proUsers || 0,
+        school: schoolUsers || 0,
+        admin: adminUsers || 0
       },
       recent: {
-        users: recentUsers,
-        lessons: recentLessons,
-        payments: recentPayments
+        users: formattedRecentUsers,
+        lessons: formattedRecentLessons,
+        payments: formattedRecentPayments
       }
     });
   } catch (error) {
