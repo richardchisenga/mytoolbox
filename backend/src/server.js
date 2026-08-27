@@ -191,14 +191,15 @@ async function generateDeepSeekJSON(messages, options = {}) {
     try {
       console.log(`🤖 DeepSeek attempt ${attempt}/${maxAttempts}`);
 
+      // Use a smaller max_tokens to avoid truncation
+      const maxTokens = options.max_tokens || 3000;
+      
       const response = await deepseek.chat.completions.create({
         model: options.model || 'deepseek-chat',
         messages,
         temperature: options.temperature || 0.1,
-        max_tokens: options.max_tokens || 4096,
-        response_format: {
-          type: 'json_object'
-        }
+        max_tokens: maxTokens,
+        // Remove response_format as it may not be supported by all DeepSeek models
       });
 
       const choice = response?.choices?.[0];
@@ -210,7 +211,7 @@ async function generateDeepSeekJSON(messages, options = {}) {
       console.log(`🤖 Finish reason: ${choice.finish_reason || 'unknown'}`);
 
       if (choice.finish_reason === 'length') {
-        throw new Error('DeepSeek response was truncated');
+        console.warn('⚠️ DeepSeek response was truncated, trying to parse partial response...');
       }
 
       const content = choice?.message?.content;
@@ -263,6 +264,162 @@ async function generateDeepSeekJSON(messages, options = {}) {
   }
 }
 
+// ============ HELPER FUNCTION: GENERATE LESSON CONTENT ============
+function generateLessonContent(topic, subject, grade) {
+  // Handle empty or undefined topic
+  if (!topic || topic.trim() === '') {
+    return [
+      {
+        content: `INTRODUCTION TO THE LESSON\n\nThis lesson covers important concepts in ${subject} for Grade ${grade}. Learners will explore the fundamental principles and applications of ${subject} in real-life situations.\n\nKEY CONCEPTS:\n- Understanding the basic principles\n- Identifying different types and categories\n- Applying concepts to solve problems`,
+        teacherActivity: "Teacher introduces the lesson and explains key concepts. Teacher demonstrates how to identify key features and apply the concepts. Teacher asks learners to give examples from daily life.",
+        pupilActivity: "Learners listen attentively and take notes. Learners participate in class discussions. Learners ask questions where clarification is needed.",
+        methods: "Teacher Exposition, Demonstration, Question and Answer"
+      },
+      {
+        content: `MAIN CONTENT AND EXAMPLES\n\nWork through detailed examples showing how to apply the concepts.\n\nStep 1: Identify the key information\nStep 2: Apply the appropriate formula/method\nStep 3: Solve step by step\nStep 4: Check your answer\n\nPractice problems will help reinforce understanding.`,
+        teacherActivity: "Teacher solves problems on the board step by step. Teacher explains the reasoning behind each step. Teacher allows learners to ask questions. Teacher highlights common mistakes to avoid.",
+        pupilActivity: "Learners listen attentively and take notes. Volunteer learners go and solve on the board. Learners ask questions for clarification.",
+        methods: "Question and Answer, Group Discussion, Demonstration"
+      },
+      {
+        content: `PRACTICE EXERCISES\n\nEXERCISE:\n1. Solve the following problems\n2. Apply the concepts to solve real-world problems\n3. Identify and correct common mistakes\n\nEXPECTED ANSWERS:\nDetailed solutions showing all steps.`,
+        teacherActivity: "Teacher writes the exercise on the board. Teacher asks volunteer learners to go and solve. Teacher provides guidance and support to learners who are struggling.",
+        pupilActivity: "Learners write the exercise in their exercise books. Volunteer learners solve on the board. Learners work individually or in groups.",
+        methods: "Group Work, Individual Practice, Question and Answer"
+      },
+      {
+        content: `SUMMARY AND CONCLUSION\n\nSUMMARY:\n- Key points covered in the lesson\n- Important formulae or concepts to remember\n- Common applications in daily life\n- Tips for solving problems accurately\n\nCONCLUSION:\nThis topic is essential in ${subject} that helps develop critical thinking and problem-solving skills.`,
+        teacherActivity: "Teacher consolidates learners' responses and writes the summary on the board. Teacher gives remedial work to learners who had challenges.",
+        pupilActivity: "Learners listen attentively and write the summary. Learners note down key points. Learners ask final questions.",
+        methods: "Review and Consolidation"
+      }
+    ];
+  }
+
+  const topicLower = topic.toLowerCase();
+  
+  // Check if topic is about mensuration/areas
+  if (topicLower.includes('mensuration') || 
+      topicLower.includes('area') ||
+      topicLower.includes('perimeter') ||
+      topicLower.includes('volume')) {
+    return [
+      {
+        content: `INTRODUCTION TO MENSURATION\n\nMensuration is the branch of mathematics that deals with the measurement of geometric figures such as length, area, and volume. Area is the measure of the surface enclosed by a plane figure.\n\nFORMULAE FOR AREAS:\n- Rectangle: A = L × W\n- Square: A = L²\n- Triangle: A = ½ × base × height\n- Circle: A = πr²\n- Parallelogram: A = base × height\n- Trapezium: A = ½(a+b)h\n\nFORMULAE FOR PERIMETER:\n- Rectangle: P = 2(L + W)\n- Square: P = 4L\n- Triangle: P = a + b + c\n- Circle (Circumference): C = 2πr or πd`,
+        teacherActivity: "Teacher writes the formulae on the board and explains each formula with clear examples. Teacher demonstrates how to identify the base, height, length, width, and radius in different shapes. Teacher asks learners to identify shapes in the classroom and estimate their areas.",
+        pupilActivity: "Learners to write the formulae in their exercise books. Learners to listen attentively and identify shapes around them. Learners to ask questions where clarification is needed.",
+        methods: "Teacher Exposition, Demonstration, Question and Answer"
+      },
+      {
+        content: `WORKED EXAMPLES\n\nEXAMPLE 1: Rectangle\nFind the area of a rectangle with length 12cm and width 8cm.\nSolution:\nA = L × W\nA = 12 × 8\nA = 96cm²\n\nEXAMPLE 2: Triangle\nFind the area of a triangle with base 10cm and height 6cm.\nSolution:\nA = ½ × b × h\nA = ½ × 10 × 6\nA = 30cm²\n\nEXAMPLE 3: Circle\nFind the area of a circle with radius 7cm. (Take π = 22/7)\nSolution:\nA = πr²\nA = 22/7 × 7 × 7\nA = 154cm²`,
+        teacherActivity: "Teacher solves the examples on the board step by step. Teacher emphasizes the importance of using correct formulae and units. Teacher asks learners to identify which formula to use for different shapes. Teacher allows learners to ask questions.",
+        pupilActivity: "Learners to write the examples in their exercise books. Learners to listen attentively and participate in class discussions. Volunteer learners to go and solve similar problems on the board.",
+        methods: "Question and Answer, Demonstration, Group Discussion"
+      },
+      {
+        content: `PRACTICE EXERCISES\n\nEXERCISE:\n1. Find the area of a rectangle with length 15cm and width 10cm.\n2. Find the area of a triangle with base 14cm and height 8cm.\n3. Find the area of a circle with radius 10cm. (Take π = 3.142)\n4. Find the area of a parallelogram with base 12cm and height 7cm.\n5. Find the area of a trapezium with parallel sides 8cm and 12cm, and height 6cm.\n\nEXPECTED ANSWERS:\n1. A = 15 × 10 = 150cm²\n2. A = ½ × 14 × 8 = 56cm²\n3. A = 3.142 × 10 × 10 = 314.2cm²\n4. A = 12 × 7 = 84cm²\n5. A = ½(8+12) × 6 = 60cm²`,
+        teacherActivity: "Teacher writes the exercise on the board. Teacher moves around the class to monitor progress and assist learners who are struggling. Teacher asks volunteer learners to come and solve on the board. Teacher corrects any misconceptions.",
+        pupilActivity: "Learners to write the exercise in their exercise books. Learners to work individually or in pairs to solve the problems. Volunteer learners to solve on the board. Learners to compare answers with peers.",
+        methods: "Group Work, Individual Practice, Question and Answer"
+      },
+      {
+        content: `REAL-WORLD APPLICATIONS\n\nAPPLICATIONS OF MENSURATION:\n1. Calculating the area of a floor to determine how much paint or tiles are needed.\n2. Calculating the area of a farm to determine how much seed or fertilizer is needed.\n3. Calculating the area of a plot of land for construction purposes.\n4. Calculating the area of a circular garden to plant flowers.\n5. Calculating the area of a wall to determine the amount of wallpaper needed.\n\nSUMMARY:\n- Area is measured in square units (cm², m², km²)\n- Different shapes have different formulae\n- Always include the correct units in your answer\n- Real-world applications are everywhere in daily life`,
+        teacherActivity: "Teacher consolidates learners' responses and writes the summary on the board. Teacher discusses real-world applications of mensuration. Teacher emphasizes the importance of accuracy in calculations. Teacher gives remedial work to learners who had challenges.",
+        pupilActivity: "Learners to listen attentively and write the summary. Learners to share their own examples of where mensuration is used in daily life. Learners to ask questions for clarification. Learners to note down remedial work.",
+        methods: "Review, Consolidation, Discussion"
+      }
+    ];
+  }
+
+  // Check if topic is about quadratic equations
+  if (topicLower.includes('quadratic')) {
+    return [
+      {
+        content: `INTRODUCTION TO QUADRATIC EQUATIONS\n\nA quadratic equation is an equation of the form ax² + bx + c = 0, where a, b, and c are constants and a ≠ 0.\n\nMETHODS OF SOLVING QUADRATIC EQUATIONS:\n1. Factorization Method\n2. Completing the Square Method\n3. Quadratic Formula Method\n\nQUADRATIC FORMULA:\nx = [-b ± √(b² - 4ac)] / 2a\n\nThe discriminant (b² - 4ac) determines the nature of roots:\n- If b² - 4ac > 0: Two distinct real roots\n- If b² - 4ac = 0: One repeated real root\n- If b² - 4ac < 0: No real roots (complex roots)`,
+        teacherActivity: "Teacher writes the general form of quadratic equation on the board. Teacher explains each method of solving quadratic equations. Teacher demonstrates the quadratic formula and discriminant.",
+        pupilActivity: "Learners to write the notes in their exercise books. Learners to listen attentively and ask questions. Learners to identify the coefficients a, b, and c in different equations.",
+        methods: "Teacher Exposition, Demonstration, Question and Answer"
+      },
+      {
+        content: `WORKED EXAMPLES\n\nEXAMPLE 1: Using Quadratic Formula\nSolve: x² + 5x + 6 = 0\nSolution:\na = 1, b = 5, c = 6\nx = [-5 ± √(25 - 4(1)(6))] / 2(1)\nx = [-5 ± √(25 - 24)] / 2\nx = [-5 ± 1] / 2\nx = -2 or x = -3\n\nEXAMPLE 2: Using Factorization\nSolve: x² - 5x + 6 = 0\nSolution:\n(x - 2)(x - 3) = 0\nx = 2 or x = 3\n\nEXAMPLE 3: Using Completing the Square\nSolve: x² + 6x - 7 = 0\nSolution:\n(x + 3)² = 16\nx = 1 or x = -7`,
+        teacherActivity: "Teacher solves the examples on the board step by step. Teacher explains each method clearly. Teacher emphasizes the importance of checking answers. Teacher allows learners to ask questions.",
+        pupilActivity: "Learners to write the examples in their exercise books. Learners to listen attentively. Volunteer learners to go and solve on the board.",
+        methods: "Question and Answer, Demonstration, Group Discussion"
+      },
+      {
+        content: `PRACTICE EXERCISES\n\nSolve the following quadratic equations:\n1. x² + 7x + 12 = 0\n2. x² - 4x - 12 = 0\n3. 2x² + 5x - 3 = 0\n4. x² - 6x + 9 = 0\n5. 2x² - 7x + 3 = 0\n\nEXPECTED ANSWERS:\n1. x = -3 or x = -4\n2. x = 6 or x = -2\n3. x = ½ or x = -3\n4. x = 3 (repeated root)\n5. x = 3 or x = ½`,
+        teacherActivity: "Teacher writes the exercise on the board. Teacher moves around the class to monitor progress. Teacher asks volunteer learners to come and solve on the board.",
+        pupilActivity: "Learners to write the exercise in their exercise books. Learners to work individually. Volunteer learners to solve on the board.",
+        methods: "Group Work, Individual Practice, Question and Answer"
+      },
+      {
+        content: `SUMMARY AND APPLICATIONS\n\nSUMMARY:\n- Quadratic equations are of the form ax² + bx + c = 0\n- Three methods: Factorization, Completing Square, Quadratic Formula\n- Discriminant determines the nature of roots\n\nAPPLICATIONS:\n- Projectile motion in Physics\n- Profit and loss calculations in Business\n- Area problems in Geometry\n- Motion problems in Kinematics`,
+        teacherActivity: "Teacher consolidates learners' responses and writes the summary on the board. Teacher discusses applications of quadratic equations. Teacher gives remedial work.",
+        pupilActivity: "Learners to listen attentively and write the summary. Learners to ask final questions.",
+        methods: "Review and Consolidation"
+      }
+    ];
+  }
+
+  // Check if topic is about trigonometry
+  if (topicLower.includes('trig') || topicLower.includes('sine') || topicLower.includes('cosine') || topicLower.includes('tangent')) {
+    return [
+      {
+        content: `INTRODUCTION TO TRIGONOMETRY\n\nTrigonometry is the study of relationships between the sides and angles of triangles.\n\nTRIGONOMETRIC RATIOS:\n- sin θ = opposite / hypotenuse\n- cos θ = adjacent / hypotenuse\n- tan θ = opposite / adjacent\n\nSPECIAL ANGLES:\n- sin 30° = ½, cos 30° = √3/2, tan 30° = 1/√3\n- sin 45° = √2/2, cos 45° = √2/2, tan 45° = 1\n- sin 60° = √3/2, cos 60° = ½, tan 60° = √3`,
+        teacherActivity: "Teacher writes the trigonometric ratios on the board. Teacher explains using right-angled triangles. Teacher demonstrates how to find sides and angles.",
+        pupilActivity: "Learners to write the notes in their exercise books. Learners to listen attentively and identify opposite, adjacent, and hypotenuse in different triangles.",
+        methods: "Teacher Exposition, Demonstration, Question and Answer"
+      },
+      {
+        content: `WORKED EXAMPLES\n\nEXAMPLE 1: Find sin θ, cos θ, and tan θ for a right triangle where opposite = 3, adjacent = 4, hypotenuse = 5.\nSolution:\nsin θ = 3/5 = 0.6\ncos θ = 4/5 = 0.8\ntan θ = 3/4 = 0.75\n\nEXAMPLE 2: In a right triangle, sin θ = ½. Find θ.\nSolution:\nθ = sin⁻¹(½) = 30°`,
+        teacherActivity: "Teacher solves the examples on the board step by step. Teacher emphasizes the importance of identifying sides correctly.",
+        pupilActivity: "Learners to write the examples in their exercise books. Volunteer learners to go and solve on the board.",
+        methods: "Question and Answer, Demonstration, Group Discussion"
+      },
+      {
+        content: `PRACTICE EXERCISES\n\n1. In a right triangle, opposite = 5, adjacent = 12. Find sin θ, cos θ, and tan θ.\n2. If cos θ = ¾, find sin θ and tan θ.\n3. If tan θ = 1, find the value of θ.\n\nEXPECTED ANSWERS:\n1. sin θ = 5/13, cos θ = 12/13, tan θ = 5/12\n2. sin θ = √7/4, tan θ = √7/3\n3. θ = 45°`,
+        teacherActivity: "Teacher writes the exercise on the board. Teacher monitors progress and assists learners.",
+        pupilActivity: "Learners to write the exercise in their exercise books. Learners to work individually.",
+        methods: "Individual Practice, Question and Answer"
+      },
+      {
+        content: `SUMMARY AND APPLICATIONS\n\nSUMMARY:\n- Trigonometry deals with triangle relationships\n- Three main ratios: sine, cosine, tangent\n- Use SOH CAH TOA to remember\n\nAPPLICATIONS:\n- Architecture and construction\n- Navigation and surveying\n- Engineering and physics`,
+        teacherActivity: "Teacher consolidates learners' responses and writes the summary on the board.",
+        pupilActivity: "Learners to listen attentively and write the summary.",
+        methods: "Review and Consolidation"
+      }
+    ];
+  }
+
+  // Default content for other topics - with limited length to avoid token issues
+  return [
+    {
+      content: `INTRODUCTION TO ${topic.toUpperCase()}\n\n${topic} is an important concept in ${subject}. It involves understanding the fundamental principles and applications in real-life situations.\n\nKEY CONCEPTS:\n- Understanding the basic principles\n- Identifying different types and categories\n- Applying concepts to solve problems\n\n${topic} plays a crucial role in developing critical thinking and problem-solving skills.`,
+      teacherActivity: `Teacher writes the introduction on the board and explains the concept of ${topic}. Teacher demonstrates how to identify key features and apply the concepts. Teacher asks learners to give examples of ${topic} in daily life.`,
+      pupilActivity: "Learners to write the notes in their exercise books. Learners to listen attentively and participate in class discussions. Learners to ask questions where clarification is needed.",
+      methods: "Teacher Exposition, Demonstration, Question and Answer"
+    },
+    {
+      content: `MAIN CONTENT AND EXAMPLES\n\nEXAMPLE 1:\nStep 1: Identify the key information\nStep 2: Apply the appropriate formula/method\nStep 3: Solve step by step\nStep 4: Check your answer\n\nEXAMPLE 2:\nStep 1: Identify the key information\nStep 2: Apply the appropriate formula/method\nStep 3: Solve step by step\nStep 4: Check your answer`,
+      teacherActivity: `Teacher solves ${topic} problems on the board step by step. Teacher explains the reasoning behind each step. Teacher allows learners to ask questions. Teacher highlights common mistakes to avoid.`,
+      pupilActivity: "Learners to listen attentively and take notes. Volunteer learners to go and solve on the board. Learners to ask questions for clarification.",
+      methods: "Question and Answer, Group Discussion, Demonstration"
+    },
+    {
+      content: `PRACTICE EXERCISES\n\nEXERCISE:\n1. Solve the following problems related to ${topic}\n2. Apply the concepts to solve real-world problems\n3. Identify and correct common mistakes\n\nEXPECTED ANSWERS:\nDetailed solutions showing all steps.`,
+      teacherActivity: `Teacher writes the ${topic} exercise on the board. Teacher asks volunteer learners to go and solve. Teacher provides guidance and support to learners who are struggling.`,
+      pupilActivity: "Learners to write the exercise in their exercise books. Volunteer learners to solve on the board. Learners to work individually or in groups.",
+      methods: "Group Work, Individual Practice, Question and Answer"
+    },
+    {
+      content: `SUMMARY AND CONCLUSION\n\nSUMMARY:\n- Key points covered in the lesson\n- Important formulae or concepts to remember\n- Common applications in daily life\n- Tips for solving problems accurately\n\nCONCLUSION:\n${topic} is an essential topic in ${subject} that helps develop critical thinking and problem-solving skills.`,
+      teacherActivity: "Teacher consolidates learners' responses and writes the summary on the board. Teacher gives remedial work to learners who had challenges.",
+      pupilActivity: "Learners to listen attentively and write the summary. Learners to note down key points. Learners to ask final questions.",
+      methods: "Review and Consolidation"
+    }
+  ];
+}
+
 // ============ LESSON PROMPT GENERATORS ============
 
 // ============ CBC LESSON PROMPT ============
@@ -304,8 +461,8 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
     "Curriculum Guide",
     "${subject} Grade ${grade} Textbook"
   ],
-  "learningEnvironment": "Natural: school garden / market area. Artificial: classroom, laboratory. Technological: tablets with charts",
-  "materials": ["Assorted local materials", "Packaging labels", "Manila paper", "Markers", "Flip chart"],
+  "learningEnvironment": "Classroom with adequate resources",
+  "materials": ["Manila paper", "Markers", "Charts", "Worksheet", "Real objects"],
   "expectedStandard": "Topic concepts classified correctly",
   "lessonProgression": [
     {
@@ -378,10 +535,20 @@ function generateOBCPrompt(topic, grade, subject, classSize, user, subtopic) {
   const boys = Math.floor(size / 2) || 18;
   const girls = Math.ceil(size / 2) || 22;
   
+  // Generate lesson development content based on topic - limit length to avoid token issues
+  const lessonContent = generateLessonContent(topic, subject, grade);
+  // Simplify content for the prompt to avoid token limits
+  const simplifiedContent = lessonContent.map(item => ({
+    content: item.content.substring(0, 800) + (item.content.length > 800 ? '\n... (continued in lesson)' : ''),
+    teacherActivity: item.teacherActivity.substring(0, 500) + (item.teacherActivity.length > 500 ? '...' : ''),
+    pupilActivity: item.pupilActivity.substring(0, 500) + (item.pupilActivity.length > 500 ? '...' : ''),
+    methods: item.methods
+  }));
+  
   return `
 You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
 
-⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this OBC lesson structure. The lessonDevelopment array MUST have content with all required fields.
+⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this OBC lesson structure. The lessonDevelopment array MUST have content with all required fields including content, teacherActivity, pupilActivity, and methods. The content field MUST contain actual lesson content with examples, not empty placeholders.
 
 {
   "title": "${topic}",
@@ -411,32 +578,7 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
   ],
   "prerequisiteKnowledge": "Learners have ideas about the topic being taught.",
   "lessonIntroduction": "Teacher revises through the previous lesson",
-  "lessonDevelopment": [
-    {
-      "content": "Introduction to ${topic} and key concepts",
-      "teacherActivity": "Teacher writes the example on the board and explains the concept of ${topic}",
-      "pupilActivity": "Learners to write the example in their exercise books and listen attentively",
-      "methods": "Teacher Exposition, Demonstration"
-    },
-    {
-      "content": "Main content and examples of ${topic}",
-      "teacherActivity": "Teacher solves ${topic} problems on the board and allows learners to ask questions",
-      "pupilActivity": "Learners to listen attentively and volunteer learners to go and solve on the board",
-      "methods": "Question and answer, group discussion"
-    },
-    {
-      "content": "Practice problems on ${topic}",
-      "teacherActivity": "Teacher writes ${topic} exercise on the board and asks volunteer learners to go and solve",
-      "pupilActivity": "Learners to write the exercise in their exercise books and volunteer to solve on the board",
-      "methods": "Group work, individual practice"
-    },
-    {
-      "content": "Summary and conclusion of ${topic}",
-      "teacherActivity": "Teacher consolidates learners responses and writes the summary on the board",
-      "pupilActivity": "Learners to listen attentively and write the summary",
-      "methods": "Review and consolidation"
-    }
-  ],
+  "lessonDevelopment": ${JSON.stringify(simplifiedContent, null, 2)},
   "learnersEvaluation": [
     "Define ${topic} in your own words",
     "Give two examples of ${topic}",
@@ -506,10 +648,7 @@ function generateFallbackCBC(topic, grade, subject, classSize, user) {
     teacherEvaluation: "Space for teacher's reflections",
     learningOutcomes: [`Understand ${topic}`, `Apply ${topic}`, `Analyze ${topic}`],
     learnersEvaluation: [`Define ${topic}`, `Give examples of ${topic}`, `Explain the importance of ${topic}`],
-    lessonDevelopment: [
-      { content: `Introduction to ${topic}`, teacherActivity: "Explain the concept", pupilActivity: "Listen and take notes", methods: "Lecture" },
-      { content: `Practice ${topic}`, teacherActivity: "Guide students", pupilActivity: "Work in groups", methods: "Group work" }
-    ],
+    lessonDevelopment: generateLessonContent(topic, subject, grade),
     teachingAids: ["Whiteboard", "Charts", "Diagrams"],
     curriculum: 'cbc'
   };
@@ -548,36 +687,11 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
     ],
     prerequisiteKnowledge: "Learners have ideas about the topic being taught.",
     lessonIntroduction: "Teacher revises through the previous lesson",
-    lessonDevelopment: [
-      {
-        content: `Introduction to ${topic} and key concepts`,
-        teacherActivity: `Teacher writes the example on the board and explains the concept of ${topic}`,
-        pupilActivity: "Learners to write the example in their exercise books and listen attentively",
-        methods: "Teacher Exposition, Demonstration"
-      },
-      {
-        content: `Main content and examples of ${topic}`,
-        teacherActivity: `Teacher solves ${topic} problems on the board and allows learners to ask questions`,
-        pupilActivity: "Learners to listen attentively and volunteer learners to go and solve on the board",
-        methods: "Question and answer, group discussion"
-      },
-      {
-        content: `Practice problems on ${topic}`,
-        teacherActivity: `Teacher writes ${topic} exercise on the board and asks volunteer learners to go and solve`,
-        pupilActivity: "Learners to write the exercise in their exercise books and volunteer to solve on the board",
-        methods: "Group work, individual practice"
-      },
-      {
-        content: `Summary and conclusion of ${topic}`,
-        teacherActivity: "Teacher consolidates learners responses and writes the summary on the board",
-        pupilActivity: "Learners to listen attentively and write the summary",
-        methods: "Review and consolidation"
-      }
-    ],
+    lessonDevelopment: generateLessonContent(topic, subject, grade),
     learnersEvaluation: [
       `Define ${topic} in your own words`,
       `Give two examples of ${topic}`,
-      `Solve a ${topic} problem: Determine the key features of ${topic}`,
+      `Solve a ${topic} problem`,
       `Explain the importance of ${topic}`
     ],
     expectedAnswers: [
@@ -593,9 +707,300 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
   };
 }
 
-// ============ ENHANCED FALLBACK SCHEME GENERATOR ============
+// ============ CBC SCHEME GENERATOR ============
 
-function generateFallbackScheme(grade, subject, term, user, customTopics = {}) {
+function generateCBCScheme(grade, subject, term, user, customTopics = {}) {
+  const weeks = [];
+  const totalWeeks = 13;
+  
+  // Subject-specific topics aligned with CBC syllabus
+  const subjectTopics = {
+    'Biology': {
+      topics: [
+        { topic: '1.1.0 Concepts and Methods in Biology', subtopic: '1.1.1 Nature of Science inquiry in Biology', specificCompetence: 'Apply scientific inquiry in carrying out scientific investigations' },
+        { topic: '1.1.0 Concepts and Methods in Biology', subtopic: '1.1.2 Branches of Biology', specificCompetence: 'Explore the branches of Biology and their applications' },
+        { topic: '1.1.0 Concepts and Methods in Biology', subtopic: '1.1.3 Levels of Biological Organisation', specificCompetence: 'Classify the levels of biological organization from simple to complex' },
+        { topic: '1.1.0 Concepts and Methods in Biology', subtopic: '1.1.4 Characteristics of living things', specificCompetence: 'Analyse the characteristics of living things' },
+        { topic: '1.2.0 Principles of Cellular Life', subtopic: '1.2.1 Microscopes', specificCompetence: 'Use different types microscopes to examine specimens' },
+        { topic: '1.2.0 Principles of Cellular Life', subtopic: '1.2.2 Basic Cell Structure', specificCompetence: 'Explore the basic cell structure' },
+        { topic: '1.2.0 Principles of Cellular Life', subtopic: '1.2.3 Types of cell Specialisation', specificCompetence: 'Explore types of cell specialisation' },
+        { topic: '1.2.0 Principles of Cellular Life', subtopic: '1.2.4 Cell Classification', specificCompetence: 'Classify cells according to their structure and function' },
+        { topic: '1.3.0 Maintenance of the Organism', subtopic: '1.3.1 Nutrition in Man', specificCompetence: 'Classify types of food nutrients' },
+        { topic: '1.3.0 Maintenance of the Organism', subtopic: '1.3.2 Sources of Food Nutrients', specificCompetence: 'Identify sources of food nutrients using food packaging labels' },
+        { topic: '1.3.0 Maintenance of the Organism', subtopic: '1.3.3 Plant Nutrients', specificCompetence: 'Categorise plant nutrients into macro and micro nutrients' },
+        { topic: '1.3.0 Maintenance of the Organism', subtopic: '1.3.4 Nutritional Deficiency Diseases', specificCompetence: 'Recommend appropriate nutrients to address deficiency diseases' },
+        { topic: '1.4.0 Continuity of Life', subtopic: '1.4.1 Asexual and Sexual Reproduction', specificCompetence: 'Demonstrate understanding of how living organisms reproduce' },
+        { topic: '1.4.0 Continuity of Life', subtopic: '1.4.2 Reproduction and Development in Human Beings', specificCompetence: 'Discuss understanding of reproduction and development in human beings' },
+        { topic: '1.4.0 Continuity of Life', subtopic: '1.4.3 Reproduction in Microorganisms', specificCompetence: 'Evaluate the importance of reproduction in viruses, protozoa, bacteria and fungi' }
+      ],
+      methodOptions: [
+        "Group work, Experiments, Field work, Research, Individual work",
+        "Experimentation, group work, question and answer, demonstration",
+        "Group work, Experiments, Field work, Research, Project work",
+        "Demonstration, group work, think, pair and share, question and answer",
+        "Role play, group work, question and answer, field work"
+      ],
+      aidsOptions: [
+        "Apparatus, Books, Cell plants, Beakers, Clap stand",
+        "Laboratory equipment, models, charts, specimens, microscopes",
+        "Charts, diagrams, models, specimens, magnifying glasses",
+        "Multi-media, charts, textbooks, real objects, packaging labels",
+        "Field trip equipment, specimens, cameras, recording materials"
+      ],
+      valuesOptions: [
+        "Responsibility, teamwork, curiosity, scientific inquiry",
+        "Scientific inquiry, honesty, creativity, critical thinking",
+        "Respect, cooperation, critical thinking, environmental awareness",
+        "Integrity, diligence, innovation, appreciation of nature",
+        "Accountability, empathy, resilience, collaboration"
+      ],
+      skillsOptions: [
+        "Critical thinking, analysis, collaboration, observation",
+        "Problem solving, research, presentation, scientific writing",
+        "Communication, creativity, teamwork, data collection",
+        "Leadership, innovation, adaptability, experimentation",
+        "Self-study, collaboration, evaluation, reporting"
+      ]
+    },
+    'Chemistry': {
+      topics: [
+        { topic: '1.1.0 Introduction to Chemistry', subtopic: '1.1.1 Nature of Chemistry', specificCompetence: 'Apply scientific inquiry in chemical investigations' },
+        { topic: '1.1.0 Introduction to Chemistry', subtopic: '1.1.2 Laboratory Safety', specificCompetence: 'Demonstrate understanding of laboratory safety rules' },
+        { topic: '1.1.0 Introduction to Chemistry', subtopic: '1.1.3 Laboratory Apparatus', specificCompetence: 'Identify and use laboratory apparatus correctly' },
+        { topic: '1.2.0 Matter and its Properties', subtopic: '1.2.1 States of Matter', specificCompetence: 'Classify matter according to its states' },
+        { topic: '1.2.0 Matter and its Properties', subtopic: '1.2.2 Separating Mixtures', specificCompetence: 'Apply methods of separating mixtures' },
+        { topic: '1.3.0 Atomic Structure', subtopic: '1.3.1 Atomic Theory', specificCompetence: 'Explain the structure of an atom' }
+      ],
+      methodOptions: [
+        "Group work, Experiments, Research, Individual work, Demonstration",
+        "Experimentation, group work, question and answer, practical work",
+        "Group work, Experiments, Research, Project work, Discussion",
+        "Demonstration, group work, think, pair and share, problem solving"
+      ],
+      aidsOptions: [
+        "Apparatus, Books, Beakers, Test tubes, Bunsen burner",
+        "Laboratory equipment, models, charts, chemicals, safety equipment",
+        "Charts, diagrams, models, specimens, periodic table",
+        "Multi-media, charts, textbooks, real objects, lab equipment"
+      ],
+      valuesOptions: [
+        "Responsibility, teamwork, curiosity, scientific inquiry",
+        "Scientific inquiry, honesty, creativity, critical thinking",
+        "Respect, cooperation, critical thinking, safety awareness",
+        "Integrity, diligence, innovation, appreciation of chemistry"
+      ],
+      skillsOptions: [
+        "Critical thinking, analysis, collaboration, observation",
+        "Problem solving, research, presentation, scientific writing",
+        "Communication, creativity, teamwork, data collection",
+        "Leadership, innovation, adaptability, experimentation"
+      ]
+    },
+    'Physics': {
+      topics: [
+        { topic: '1.1.0 Introduction to Physics', subtopic: '1.1.1 Nature of Physics', specificCompetence: 'Apply scientific inquiry in physical investigations' },
+        { topic: '1.1.0 Introduction to Physics', subtopic: '1.1.2 Measurement', specificCompetence: 'Demonstrate understanding of measurement and units' },
+        { topic: '1.2.0 Mechanics', subtopic: '1.2.1 Motion', specificCompetence: 'Analyse different types of motion' },
+        { topic: '1.2.0 Mechanics', subtopic: '1.2.2 Forces', specificCompetence: 'Apply concepts of forces in daily life' }
+      ],
+      methodOptions: [
+        "Group work, Experiments, Field work, Research, Individual work",
+        "Experimentation, demonstration, question and answer, practical work",
+        "Group work, Experiments, Research, Project work, Discussion",
+        "Demonstration, group work, think, pair and share, problem solving"
+      ],
+      aidsOptions: [
+        "Apparatus, Books, Measuring instruments, Equipment",
+        "Laboratory equipment, models, charts, measuring tools",
+        "Charts, diagrams, models, real objects, calculators",
+        "Multi-media, charts, textbooks, specimens, equipment"
+      ],
+      valuesOptions: [
+        "Responsibility, teamwork, curiosity, scientific inquiry",
+        "Scientific inquiry, honesty, creativity, critical thinking",
+        "Respect, cooperation, critical thinking, precision",
+        "Integrity, diligence, innovation, appreciation of physics"
+      ],
+      skillsOptions: [
+        "Critical thinking, analysis, collaboration, observation",
+        "Problem solving, research, presentation, measurement skills",
+        "Communication, creativity, teamwork, data analysis",
+        "Leadership, innovation, adaptability, experimentation"
+      ]
+    },
+    'Mathematics': {
+      topics: [
+        { topic: '1.1.0 Numbers and Operations', subtopic: '1.1.1 Number Systems', specificCompetence: 'Classify and operate on different number systems' },
+        { topic: '1.1.0 Numbers and Operations', subtopic: '1.1.2 Operations on Numbers', specificCompetence: 'Apply operations on numbers accurately' },
+        { topic: '1.2.0 Algebra', subtopic: '1.2.1 Algebraic Expressions', specificCompetence: 'Simplify and evaluate algebraic expressions' },
+        { topic: '1.2.0 Algebra', subtopic: '1.2.2 Linear Equations', specificCompetence: 'Solve linear equations and inequalities' },
+        { topic: '1.3.0 Geometry', subtopic: '1.3.1 Lines and Angles', specificCompetence: 'Apply properties of lines and angles' },
+        { topic: '1.3.0 Geometry', subtopic: '1.3.2 Polygons', specificCompetence: 'Calculate perimeter and area of polygons' },
+        { topic: '1.4.0 Mensuration', subtopic: '1.4.1 Area and Perimeter', specificCompetence: 'Calculate area and perimeter of plane figures' },
+        { topic: '1.4.0 Mensuration', subtopic: '1.4.2 Volume and Capacity', specificCompetence: 'Calculate volume and capacity of solids' }
+      ],
+      methodOptions: [
+        "Group work, Individual work, Question and answer, Practice",
+        "Demonstration, group work, problem solving, individual work",
+        "Group work, Research, Project work, Discussion",
+        "Problem solving, group work, think, pair and share"
+      ],
+      aidsOptions: [
+        "Charts, Models, Geometrical instruments, Textbooks",
+        "Charts, diagrams, models, measuring tools, calculators",
+        "Multi-media, charts, textbooks, real objects",
+        "Geometrical instruments, charts, diagrams, models"
+      ],
+      valuesOptions: [
+        "Accuracy, precision, logical thinking, perseverance",
+        "Analytical thinking, creativity, critical thinking",
+        "Respect, cooperation, critical thinking, problem solving",
+        "Integrity, diligence, innovation, appreciation of mathematics"
+      ],
+      skillsOptions: [
+        "Critical thinking, analysis, problem solving, computation",
+        "Problem solving, research, presentation, logical reasoning",
+        "Communication, creativity, teamwork, data analysis",
+        "Leadership, innovation, adaptability, calculation"
+      ]
+    }
+  };
+
+  // Get subject data or use default
+  const subjectData = subjectTopics[subject] || {
+    topics: [
+      { topic: `1.1.0 Introduction to ${subject}`, subtopic: `1.1.1 Nature of ${subject}`, specificCompetence: `Apply scientific inquiry in ${subject} investigations` },
+      { topic: `1.1.0 Introduction to ${subject}`, subtopic: `1.1.2 Key Concepts in ${subject}`, specificCompetence: `Demonstrate understanding of key concepts in ${subject}` },
+      { topic: `1.2.0 Core Topics in ${subject}`, subtopic: `1.2.1 Fundamental Principles`, specificCompetence: `Apply fundamental principles of ${subject}` },
+      { topic: `1.2.0 Core Topics in ${subject}`, subtopic: `1.2.2 Practical Applications`, specificCompetence: `Explore practical applications of ${subject}` }
+    ],
+    methodOptions: [
+      "Group work, Experiments, Field work, Research, Individual work",
+      "Demonstration, group work, question and answer, practical work",
+      "Experimentation, discussion, group work, project work",
+      "Research, presentation, practical work, collaboration"
+    ],
+    aidsOptions: [
+      "Apparatus, Books, Charts, Models, Equipment",
+      "Laboratory equipment, models, charts, textbooks",
+      "Charts, diagrams, models, real objects",
+      "Multi-media, charts, textbooks, specimens"
+    ],
+    valuesOptions: [
+      "Responsibility, teamwork, curiosity, scientific inquiry",
+      "Scientific inquiry, honesty, creativity, critical thinking",
+      "Respect, cooperation, critical thinking, environmental awareness",
+      "Integrity, diligence, innovation, appreciation of science"
+    ],
+    skillsOptions: [
+      "Critical thinking, analysis, collaboration, observation",
+      "Problem solving, research, presentation, scientific writing",
+      "Communication, creativity, teamwork, data collection",
+      "Leadership, innovation, adaptability, experimentation"
+    ]
+  };
+
+  const topicsList = subjectData.topics || [];
+  const methodOptions = subjectData.methodOptions || ["Group work, Experiments, Field work, Research, Individual work"];
+  const aidsOptions = subjectData.aidsOptions || ["Apparatus, Books, Charts, Models, Equipment"];
+  const valuesOptions = subjectData.valuesOptions || ["Responsibility, teamwork, curiosity, scientific inquiry"];
+  const skillsOptions = subjectData.skillsOptions || ["Critical thinking, analysis, collaboration, observation"];
+
+  // Shuffle topics for variety
+  const shuffledTopics = [...topicsList];
+  for (let i = shuffledTopics.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffledTopics[i], shuffledTopics[j]] = [shuffledTopics[j], shuffledTopics[i]];
+  }
+
+  const extendedTopics = [...shuffledTopics];
+  while (extendedTopics.length < totalWeeks) {
+    extendedTopics.push(...topicsList);
+  }
+
+  for (let i = 1; i <= totalWeeks; i++) {
+    const weekNumber = i;
+    const customTopic = customTopics[weekNumber];
+    const isRevision = [1, 5, 9].includes(i);
+    const isAssessment = [3, 6, 9, 12].includes(i);
+    
+    let weekTopics = [];
+    
+    if (isRevision) {
+      weekTopics = [{
+        topic: 'REVISION WEEK',
+        subtopic: 'Revision of covered topics',
+        specificCompetence: 'Correct their past misconceptions and consolidate learning',
+        methods: 'Class discussion, Question and answer, Group work, Peer teaching',
+        aids: 'Test papers, Revision notes, Charts, Summary materials',
+        references: 'Previous notes, Marking keys, Teacher\'s guide',
+        knowledge: 'Consolidated understanding of topics covered',
+        skills: 'Review, recall, synthesis of information',
+        values: 'Perseverance, self-improvement, collaboration'
+      }];
+    } else if (isAssessment) {
+      weekTopics = [{
+        topic: 'ASSESSMENT WEEK',
+        subtopic: 'Assessment and Evaluation',
+        specificCompetence: 'Demonstrate understanding of the topics covered through assessment',
+        methods: 'Test, Examination, Practical assessment, Quiz',
+        aids: 'Examination papers, Answer sheets, Marking scheme',
+        references: 'Teacher\'s guide, Marking scheme, Syllabus',
+        knowledge: 'Demonstrated understanding of covered topics',
+        skills: 'Test-taking, time management, application of knowledge',
+        values: 'Honesty, accountability, academic integrity'
+      }];
+    } else if (customTopic) {
+      const topicIndex = (i - 1) % extendedTopics.length;
+      const defaultTopic = extendedTopics[topicIndex] || { topic: customTopic, subtopic: '', specificCompetence: '' };
+      weekTopics = [{
+        topic: defaultTopic.topic || customTopic,
+        subtopic: defaultTopic.subtopic || customTopic,
+        specificCompetence: defaultTopic.specificCompetence || `By the end of this lesson, learners will be able to understand and apply knowledge of ${customTopic}`,
+        methods: methodOptions[i % methodOptions.length],
+        aids: aidsOptions[i % aidsOptions.length],
+        references: `${subject} Grade ${grade} Textbook, Teacher's Guide, Syllabus`,
+        knowledge: `Comprehensive knowledge of ${customTopic}`,
+        skills: skillsOptions[i % skillsOptions.length],
+        values: valuesOptions[i % valuesOptions.length]
+      }];
+    } else {
+      const topicIndex = (i - 1) % extendedTopics.length;
+      const topicData = extendedTopics[topicIndex];
+      
+      weekTopics = [{
+        topic: topicData.topic || `Topic ${i}`,
+        subtopic: topicData.subtopic || `Subtopic ${i}`,
+        specificCompetence: topicData.specificCompetence || `By the end of this lesson, learners will be able to understand and explain the concepts`,
+        methods: methodOptions[i % methodOptions.length],
+        aids: aidsOptions[i % aidsOptions.length],
+        references: `${subject} Grade ${grade} Textbook, Teacher's Guide`,
+        knowledge: `Comprehensive knowledge of ${topicData.topic}`,
+        skills: skillsOptions[i % skillsOptions.length],
+        values: valuesOptions[i % valuesOptions.length]
+      }];
+    }
+    
+    weeks.push({
+      week: i,
+      topics: weekTopics,
+      assessment: isAssessment ? `End of Week ${i} Assessment` : null,
+      isRevision: isRevision,
+      isAssessment: isAssessment
+    });
+  }
+
+  return {
+    weeks: weeks,
+    assessmentWeeks: [3, 6, 9, 12],
+    testTopics: [`Mid-term test on ${subject}`, `End of term test on ${subject}`],
+    curriculum: 'cbc'
+  };
+}
+
+// ============ OBC SCHEME GENERATOR ============
+
+function generateOBCScheme(grade, subject, term, user, customTopics = {}) {
   const weeks = [];
   const totalWeeks = 13;
   
@@ -752,7 +1157,8 @@ function generateFallbackScheme(grade, subject, term, user, customTopics = {}) {
   return {
     weeks: weeks,
     assessmentWeeks: [3, 6, 9, 12],
-    testTopics: [`Mid-term test on ${subject}`, `End of term test on ${subject}`]
+    testTopics: [`Mid-term test on ${subject}`, `End of term test on ${subject}`],
+    curriculum: 'obc'
   };
 }
 
@@ -849,7 +1255,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE (UPDATED WITH PROMPT FUNCTIONS) ============
+// ============ LESSON GENERATION ROUTE ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
@@ -913,12 +1319,12 @@ Return ONLY the JSON object, no other text.
         }
       ];
 
+      // Use smaller max_tokens to avoid truncation
       aiContent = await generateDeepSeekJSON(messages, { 
-        max_tokens: 4096,
+        max_tokens: 3000,
         temperature: 0.1
       });
       
-      // Merge with fallback to ensure all fields exist
       let fallback;
       if (curriculumType === 'cbc') {
         fallback = generateFallbackCBC(topic, grade, subject, classSize, user);
@@ -927,7 +1333,6 @@ Return ONLY the JSON object, no other text.
       }
       aiContent = { ...fallback, ...aiContent };
 
-      // Ensure lessonProgression has content for CBC
       if (curriculumType === 'cbc' && (!aiContent.lessonProgression || aiContent.lessonProgression.length === 0)) {
         console.log('📝 CBC lessonProgression was empty, populating with default content...');
         aiContent.lessonProgression = [
@@ -940,35 +1345,9 @@ Return ONLY the JSON object, no other text.
         ];
       }
 
-      // Ensure lessonDevelopment has content for OBC
       if (curriculumType === 'obc' && (!aiContent.lessonDevelopment || aiContent.lessonDevelopment.length === 0)) {
         console.log('📝 OBC lessonDevelopment was empty, populating with default content...');
-        aiContent.lessonDevelopment = [
-          {
-            content: `Introduction to ${topic} and key concepts`,
-            teacherActivity: `Teacher writes the example on the board and explains the concept of ${topic}`,
-            pupilActivity: "Learners to write the example in their exercise books and listen attentively",
-            methods: "Teacher Exposition, Demonstration"
-          },
-          {
-            content: `Main content and examples of ${topic}`,
-            teacherActivity: `Teacher solves ${topic} problems on the board and allows learners to ask questions`,
-            pupilActivity: "Learners to listen attentively and volunteer learners to go and solve on the board",
-            methods: "Question and answer, group discussion"
-          },
-          {
-            content: `Practice problems on ${topic}`,
-            teacherActivity: `Teacher writes ${topic} exercise on the board and asks volunteer learners to go and solve`,
-            pupilActivity: "Learners to write the exercise in their exercise books and volunteer to solve on the board",
-            methods: "Group work, individual practice"
-          },
-          {
-            content: `Summary and conclusion of ${topic}`,
-            teacherActivity: "Teacher consolidates learners responses and writes the summary on the board",
-            pupilActivity: "Learners to listen attentively and write the summary",
-            methods: "Review and consolidation"
-          }
-        ];
+        aiContent.lessonDevelopment = generateLessonContent(topic, subject, grade);
       }
 
       console.log(`✅ ${curriculumType.toUpperCase()} lesson generated with DeepSeek`);
@@ -987,7 +1366,7 @@ Return ONLY the JSON object, no other text.
       }
     }
 
-    // ============ ENSURE ALL ARRAY FIELDS ARE ARRAYS ============
+    // Ensure all required fields exist with fallbacks
     const referencesArray = Array.isArray(aiContent.references) 
       ? aiContent.references 
       : (aiContent.references ? [aiContent.references] : ["Textbook", "Teacher's Guide"]);
@@ -1022,43 +1401,16 @@ Return ONLY the JSON object, no other text.
           { stage: "CONCLUSION", time: "10 min", teacherRole: "Summarize", learnerRole: "Share learning", assessmentCriteria: "Verbal explanation" }
         ];
 
-    // ============ ENSURE LESSON DEVELOPMENT FOR OBC ============
     let lessonDevelopmentArray = Array.isArray(aiContent.lessonDevelopment) 
       ? aiContent.lessonDevelopment 
       : [];
 
-    // If empty, populate with default content
     if (lessonDevelopmentArray.length === 0) {
       console.log('📝 lessonDevelopment was empty, populating with default content...');
-      lessonDevelopmentArray = [
-        {
-          content: `Introduction to ${topic} and key concepts`,
-          teacherActivity: `Teacher writes the example on the board and explains the concept of ${topic}`,
-          pupilActivity: "Learners to write the example in their exercise books and listen attentively",
-          methods: "Teacher Exposition, Demonstration"
-        },
-        {
-          content: `Main content and examples of ${topic}`,
-          teacherActivity: `Teacher solves ${topic} problems on the board and allows learners to ask questions`,
-          pupilActivity: "Learners to listen attentively and volunteer learners to go and solve on the board",
-          methods: "Question and answer, group discussion"
-        },
-        {
-          content: `Practice problems on ${topic}`,
-          teacherActivity: `Teacher writes ${topic} exercise on the board and asks volunteer learners to go and solve`,
-          pupilActivity: "Learners to write the exercise in their exercise books and volunteer to solve on the board",
-          methods: "Group work, individual practice"
-        },
-        {
-          content: `Summary and conclusion of ${topic}`,
-          teacherActivity: "Teacher consolidates learners responses and writes the summary on the board",
-          pupilActivity: "Learners to listen attentively and write the summary",
-          methods: "Review and consolidation"
-        }
-      ];
+      lessonDevelopmentArray = generateLessonContent(topic, subject, grade);
     }
 
-    // ============ SAVE TO DATABASE ============
+    // Create lesson in database
     const lesson = await prisma.lesson.create({
       data: {
         userId: req.userId,
@@ -1109,7 +1461,6 @@ Return ONLY the JSON object, no other text.
       data: { lessonsUsed: user.lessonsUsed + 1 }
     });
 
-    // ============ RETURN RESPONSE ============
     const responseData = {
       ...aiContent,
       id: lesson.id,
@@ -1125,7 +1476,6 @@ Return ONLY the JSON object, no other text.
       teacherName: user.fullName || ''
     };
 
-    // Format for frontend display
     if (curriculumType === 'cbc') {
       responseData.lessonProgression = lessonProgressionArray;
     } else {
@@ -1150,7 +1500,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
     const { 
       grade, subject, term, year, school, 
       weeks: totalWeeks, assessmentWeeks, testTopics, 
-      weekTopics, subtopic 
+      weekTopics, subtopic, curriculum 
     } = req.body;
 
     if (!grade || !subject) {
@@ -1171,7 +1521,8 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       });
     }
 
-    console.log('📝 Generating scheme with DeepSeek...');
+    const curriculumType = curriculum || 'cbc';
+    console.log(`📝 Generating ${curriculumType.toUpperCase()} scheme with DeepSeek...`);
     
     const assessmentWeeksList = assessmentWeeks || [3, 6, 9, 12];
     const customTopics = weekTopics || {};
@@ -1182,21 +1533,68 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
     let useFallback = false;
     
     try {
-      let customTopicsString = '';
-      Object.keys(customTopics).forEach(week => {
-        if (customTopics[week]) {
-          customTopicsString += `Week ${week}: ${customTopics[week]}\n`;
-        }
-      });
+      let prompt;
+      
+      if (curriculumType === 'cbc') {
+        let customTopicsString = '';
+        Object.keys(customTopics).forEach(week => {
+          if (customTopics[week]) {
+            customTopicsString += `Week ${week}: ${customTopics[week]}\n`;
+          }
+        });
 
-      const prompt = `
+        prompt = `
 Grade: "${grade}"
 Subject: "${subject}"
 Term: "${term || 'Term 1'}"
+Curriculum: CBC (Competency-Based Curriculum)
+${customTopicsString ? `User topics:\n${customTopicsString}` : 'Generate appropriate topics for all weeks following CBC syllabus.'}
+Assessment weeks: ${assessmentWeeksList.join(', ')}
+
+Return ONLY valid JSON with this CBC scheme structure:
+{
+  "weeks": [
+    {
+      "week": 1,
+      "topics": [
+        {
+          "topic": "Topic code and name (e.g., 1.1.0 Concepts and Methods in Biology)",
+          "subtopic": "Subtopic name (e.g., 1.1.1 Nature of Science inquiry)",
+          "specificCompetence": "What learners should achieve (e.g., Apply scientific inquiry in carrying out scientific investigations)",
+          "methods": "Teaching methods (e.g., Group work, Experiments, Field work)",
+          "aids": "Teaching aids/resources (e.g., Apparatus, Books, Beakers)",
+          "references": "Reference books (e.g., 2024 New Syllabus pages 1-10)",
+          "knowledge": "Knowledge gained from the topic",
+          "skills": "Skills developed",
+          "values": "Values adopted"
+        }
+      ],
+      "assessment": null,
+      "isRevision": false,
+      "isAssessment": false
+    }
+  ],
+  "assessmentWeeks": [3, 6, 9, 12],
+  "testTopics": ["Mid-term test", "End of term test"]
+}
+`;
+      } else {
+        let customTopicsString = '';
+        Object.keys(customTopics).forEach(week => {
+          if (customTopics[week]) {
+            customTopicsString += `Week ${week}: ${customTopics[week]}\n`;
+          }
+        });
+
+        prompt = `
+Grade: "${grade}"
+Subject: "${subject}"
+Term: "${term || 'Term 1'}"
+Curriculum: OBC (Objective-Based Curriculum)
 ${customTopicsString ? `User topics:\n${customTopicsString}` : 'Generate appropriate topics for all weeks.'}
 Assessment weeks: ${assessmentWeeksList.join(', ')}
 
-Return ONLY valid JSON with this structure:
+Return ONLY valid JSON with this OBC scheme structure:
 {
   "weeks": [
     {
@@ -1220,15 +1618,19 @@ Return ONLY valid JSON with this structure:
   "testTopics": ["Mid-term test", "End of term test"]
 }
 `;
+      }
 
       const messages = [
         {
           role: "system",
           content: `
-You are an expert curriculum planner for Zambian schools.
+You are an expert curriculum planner for Zambian schools creating ${curriculumType.toUpperCase()} schemes of work.
 
 The user will provide grade, subject, and term information.
 Parse the information and output it in valid JSON format.
+
+For CBC: Include topic code, subtopic, specificCompetence, methods, aids, references, knowledge, skills, and values.
+For OBC: Include topic, specificOutcome, methods, aids, references, knowledge, skills, and values.
 
 Return ONLY the JSON object, no other text.
 `
@@ -1240,7 +1642,7 @@ Return ONLY the JSON object, no other text.
       ];
 
       aiContent = await generateDeepSeekJSON(messages, { 
-        max_tokens: 3000,
+        max_tokens: 4000,
         temperature: 0.1
       });
       
@@ -1252,14 +1654,20 @@ Return ONLY the JSON object, no other text.
     }
     
     if (!aiContent || useFallback) {
-      console.log('📝 Using fallback scheme generator');
-      aiContent = generateFallbackScheme(grade, subject, term, user, customTopics);
+      console.log(`📝 Using ${curriculumType.toUpperCase()} fallback scheme generator`);
+      if (curriculumType === 'cbc') {
+        aiContent = generateCBCScheme(grade, subject, term, user, customTopics);
+      } else {
+        aiContent = generateOBCScheme(grade, subject, term, user, customTopics);
+      }
     }
     
     const weeks = aiContent.weeks.map(week => ({
       week: week.week,
       topics: week.topics.map(topic => ({
         topic: topic.topic || '',
+        subtopic: topic.subtopic || '',
+        specificCompetence: topic.specificCompetence || topic.specificOutcome || '',
         specificOutcome: topic.specificOutcome || '',
         methods: topic.methods || '',
         aids: topic.aids || '',
@@ -1268,16 +1676,23 @@ Return ONLY the JSON object, no other text.
         skills: topic.skills || '',
         values: topic.values || ''
       })),
-      assessment: week.assessment || null
+      assessment: week.assessment || null,
+      isRevision: week.isRevision || false,
+      isAssessment: week.isAssessment || false
     }));
 
     if (subtopicsList.length > 0) {
       let weekIndex = 0;
       for (let i = 0; i < weeks.length; i++) {
-        if (!assessmentWeeksList.includes(weeks[i].week) && ![1, 5, 9].includes(weeks[i].week)) {
+        if (!assessmentWeeksList.includes(weeks[i].week) && !weeks[i].isRevision && !weeks[i].isAssessment) {
           if (weekIndex < subtopicsList.length) {
             weeks[i].topics[0].topic = subtopicsList[weekIndex];
-            weeks[i].topics[0].specificOutcome = `By the end of this lesson, learners will be able to understand and explain ${subtopicsList[weekIndex]}`;
+            if (curriculumType === 'cbc') {
+              weeks[i].topics[0].subtopic = subtopicsList[weekIndex];
+              weeks[i].topics[0].specificCompetence = `By the end of this lesson, learners will be able to understand and explain ${subtopicsList[weekIndex]}`;
+            } else {
+              weeks[i].topics[0].specificOutcome = `By the end of this lesson, learners will be able to understand and explain ${subtopicsList[weekIndex]}`;
+            }
             weekIndex++;
           }
         }
@@ -1296,6 +1711,7 @@ Return ONLY the JSON object, no other text.
       weeks: weeks,
       assessmentWeeks: assessmentWeeksList,
       testTopics: testTopics || [`Mid-term test on ${subject}`, `End of term test on ${subject}`],
+      curriculum: curriculumType,
       createdAt: new Date().toISOString()
     };
 
@@ -1312,7 +1728,8 @@ Return ONLY the JSON object, no other text.
         school: school || user.school || '',
         teacherName: user.fullName || '',
         subtopic: subtopic || '',
-        testTopics: generatedScheme.testTopics
+        testTopics: generatedScheme.testTopics,
+        curriculum: curriculumType
       }
     });
 
@@ -1321,7 +1738,7 @@ Return ONLY the JSON object, no other text.
       data: { schemesUsed: user.schemesUsed + 1 }
     });
 
-    console.log('✅ Scheme generated successfully');
+    console.log(`✅ ${curriculumType.toUpperCase()} scheme generated successfully`);
     res.status(201).json({
       ...generatedScheme,
       id: scheme.id,
@@ -1361,13 +1778,13 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
       children: [
         new TableCell({ children: [new Paragraph({ text: 'WEEK', bold: true })], width: { size: 5, type: WidthType.PERCENTAGE } }),
         new TableCell({ children: [new Paragraph({ text: 'TOPIC', bold: true })], width: { size: 20, type: WidthType.PERCENTAGE } }),
-        new TableCell({ children: [new Paragraph({ text: 'SPECIFIC OUTCOME', bold: true })], width: { size: 20, type: WidthType.PERCENTAGE } }),
-        new TableCell({ children: [new Paragraph({ text: 'METHODS', bold: true })], width: { size: 15, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'SUBTOPIC', bold: true })], width: { size: 15, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'SPECIFIC COMPETENCE', bold: true })], width: { size: 20, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'METHODS', bold: true })], width: { size: 10, type: WidthType.PERCENTAGE } }),
         new TableCell({ children: [new Paragraph({ text: 'AIDS', bold: true })], width: { size: 10, type: WidthType.PERCENTAGE } }),
         new TableCell({ children: [new Paragraph({ text: 'REFERENCES', bold: true })], width: { size: 10, type: WidthType.PERCENTAGE } }),
-        new TableCell({ children: [new Paragraph({ text: 'KNOWLEDGE', bold: true })], width: { size: 10, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'KNOWLEDGE', bold: true })], width: { size: 5, type: WidthType.PERCENTAGE } }),
         new TableCell({ children: [new Paragraph({ text: 'SKILLS', bold: true })], width: { size: 5, type: WidthType.PERCENTAGE } }),
-        new TableCell({ children: [new Paragraph({ text: 'VALUES', bold: true })], width: { size: 5, type: WidthType.PERCENTAGE } }),
       ],
     });
     tableRows.push(headerRow);
@@ -1376,7 +1793,8 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
       const topics = week.topics || [];
       
       const topicText = topics.map(t => t.topic || '').join('\n');
-      const outcomeText = topics.map(t => t.specificOutcome || '').join('\n');
+      const subtopicText = topics.map(t => t.subtopic || '').join('\n');
+      const competenceText = topics.map(t => t.specificCompetence || t.specificOutcome || '').join('\n');
       const methodsText = topics.map(t => t.methods || '').join('\n');
       const aidsText = topics.map(t => t.aids || '').join('\n');
       const refsText = topics.map(t => t.references || '').join('\n');
@@ -1388,13 +1806,13 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
         children: [
           new TableCell({ children: [new Paragraph({ text: String(week.week) })] }),
           new TableCell({ children: [new Paragraph({ text: topicText || '-' })] }),
-          new TableCell({ children: [new Paragraph({ text: outcomeText || '-' })] }),
+          new TableCell({ children: [new Paragraph({ text: subtopicText || '-' })] }),
+          new TableCell({ children: [new Paragraph({ text: competenceText || '-' })] }),
           new TableCell({ children: [new Paragraph({ text: methodsText || '-' })] }),
           new TableCell({ children: [new Paragraph({ text: aidsText || '-' })] }),
           new TableCell({ children: [new Paragraph({ text: refsText || '-' })] }),
           new TableCell({ children: [new Paragraph({ text: knowledgeText || '-' })] }),
           new TableCell({ children: [new Paragraph({ text: skillsText || '-' })] }),
-          new TableCell({ children: [new Paragraph({ text: valuesText || '-' })] }),
         ],
       });
       tableRows.push(dataRow);
@@ -1412,6 +1830,7 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
           new Paragraph({ text: `Grade: ${scheme.grade}`, alignment: AlignmentType.CENTER }),
           new Paragraph({ text: `Term: ${scheme.term}`, alignment: AlignmentType.CENTER }),
           new Paragraph({ text: `Year: ${scheme.year}`, alignment: AlignmentType.CENTER }),
+          new Paragraph({ text: `Curriculum: ${scheme.curriculum || 'CBC'}`, alignment: AlignmentType.CENTER }),
           new Paragraph({ text: `Assessment Weeks: ${scheme.assessmentWeeks?.join(', ') || 'None'}`, alignment: AlignmentType.CENTER }),
           new Paragraph({ text: '' }),
           new Table({ rows: tableRows, width: { size: 100, type: WidthType.PERCENTAGE } }),
@@ -1463,12 +1882,13 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
     doc.text(`Grade: ${scheme.grade}`, { align: 'center' });
     doc.text(`Term: ${scheme.term}`, { align: 'center' });
     doc.text(`Year: ${scheme.year}`, { align: 'center' });
+    doc.text(`Curriculum: ${scheme.curriculum || 'CBC'}`, { align: 'center' });
     doc.text(`Assessment Weeks: ${scheme.assessmentWeeks?.join(', ') || 'None'}`, { align: 'center' });
     doc.moveDown();
 
     const tableTop = doc.y;
-    const columnWidths = [40, 70, 80, 70, 60, 60, 60, 50, 50];
-    const headers = ['WEEK', 'TOPIC', 'SPECIFIC OUTCOME', 'METHODS', 'AIDS', 'REFERENCES', 'KNOWLEDGE', 'SKILLS', 'VALUES'];
+    const columnWidths = [30, 50, 50, 60, 40, 40, 40, 30, 30];
+    const headers = ['WK', 'TOPIC', 'SUBTOPIC', 'SPECIFIC COMPETENCE', 'METHODS', 'AIDS', 'REFERENCES', 'KNOWLEDGE', 'SKILLS'];
     
     let x = 50;
     let y = tableTop;
@@ -1477,7 +1897,7 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
     doc.fillColor('black');
     
     headers.forEach((header, i) => {
-      doc.fontSize(9).text(header, x, y, { width: columnWidths[i], align: 'center' });
+      doc.fontSize(8).text(header, x, y, { width: columnWidths[i], align: 'center' });
       x += columnWidths[i];
     });
     
@@ -1486,7 +1906,8 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
     scheme.weeks.forEach(week => {
       const topics = week.topics || [];
       const topicText = topics.map(t => t.topic || '').join('\n');
-      const outcomeText = topics.map(t => t.specificOutcome || '').join('\n');
+      const subtopicText = topics.map(t => t.subtopic || '').join('\n');
+      const competenceText = topics.map(t => t.specificCompetence || t.specificOutcome || '').join('\n');
       const methodsText = topics.map(t => t.methods || '').join('\n');
       const aidsText = topics.map(t => t.aids || '').join('\n');
       const refsText = topics.map(t => t.references || '').join('\n');
@@ -1497,18 +1918,18 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
       const rowData = [
         String(week.week),
         topicText || '-',
-        outcomeText || '-',
+        subtopicText || '-',
+        competenceText || '-',
         methodsText || '-',
         aidsText || '-',
         refsText || '-',
         knowledgeText || '-',
-        skillsText || '-',
-        valuesText || '-'
+        skillsText || '-'
       ];
       
       let maxHeight = 20;
       rowData.forEach((text, i) => {
-        const lines = doc.fontSize(8).text(text, 50 + columnWidths.slice(0, i).reduce((a, b) => a + b, 0), y, {
+        doc.fontSize(7).text(text, 50 + columnWidths.slice(0, i).reduce((a, b) => a + b, 0), y, {
           width: columnWidths[i],
           align: 'left',
           ellipsis: true,
