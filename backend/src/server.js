@@ -265,134 +265,138 @@ async function generateDeepSeekJSON(messages, options = {}) {
 
 // ============ ENHANCED FALLBACK LESSON GENERATOR ============
 
-function generateFallbackLesson(topic, grade, subject, classSize, curriculumType, user) {
+function generateFallbackCBC(topic, grade, subject, classSize, user) {
   const size = parseInt(classSize) || 40;
   const boys = Math.floor(size / 2) || 18;
   const girls = Math.ceil(size / 2) || 22;
   
-  if (curriculumType === 'obc') {
-    return {
-      title: topic,
-      grade: grade,
-      subject: subject,
-      teacherName: user?.fullName || 'MR/MRS',
-      school: user?.school || 'KASHINAKAZHI SECONDARY SCHOOL',
-      date: new Date().toISOString().split('T')[0],
-      duration: '80 MINUTES',
-      classSize: size,
-      boys: boys,
-      girls: girls,
-      subtopic: '',
-      references: [
-        `Progress in ${subject} Grade ${grade} pg 78`,
-        `${subject} Grade ${grade} Textbook`,
-        "Teacher's Guide"
-      ],
-      teachingAids: ["Learners book", "Chalk board", "Chart", "Diagrams"],
-      rationale: `This lesson is on ${topic}. Teacher Exposition, Demonstration, Question and answer and group or class discussion methods will be used. This lesson will develop learners knowledge of ${topic}. The skill of identification and application of ${topic} methods. The value of logical thinking and accuracy in computing ${topic}.`,
-      learningOutcomes: [
-        "By the end of this lesson, learners should be able to:",
-        `Define ${topic}`,
-        `Explain the concept of ${topic}`,
-        `Apply ${topic} to solve problems`,
-        `Analyze real-world applications of ${topic}`
-      ],
-      prerequisiteKnowledge: "Learners have ideas about the topic being taught.",
-      lessonIntroduction: "Teacher revises through the previous lesson",
-      lessonDevelopment: [
-        {
-          content: `Introduction to ${topic} and key concepts`,
-          teacherActivity: `Teacher writes the example on the board and explains the concept of ${topic} using real-world examples`,
-          pupilActivity: "Learners to write the example in their exercise books and listen attentively",
-          methods: "Teacher Exposition, Demonstration"
-        },
-        {
-          content: `Main content and examples of ${topic}`,
-          teacherActivity: `Teacher solves ${topic} problems on the board step-by-step and allows learners to ask questions`,
-          pupilActivity: "Learners to listen attentively and volunteer learners to go and solve on the board",
-          methods: "Question and answer, group discussion"
-        },
-        {
-          content: `Practice problems on ${topic}`,
-          teacherActivity: `Teacher writes ${topic} exercise on the board and asks volunteer learners to go and solve`,
-          pupilActivity: "Learners to write the exercise in their exercise books and volunteer to solve on the board",
-          methods: "Group work, individual practice"
-        },
-        {
-          content: `Summary and conclusion of ${topic}`,
-          teacherActivity: "Teacher consolidates learners responses and writes the summary on the board",
-          pupilActivity: "Learners to listen attentively and write the summary",
-          methods: "Review and consolidation"
-        }
-      ],
-      learnersEvaluation: [
-        `Define ${topic} in your own words`,
-        `Give two examples of ${topic}`,
-        `Solve a ${topic} problem: Determine the key features of ${topic}`,
-        `Explain the importance of ${topic}`
-      ],
-      expectedAnswers: [
-        `Correct definition of ${topic}`,
-        `Two valid examples of ${topic}`,
-        `Correct solution to the ${topic} problem`,
-        `Clear explanation of the importance of ${topic}`
-      ],
-      lessonConclusion: "Teacher concludes lesson by revising through the lesson with learners to help remedial learners",
-      learnersEvaluationText: "Space for teacher's assessment of learner performance",
-      teacherEvaluation: `The lesson was well delivered. The majority of the learners were able to grasp the concept and could work out problems involving ${topic}. Remedial work was given to those who had challenges.`,
-      curriculum: 'obc'
-    };
-  } else {
-    return {
-      title: topic,
-      grade: grade,
-      subject: subject,
-      teacherName: user?.fullName || 'MR/MRS',
-      school: user?.school || 'KASHINAKAZHI SECONDARY SCHOOL',
-      province: user?.province || 'Southern',
-      district: user?.district || 'Itezhi-Tezhi',
-      date: new Date().toISOString().split('T')[0],
-      time: "08:00-08:40",
-      duration: "40 min",
-      classSize: size,
-      boys: boys,
-      girls: girls,
-      subtopic: '',
-      generalCompetences: [
-        "Analytical thinking: Breaking down complex information into parts",
-        "Collaboration: Working effectively in groups",
-        "Communication: Expressing ideas clearly",
-        "Critical thinking: Evaluating information and making decisions"
-      ],
-      specificCompetence: `By the end of this lesson, learners will be able to demonstrate understanding of ${topic} through explanation and application.`,
-      lessonGoal: `By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}.`,
-      rationale: `Understanding ${topic} is essential for learners to develop critical thinking skills and make informed decisions.`,
-      priorKnowledge: "Learners have basic knowledge of the topic from previous lessons.",
-      references: ["2026 Teaching Module", "Curriculum Guide", `${subject} Grade ${grade} Textbook`],
-      learningEnvironment: "Classroom with adequate resources",
-      materials: ["Manila paper", "Markers", "Charts", "Worksheet", "Real objects"],
-      expectedStandard: "Topic concepts explained correctly",
-      lessonProgression: [
-        { stage: "INTRODUCTION", time: "5 min", teacherRole: "Ask engaging questions to introduce the topic", learnerRole: "Listen, participate, give examples", assessmentCriteria: "Observation of participation" },
-        { stage: "LESSON DEVELOPMENT", time: "10 min", teacherRole: "Explain key concepts and demonstrate", learnerRole: "Take notes, ask questions, discuss", assessmentCriteria: "Correct understanding of concepts" },
-        { stage: "ACTIVITY 1", time: "11 min", teacherRole: "Guide group work and provide materials", learnerRole: "Work in groups, complete tasks", assessmentCriteria: "Group collaboration and task completion" },
-        { stage: "ACTIVITY 2", time: "16 min", teacherRole: "Facilitate presentations and consolidate", learnerRole: "Present findings and correct own work", assessmentCriteria: "Accurate presentation" },
-        { stage: "EXERCISE", time: "20 min", teacherRole: "Give assessment and monitor", learnerRole: "Complete assessment individually", assessmentCriteria: "Correct responses" },
-        { stage: "CONCLUSION", time: "10 min", teacherRole: "Summarize key points", learnerRole: "Share what they learned", assessmentCriteria: "Verbal explanation" }
-      ],
-      homework: `Research and list examples of ${topic}`,
-      lessonEvaluation: "Lesson was successful, key competences were acquired",
-      teacherEvaluation: "Space for teacher's reflections",
-      learningOutcomes: [`Understand ${topic}`, `Apply ${topic}`, `Analyze ${topic}`],
-      learnersEvaluation: [`Define ${topic}`, `Give examples of ${topic}`, `Explain the importance of ${topic}`],
-      lessonDevelopment: [
-        { content: `Introduction to ${topic}`, teacherActivity: "Explain the concept", pupilActivity: "Listen and take notes", methods: "Lecture" },
-        { content: `Practice ${topic}`, teacherActivity: "Guide students", pupilActivity: "Work in groups", methods: "Group work" }
-      ],
-      teachingAids: ["Whiteboard", "Charts", "Diagrams"],
-      curriculum: 'cbc'
-    };
-  }
+  return {
+    title: topic,
+    grade: grade,
+    subject: subject,
+    teacherName: user?.fullName || 'MR/MRS',
+    school: user?.school || 'KASHINAKAZHI SECONDARY SCHOOL',
+    province: user?.province || 'Southern',
+    district: user?.district || 'Itezhi-Tezhi',
+    date: new Date().toISOString().split('T')[0],
+    time: "08:00-08:40",
+    duration: "40 min",
+    classSize: size,
+    boys: boys,
+    girls: girls,
+    subtopic: '',
+    generalCompetences: [
+      "Analytical thinking: Breaking down complex information into parts",
+      "Collaboration: Working effectively in groups",
+      "Communication: Expressing ideas clearly",
+      "Critical thinking: Evaluating information and making decisions"
+    ],
+    specificCompetence: `By the end of this lesson, learners will be able to understand and explain ${topic}`,
+    lessonGoal: `By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}`,
+    rationale: `Understanding ${topic} is essential for learners to develop critical thinking skills and make informed decisions.`,
+    priorKnowledge: "Learners have basic knowledge of the topic from previous lessons",
+    references: ["2026 Teaching Module", "Curriculum Guide", `${subject} Grade ${grade} Textbook`],
+    learningEnvironment: "Classroom with adequate resources",
+    materials: ["Manila paper", "Markers", "Charts", "Worksheet", "Real objects"],
+    expectedStandard: "Topic concepts explained correctly",
+    lessonProgression: [
+      { stage: "INTRODUCTION", time: "5 min", teacherRole: "Ask engaging questions to introduce the topic", learnerRole: "Listen, participate, give examples", assessmentCriteria: "Observation of participation" },
+      { stage: "LESSON DEVELOPMENT", time: "10 min", teacherRole: "Explain key concepts and demonstrate", learnerRole: "Take notes, ask questions, discuss", assessmentCriteria: "Correct understanding of concepts" },
+      { stage: "ACTIVITY 1", time: "11 min", teacherRole: "Guide group work and provide materials", learnerRole: "Work in groups, complete tasks", assessmentCriteria: "Group collaboration and task completion" },
+      { stage: "ACTIVITY 2", time: "16 min", teacherRole: "Facilitate presentations and consolidate", learnerRole: "Present findings and correct own work", assessmentCriteria: "Accurate presentation" },
+      { stage: "EXERCISE", time: "20 min", teacherRole: "Give assessment and monitor", learnerRole: "Complete assessment individually", assessmentCriteria: "Correct responses" },
+      { stage: "CONCLUSION", time: "10 min", teacherRole: "Summarize key points", learnerRole: "Share what they learned", assessmentCriteria: "Verbal explanation" }
+    ],
+    homework: `Research and list examples of ${topic}`,
+    lessonEvaluation: "Lesson was successful, key competences were acquired",
+    teacherEvaluation: "Space for teacher's reflections",
+    learningOutcomes: [`Understand ${topic}`, `Apply ${topic}`, `Analyze ${topic}`],
+    learnersEvaluation: [`Define ${topic}`, `Give examples of ${topic}`, `Explain the importance of ${topic}`],
+    lessonDevelopment: [
+      { content: `Introduction to ${topic}`, teacherActivity: "Explain the concept", pupilActivity: "Listen and take notes", methods: "Lecture" },
+      { content: `Practice ${topic}`, teacherActivity: "Guide students", pupilActivity: "Work in groups", methods: "Group work" }
+    ],
+    teachingAids: ["Whiteboard", "Charts", "Diagrams"],
+    curriculum: 'cbc'
+  };
+}
+
+function generateFallbackOBC(topic, grade, subject, classSize, user) {
+  const size = parseInt(classSize) || 40;
+  const boys = Math.floor(size / 2) || 18;
+  const girls = Math.ceil(size / 2) || 22;
+  
+  return {
+    title: topic,
+    grade: grade,
+    subject: subject,
+    teacherName: user?.fullName || 'MR/MRS',
+    school: user?.school || 'KASHINAKAZHI SECONDARY SCHOOL',
+    date: new Date().toISOString().split('T')[0],
+    duration: '80 MINUTES',
+    classSize: size,
+    boys: boys,
+    girls: girls,
+    subtopic: '',
+    references: [
+      `Progress in ${subject} Grade ${grade} pg 78`,
+      `${subject} Grade ${grade} Textbook`,
+      "Teacher's Guide"
+    ],
+    teachingAids: ["Learners book", "Chalk board", "Chart", "Diagrams"],
+    rationale: `This lesson is on ${topic}. Teacher Exposition, Demonstration, Question and answer and group or class discussion methods will be used. This lesson will develop learners knowledge of ${topic}. The skill of identification and application of ${topic} methods. The value of logical thinking and accuracy in computing ${topic}.`,
+    learningOutcomes: [
+      "By the end of this lesson, learners should be able to:",
+      `Define ${topic}`,
+      `Explain the concept of ${topic}`,
+      `Apply ${topic} to solve problems`,
+      `Analyze real-world applications of ${topic}`
+    ],
+    prerequisiteKnowledge: "Learners have ideas about the topic being taught.",
+    lessonIntroduction: "Teacher revises through the previous lesson",
+    lessonDevelopment: [
+      {
+        content: `Introduction to ${topic} and key concepts`,
+        teacherActivity: `Teacher writes the example on the board and explains the concept of ${topic}`,
+        pupilActivity: "Learners to write the example in their exercise books and listen attentively",
+        methods: "Teacher Exposition, Demonstration"
+      },
+      {
+        content: `Main content and examples of ${topic}`,
+        teacherActivity: `Teacher solves ${topic} problems on the board and allows learners to ask questions`,
+        pupilActivity: "Learners to listen attentively and volunteer learners to go and solve on the board",
+        methods: "Question and answer, group discussion"
+      },
+      {
+        content: `Practice problems on ${topic}`,
+        teacherActivity: `Teacher writes ${topic} exercise on the board and asks volunteer learners to go and solve`,
+        pupilActivity: "Learners to write the exercise in their exercise books and volunteer to solve on the board",
+        methods: "Group work, individual practice"
+      },
+      {
+        content: `Summary and conclusion of ${topic}`,
+        teacherActivity: "Teacher consolidates learners responses and writes the summary on the board",
+        pupilActivity: "Learners to listen attentively and write the summary",
+        methods: "Review and consolidation"
+      }
+    ],
+    learnersEvaluation: [
+      `Define ${topic} in your own words`,
+      `Give two examples of ${topic}`,
+      `Solve a ${topic} problem: Determine the key features of ${topic}`,
+      `Explain the importance of ${topic}`
+    ],
+    expectedAnswers: [
+      `Correct definition of ${topic}`,
+      `Two valid examples of ${topic}`,
+      `Correct solution to the ${topic} problem`,
+      `Clear explanation of the importance of ${topic}`
+    ],
+    lessonConclusion: "Teacher concludes lesson by revising through the lesson with learners to help remedial learners",
+    learnersEvaluationText: "Space for teacher's assessment of learner performance",
+    teacherEvaluation: `The lesson was well delivered. The majority of the learners were able to grasp the concept and could work out problems involving ${topic}. Remedial work was given to those who had challenges.`,
+    curriculum: 'obc'
+  };
 }
 
 // ============ ENHANCED FALLBACK SCHEME GENERATOR ============
@@ -651,7 +655,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE (UPDATED WITH DETAILED PROMPTS) ============
+// ============ LESSON GENERATION ROUTE (UPDATED WITH EXACT FORMATS) ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
@@ -686,12 +690,94 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
     try {
       let prompt;
       
-      if (curriculumType === 'obc') {
-        // ============ DETAILED OBC PROMPT ============
+      if (curriculumType === 'cbc') {
+        // ============ CBC PROMPT (FOLLOWS YOUR BIOLOGY FORMAT) ============
+        prompt = `
+You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
+
+⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this CBC structure:
+
+{
+  "title": "${topic}",
+  "grade": "${grade}",
+  "subject": "${subject}",
+  "teacherName": "${user.fullName || 'MR/MRS'}",
+  "school": "${user.school || 'KASHINAKAZHI SECONDARY SCHOOL'}",
+  "date": "${new Date().toISOString().split('T')[0]}",
+  "time": "08:00-08:40",
+  "duration": "40 min",
+  "classSize": ${size},
+  "boys": ${boys},
+  "girls": ${girls},
+  "subtopic": "",
+  "generalCompetences": [
+    "Analytical thinking",
+    "Collaboration",
+    "Communication",
+    "Critical thinking"
+  ],
+  "specificCompetence": "Classify and explain the types of ${topic}",
+  "lessonGoal": "By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}",
+  "rationale": "Understanding ${topic} is essential for learners to make informed decisions and develop critical thinking skills.",
+  "priorKnowledge": "Learners have basic knowledge of the topic from previous lessons",
+  "references": "2026 Teaching Module, pages 71-78; ${subject} Module 2, Term 2",
+  "learningEnvironment": "Natural: school garden / market area. Artificial: classroom, laboratory. Technological: tablets with charts",
+  "materials": "Assorted local materials, packaging labels, manila paper, markers, flip chart",
+  "expectedStandard": "Topic concepts classified correctly",
+  "lessonProgression": [
+    {
+      "stage": "INTRODUCTION",
+      "time": "5 min",
+      "teacherRole": "Ask: 'What do you know about this topic?' Explain and define key concepts",
+      "learnerRole": "Listen, participate, give examples",
+      "assessmentCriteria": "Observation of participation"
+    },
+    {
+      "stage": "LESSON DEVELOPMENT",
+      "time": "10 min",
+      "teacherRole": "Put learners into groups of 4-5. Ask them to identify essential concepts using displayed materials",
+      "learnerRole": "In groups, handle materials and identify key concepts",
+      "assessmentCriteria": "Group collaboration"
+    },
+    {
+      "stage": "Activity 1",
+      "time": "11 min",
+      "teacherRole": "Display different materials. Ask groups to record name, main concept, and other details",
+      "learnerRole": "Observe, discuss, fill chart",
+      "assessmentCriteria": "Correct recording of content"
+    },
+    {
+      "stage": "Activity 2",
+      "time": "16 min",
+      "teacherRole": "Ask each group to present findings. Consolidate by listing key points on the board",
+      "learnerRole": "Present chart to class; correct own work",
+      "assessmentCriteria": "Accurate presentation and participation"
+    },
+    {
+      "stage": "EXERCISE",
+      "time": "20 min",
+      "teacherRole": "Give a quiz: match concepts to functions and give examples",
+      "learnerRole": "Complete quiz individually",
+      "assessmentCriteria": "Correct classification"
+    },
+    {
+      "stage": "CONCLUSION",
+      "time": "10 min",
+      "teacherRole": "Summarise key points",
+      "learnerRole": "Share what they learned",
+      "assessmentCriteria": "Verbal explanation"
+    }
+  ],
+  "homework": "Research and list local examples of ${topic}",
+  "lessonEvaluation": "Lesson was successful, key competences were acquired"
+}
+`;
+      } else {
+        // ============ OBC PROMPT (FOLLOWS YOUR MATHEMATICS FORMAT) ============
         prompt = `
 You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
 
-⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this detailed OBC structure:
+⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this OBC structure:
 
 {
   "title": "${topic}",
@@ -764,91 +850,6 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
   "teacherEvaluation": "The lesson was well delivered. The majority of the learners were able to grasp the concept and could work out problems involving ${topic}. Remedial work was given to those who had challenges."
 }
 `;
-      } else {
-        // ============ DETAILED CBC PROMPT ============
-        prompt = `
-You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
-
-⚠️ CRITICAL: Return ONLY valid JSON that EXACTLY matches this detailed CBC structure. Each section must contain specific, detailed content:
-
-{
-  "title": "${topic}",
-  "grade": "${grade}",
-  "subject": "${subject}",
-  "teacherName": "${user.fullName || 'MR/MRS'}",
-  "school": "${user.school || 'KASHINAKAZHI SECONDARY SCHOOL'}",
-  "province": "${user.province || 'Southern'}",
-  "district": "${user.district || 'Itezhi-Tezhi'}",
-  "date": "${new Date().toISOString().split('T')[0]}",
-  "time": "08:00-08:40",
-  "duration": "40 min",
-  "classSize": ${size},
-  "boys": ${boys},
-  "girls": ${girls},
-  "subtopic": "",
-  "generalCompetences": [
-    "Analytical thinking: Breaking down complex information into parts",
-    "Collaboration: Working effectively in groups",
-    "Communication: Expressing ideas clearly",
-    "Critical thinking: Evaluating information and making decisions"
-  ],
-  "specificCompetence": "By the end of this lesson, learners will be able to demonstrate understanding of ${topic} through explanation and application.",
-  "lessonGoal": "By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}.",
-  "rationale": "Understanding ${topic} is essential for learners to develop critical thinking skills and make informed decisions.",
-  "priorKnowledge": "Learners have basic knowledge of the topic from previous lessons.",
-  "references": ["2026 Teaching Module", "Curriculum Guide", "${subject} Grade ${grade} Textbook"],
-  "learningEnvironment": "Classroom with adequate resources",
-  "materials": ["Manila paper", "Markers", "Charts", "Worksheet", "Real objects"],
-  "expectedStandard": "Topic concepts explained correctly",
-  "lessonProgression": [
-    {
-      "stage": "INTRODUCTION",
-      "time": "5 min",
-      "teacherRole": "Ask engaging questions to introduce the topic",
-      "learnerRole": "Listen, participate, give examples",
-      "assessmentCriteria": "Observation of participation"
-    },
-    {
-      "stage": "LESSON DEVELOPMENT",
-      "time": "10 min",
-      "teacherRole": "Explain key concepts and demonstrate",
-      "learnerRole": "Take notes, ask questions, discuss",
-      "assessmentCriteria": "Correct understanding of concepts"
-    },
-    {
-      "stage": "ACTIVITY 1",
-      "time": "11 min",
-      "teacherRole": "Guide group work and provide materials",
-      "learnerRole": "Work in groups, complete tasks",
-      "assessmentCriteria": "Group collaboration and task completion"
-    },
-    {
-      "stage": "ACTIVITY 2",
-      "time": "16 min",
-      "teacherRole": "Facilitate presentations and consolidate",
-      "learnerRole": "Present findings and correct own work",
-      "assessmentCriteria": "Accurate presentation"
-    },
-    {
-      "stage": "EXERCISE",
-      "time": "20 min",
-      "teacherRole": "Give assessment and monitor",
-      "learnerRole": "Complete assessment individually",
-      "assessmentCriteria": "Correct responses"
-    },
-    {
-      "stage": "CONCLUSION",
-      "time": "10 min",
-      "teacherRole": "Summarize key points",
-      "learnerRole": "Share what they learned",
-      "assessmentCriteria": "Verbal explanation"
-    }
-  ],
-  "homework": "Research and list examples of ${topic}",
-  "lessonEvaluation": "Lesson was successful, key competences were acquired",
-  "teacherEvaluation": "Space for teacher's reflections"
-}
-`;
       }
 
       console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson with DeepSeek...`);
@@ -876,7 +877,13 @@ Return ONLY the JSON object, no other text.
         temperature: 0.1
       });
       
-      const fallback = generateFallbackLesson(topic, grade, subject, classSize, curriculumType, user);
+      // Merge with appropriate fallback
+      let fallback;
+      if (curriculumType === 'cbc') {
+        fallback = generateFallbackCBC(topic, grade, subject, classSize, user);
+      } else {
+        fallback = generateFallbackOBC(topic, grade, subject, classSize, user);
+      }
       aiContent = { ...fallback, ...aiContent };
 
       console.log(`✅ ${curriculumType.toUpperCase()} lesson generated with DeepSeek`);
@@ -888,8 +895,17 @@ Return ONLY the JSON object, no other text.
 
     if (useFallback || !aiContent) {
       console.log(`📝 Using ${curriculumType.toUpperCase()} fallback`);
-      aiContent = generateFallbackLesson(topic, grade, subject, classSize, curriculumType, user);
+      if (curriculumType === 'cbc') {
+        aiContent = generateFallbackCBC(topic, grade, subject, classSize, user);
+      } else {
+        aiContent = generateFallbackOBC(topic, grade, subject, classSize, user);
+      }
     }
+
+    // Ensure references is an array
+    const referencesArray = Array.isArray(aiContent.references) 
+      ? aiContent.references 
+      : (aiContent.references ? [aiContent.references] : ["Textbook", "Teacher's Guide"]);
 
     const lesson = await prisma.lesson.create({
       data: {
@@ -918,7 +934,7 @@ Return ONLY the JSON object, no other text.
         lessonGoal: aiContent.lessonGoal || '',
         rationale: aiContent.rationale || '',
         priorKnowledge: aiContent.priorKnowledge || '',
-        references: aiContent.references || [],
+        references: referencesArray, // ✅ Fixed - ensures array
         learningEnvironment: aiContent.learningEnvironment || '',
         materials: aiContent.materials || [],
         expectedStandard: aiContent.expectedStandard || '',
