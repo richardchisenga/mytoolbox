@@ -263,6 +263,200 @@ async function generateDeepSeekJSON(messages, options = {}) {
   }
 }
 
+// ============ LESSON PROMPT GENERATORS ============
+
+// ============ CBC LESSON PROMPT ============
+function generateCBCPrompt(topic, grade, subject, classSize, user, subtopic) {
+  const size = parseInt(classSize) || 40;
+  const boys = Math.floor(size / 2) || 18;
+  const girls = Math.ceil(size / 2) || 22;
+  
+  return `
+You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
+
+⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this CBC lesson structure. The lessonProgression array MUST have content with all required fields.
+
+{
+  "title": "${topic}",
+  "grade": "${grade}",
+  "subject": "${subject}",
+  "teacherName": "${user.fullName || 'MR/MRS'}",
+  "school": "${user.school || 'KASHINAKAZHI SECONDARY SCHOOL'}",
+  "date": "${new Date().toISOString().split('T')[0]}",
+  "time": "10:20-11:00",
+  "duration": "80 MINUTES",
+  "classSize": ${size},
+  "boys": ${boys},
+  "girls": ${girls},
+  "subtopic": "${subtopic || ''}",
+  "generalCompetences": [
+    "Analytical thinking",
+    "Collaboration",
+    "Communication",
+    "Critical thinking"
+  ],
+  "specificCompetence": "Classify and explain the types of ${topic}",
+  "lessonGoal": "By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}",
+  "rationale": "Understanding ${topic} is essential for learners to make informed decisions and develop critical thinking skills.",
+  "priorKnowledge": "Learners have basic knowledge of the topic from previous lessons",
+  "references": [
+    "2026 Teaching Module",
+    "Curriculum Guide",
+    "${subject} Grade ${grade} Textbook"
+  ],
+  "learningEnvironment": "Natural: school garden / market area. Artificial: classroom, laboratory. Technological: tablets with charts",
+  "materials": ["Assorted local materials", "Packaging labels", "Manila paper", "Markers", "Flip chart"],
+  "expectedStandard": "Topic concepts classified correctly",
+  "lessonProgression": [
+    {
+      "stage": "INTRODUCTION",
+      "time": "5 min",
+      "teacherRole": "Ask engaging questions to introduce the topic",
+      "learnerRole": "Listen, participate, give examples",
+      "assessmentCriteria": "Observation of participation"
+    },
+    {
+      "stage": "LESSON DEVELOPMENT",
+      "time": "10 min",
+      "teacherRole": "Put learners into groups of 4-5. Ask them to identify essential concepts using displayed materials",
+      "learnerRole": "In groups, handle materials and identify key concepts",
+      "assessmentCriteria": "Group collaboration"
+    },
+    {
+      "stage": "Activity 1",
+      "time": "11 min",
+      "teacherRole": "Display different materials. Ask groups to record name, main concept, and other details",
+      "learnerRole": "Observe, discuss, fill chart",
+      "assessmentCriteria": "Correct recording of content"
+    },
+    {
+      "stage": "Activity 2",
+      "time": "16 min",
+      "teacherRole": "Ask each group to present findings. Consolidate by listing key points on the board",
+      "learnerRole": "Present chart to class; correct own work",
+      "assessmentCriteria": "Accurate presentation and participation"
+    },
+    {
+      "stage": "EXERCISE",
+      "time": "20 min",
+      "teacherRole": "Give a quiz: match concepts to functions and give examples",
+      "learnerRole": "Complete quiz individually",
+      "assessmentCriteria": "Correct classification"
+    },
+    {
+      "stage": "CONCLUSION",
+      "time": "10 min",
+      "teacherRole": "Summarise key points",
+      "learnerRole": "Share what they learned",
+      "assessmentCriteria": "Verbal explanation"
+    }
+  ],
+  "homework": "Research and list local examples of ${topic}",
+  "lessonEvaluation": "Lesson was successful, key competences were acquired",
+  "teacherEvaluation": "Space for teacher's reflections",
+  "learningOutcomes": [
+    "By the end of this lesson, learners should be able to:",
+    "Define ${topic}",
+    "Explain the concept of ${topic}",
+    "Apply ${topic} to solve problems",
+    "Analyze real-world applications of ${topic}"
+  ],
+  "learnersEvaluation": [
+    "Define ${topic} in your own words",
+    "Give two examples of ${topic}",
+    "Explain the importance of ${topic}"
+  ],
+  "teachingAids": ["Whiteboard", "Charts", "Diagrams", "Real objects"],
+  "curriculum": "cbc"
+}
+`;
+}
+
+// ============ OBC LESSON PROMPT ============
+function generateOBCPrompt(topic, grade, subject, classSize, user, subtopic) {
+  const size = parseInt(classSize) || 40;
+  const boys = Math.floor(size / 2) || 18;
+  const girls = Math.ceil(size / 2) || 22;
+  
+  return `
+You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
+
+⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this OBC lesson structure. The lessonDevelopment array MUST have content with all required fields.
+
+{
+  "title": "${topic}",
+  "grade": "${grade}",
+  "subject": "${subject}",
+  "teacherName": "${user.fullName || 'MR/MRS'}",
+  "school": "${user.school || 'KASHINAKAZHI SECONDARY SCHOOL'}",
+  "date": "${new Date().toISOString().split('T')[0]}",
+  "duration": "80 MINUTES",
+  "classSize": ${size},
+  "boys": ${boys},
+  "girls": ${girls},
+  "subtopic": "${subtopic || ''}",
+  "references": [
+    "Progress in ${subject} Grade ${grade} pg 78",
+    "${subject} Grade ${grade} Textbook",
+    "Teacher's Guide"
+  ],
+  "teachingAids": ["Learners book", "Chalk board", "Chart", "Diagrams"],
+  "rationale": "This lesson is on ${topic}. Teacher Exposition, Demonstration, Question and answer and group or class discussion methods will be used. This lesson will develop learners knowledge of ${topic}. The skill of identification and application of ${topic} methods. The value of logical thinking and accuracy in computing ${topic}.",
+  "learningOutcomes": [
+    "By the end of this lesson, learners should be able to:",
+    "Define ${topic}",
+    "Explain the concept of ${topic}",
+    "Apply ${topic} to solve problems",
+    "Analyze real-world applications of ${topic}"
+  ],
+  "prerequisiteKnowledge": "Learners have ideas about the topic being taught.",
+  "lessonIntroduction": "Teacher revises through the previous lesson",
+  "lessonDevelopment": [
+    {
+      "content": "Introduction to ${topic} and key concepts",
+      "teacherActivity": "Teacher writes the example on the board and explains the concept of ${topic}",
+      "pupilActivity": "Learners to write the example in their exercise books and listen attentively",
+      "methods": "Teacher Exposition, Demonstration"
+    },
+    {
+      "content": "Main content and examples of ${topic}",
+      "teacherActivity": "Teacher solves ${topic} problems on the board and allows learners to ask questions",
+      "pupilActivity": "Learners to listen attentively and volunteer learners to go and solve on the board",
+      "methods": "Question and answer, group discussion"
+    },
+    {
+      "content": "Practice problems on ${topic}",
+      "teacherActivity": "Teacher writes ${topic} exercise on the board and asks volunteer learners to go and solve",
+      "pupilActivity": "Learners to write the exercise in their exercise books and volunteer to solve on the board",
+      "methods": "Group work, individual practice"
+    },
+    {
+      "content": "Summary and conclusion of ${topic}",
+      "teacherActivity": "Teacher consolidates learners responses and writes the summary on the board",
+      "pupilActivity": "Learners to listen attentively and write the summary",
+      "methods": "Review and consolidation"
+    }
+  ],
+  "learnersEvaluation": [
+    "Define ${topic} in your own words",
+    "Give two examples of ${topic}",
+    "Solve a ${topic} problem",
+    "Explain the importance of ${topic}"
+  ],
+  "expectedAnswers": [
+    "Correct definition of ${topic}",
+    "Two valid examples of ${topic}",
+    "Correct solution to the ${topic} problem",
+    "Clear explanation of the importance of ${topic}"
+  ],
+  "lessonConclusion": "Teacher concludes lesson by revising through the lesson with learners to help remedial learners",
+  "learnersEvaluationText": "Space for teacher's assessment of learner performance",
+  "teacherEvaluation": "The lesson was well delivered. The majority of the learners were able to grasp the concept and could work out problems involving ${topic}. Remedial work was given to those who had challenges.",
+  "curriculum": "obc"
+}
+`;
+}
+
 // ============ ENHANCED FALLBACK LESSON GENERATOR ============
 
 function generateFallbackCBC(topic, grade, subject, classSize, user) {
@@ -655,11 +849,11 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE (FIXED WITH OBC LESSON DEVELOPMENT) ============
+// ============ LESSON GENERATION ROUTE (UPDATED WITH PROMPT FUNCTIONS) ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
-    const { topic, grade, subject, classSize, curriculum } = req.body;
+    const { topic, grade, subject, classSize, curriculum, subtopic } = req.body;
 
     if (!topic || !grade || !subject) {
       return res.status(400).json({ error: 'Missing required fields: topic, grade, subject' });
@@ -691,128 +885,9 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       let prompt;
       
       if (curriculumType === 'cbc') {
-        prompt = `
-You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
-
-⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this CBC structure:
-
-{
-  "title": "${topic}",
-  "grade": "${grade}",
-  "subject": "${subject}",
-  "teacherName": "${user.fullName || 'MR/MRS'}",
-  "school": "${user.school || 'KASHINAKAZHI SECONDARY SCHOOL'}",
-  "date": "${new Date().toISOString().split('T')[0]}",
-  "time": "08:00-08:40",
-  "duration": "40 min",
-  "classSize": ${size},
-  "boys": ${boys},
-  "girls": ${girls},
-  "subtopic": "",
-  "generalCompetences": [
-    "Analytical thinking",
-    "Collaboration",
-    "Communication",
-    "Critical thinking"
-  ],
-  "specificCompetence": "Classify and explain the types of ${topic}",
-  "lessonGoal": "By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}",
-  "rationale": "Understanding ${topic} is essential for learners to make informed decisions and develop critical thinking skills.",
-  "priorKnowledge": "Learners have basic knowledge of the topic from previous lessons",
-  "references": ["2026 Teaching Module", "Curriculum Guide", "${subject} Grade ${grade} Textbook"],
-  "learningEnvironment": "Natural: school garden / market area. Artificial: classroom, laboratory. Technological: tablets with charts",
-  "materials": ["Assorted local materials", "Packaging labels", "Manila paper", "Markers", "Flip chart"],
-  "expectedStandard": "Topic concepts classified correctly",
-  "lessonProgression": [
-    { "stage": "INTRODUCTION", "time": "5 min", "teacherRole": "Ask: 'What do you know about this topic?' Explain and define key concepts", "learnerRole": "Listen, participate, give examples", "assessmentCriteria": "Observation of participation" },
-    { "stage": "LESSON DEVELOPMENT", "time": "10 min", "teacherRole": "Put learners into groups of 4-5. Ask them to identify essential concepts using displayed materials", "learnerRole": "In groups, handle materials and identify key concepts", "assessmentCriteria": "Group collaboration" },
-    { "stage": "Activity 1", "time": "11 min", "teacherRole": "Display different materials. Ask groups to record name, main concept, and other details", "learnerRole": "Observe, discuss, fill chart", "assessmentCriteria": "Correct recording of content" },
-    { "stage": "Activity 2", "time": "16 min", "teacherRole": "Ask each group to present findings. Consolidate by listing key points on the board", "learnerRole": "Present chart to class; correct own work", "assessmentCriteria": "Accurate presentation and participation" },
-    { "stage": "EXERCISE", "time": "20 min", "teacherRole": "Give a quiz: match concepts to functions and give examples", "learnerRole": "Complete quiz individually", "assessmentCriteria": "Correct classification" },
-    { "stage": "CONCLUSION", "time": "10 min", "teacherRole": "Summarise key points", "learnerRole": "Share what they learned", "assessmentCriteria": "Verbal explanation" }
-  ],
-  "homework": "Research and list local examples of ${topic}",
-  "lessonEvaluation": "Lesson was successful, key competences were acquired"
-}
-`;
+        prompt = generateCBCPrompt(topic, grade, subject, classSize, user, subtopic);
       } else {
-        // ============ OBC PROMPT ============
-        prompt = `
-You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
-
-⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this OBC structure. The lessonDevelopment array MUST have content.
-
-{
-  "title": "${topic}",
-  "grade": "${grade}",
-  "subject": "${subject}",
-  "teacherName": "${user.fullName || 'MR/MRS'}",
-  "school": "${user.school || 'KASHINAKAZHI SECONDARY SCHOOL'}",
-  "date": "${new Date().toISOString().split('T')[0]}",
-  "duration": "80 MINUTES",
-  "classSize": ${size},
-  "boys": ${boys},
-  "girls": ${girls},
-  "subtopic": "",
-  "references": [
-    "Progress in ${subject} Grade ${grade} pg 78",
-    "${subject} Grade ${grade} Textbook",
-    "Teacher's Guide"
-  ],
-  "teachingAids": ["Learners book", "Chalk board", "Chart", "Diagrams"],
-  "rationale": "This lesson is on ${topic}. Teacher Exposition, Demonstration, Question and answer and group or class discussion methods will be used. This lesson will develop learners knowledge of ${topic}. The skill of identification and application of ${topic} methods. The value of logical thinking and accuracy in computing ${topic}.",
-  "learningOutcomes": [
-    "By the end of this lesson, learners should be able to:",
-    "Define ${topic}",
-    "Explain the concept of ${topic}",
-    "Apply ${topic} to solve problems",
-    "Analyze real-world applications of ${topic}"
-  ],
-  "prerequisiteKnowledge": "Learners have ideas about the topic being taught.",
-  "lessonIntroduction": "Teacher revises through the previous lesson",
-  "lessonDevelopment": [
-    {
-      "content": "Introduction to ${topic} and key concepts",
-      "teacherActivity": "Teacher writes the example on the board and explains the concept of ${topic}",
-      "pupilActivity": "Learners to write the example in their exercise books and listen attentively",
-      "methods": "Teacher Exposition, Demonstration"
-    },
-    {
-      "content": "Main content and examples of ${topic}",
-      "teacherActivity": "Teacher solves ${topic} problems on the board and allows learners to ask questions",
-      "pupilActivity": "Learners to listen attentively and volunteer learners to go and solve on the board",
-      "methods": "Question and answer, group discussion"
-    },
-    {
-      "content": "Practice problems on ${topic}",
-      "teacherActivity": "Teacher writes ${topic} exercise on the board and asks volunteer learners to go and solve",
-      "pupilActivity": "Learners to write the exercise in their exercise books and volunteer to solve on the board",
-      "methods": "Group work, individual practice"
-    },
-    {
-      "content": "Summary and conclusion of ${topic}",
-      "teacherActivity": "Teacher consolidates learners responses and writes the summary on the board",
-      "pupilActivity": "Learners to listen attentively and write the summary",
-      "methods": "Review and consolidation"
-    }
-  ],
-  "learnersEvaluation": [
-    "Define ${topic} in your own words",
-    "Give two examples of ${topic}",
-    "Solve a ${topic} problem",
-    "Explain the importance of ${topic}"
-  ],
-  "expectedAnswers": [
-    "Correct definition of ${topic}",
-    "Two valid examples of ${topic}",
-    "Correct solution to the ${topic} problem",
-    "Clear explanation of the importance of ${topic}"
-  ],
-  "lessonConclusion": "Teacher concludes lesson by revising through the lesson with learners to help remedial learners",
-  "learnersEvaluationText": "Space for teacher's assessment of learner performance",
-  "teacherEvaluation": "The lesson was well delivered. The majority of the learners were able to grasp the concept and could work out problems involving ${topic}. Remedial work was given to those who had challenges."
-}
-`;
+        prompt = generateOBCPrompt(topic, grade, subject, classSize, user, subtopic);
       }
 
       console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson with DeepSeek...`);
@@ -821,10 +896,13 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
         {
           role: "system",
           content: `
-You are an expert Zambian teacher.
+You are an expert Zambian teacher creating ${curriculumType.toUpperCase()} lesson plans.
 
 The user will provide a topic and requirements for a lesson plan.
 Parse the information and output it in valid JSON format.
+
+For CBC: Include lessonProgression array with stages, times, teacherRole, learnerRole, and assessmentCriteria.
+For OBC: Include lessonDevelopment array with content, teacherActivity, pupilActivity, and methods.
 
 Return ONLY the JSON object, no other text.
 `
@@ -840,6 +918,7 @@ Return ONLY the JSON object, no other text.
         temperature: 0.1
       });
       
+      // Merge with fallback to ensure all fields exist
       let fallback;
       if (curriculumType === 'cbc') {
         fallback = generateFallbackCBC(topic, grade, subject, classSize, user);
@@ -848,7 +927,20 @@ Return ONLY the JSON object, no other text.
       }
       aiContent = { ...fallback, ...aiContent };
 
-      // ============ FIX: ENSURE OBC LESSON DEVELOPMENT HAS CONTENT ============
+      // Ensure lessonProgression has content for CBC
+      if (curriculumType === 'cbc' && (!aiContent.lessonProgression || aiContent.lessonProgression.length === 0)) {
+        console.log('📝 CBC lessonProgression was empty, populating with default content...');
+        aiContent.lessonProgression = [
+          { stage: "INTRODUCTION", time: "5 min", teacherRole: "Ask engaging questions to introduce the topic", learnerRole: "Listen, participate, give examples", assessmentCriteria: "Observation of participation" },
+          { stage: "LESSON DEVELOPMENT", time: "10 min", teacherRole: "Explain key concepts and demonstrate", learnerRole: "Take notes, ask questions, discuss", assessmentCriteria: "Correct understanding of concepts" },
+          { stage: "ACTIVITY 1", time: "11 min", teacherRole: "Guide group work and provide materials", learnerRole: "Work in groups, complete tasks", assessmentCriteria: "Group collaboration and task completion" },
+          { stage: "ACTIVITY 2", time: "16 min", teacherRole: "Facilitate presentations and consolidate", learnerRole: "Present findings and correct own work", assessmentCriteria: "Accurate presentation" },
+          { stage: "EXERCISE", time: "20 min", teacherRole: "Give assessment and monitor", learnerRole: "Complete assessment individually", assessmentCriteria: "Correct responses" },
+          { stage: "CONCLUSION", time: "10 min", teacherRole: "Summarize key points", learnerRole: "Share what they learned", assessmentCriteria: "Verbal explanation" }
+        ];
+      }
+
+      // Ensure lessonDevelopment has content for OBC
       if (curriculumType === 'obc' && (!aiContent.lessonDevelopment || aiContent.lessonDevelopment.length === 0)) {
         console.log('📝 OBC lessonDevelopment was empty, populating with default content...');
         aiContent.lessonDevelopment = [
@@ -966,16 +1058,17 @@ Return ONLY the JSON object, no other text.
       ];
     }
 
+    // ============ SAVE TO DATABASE ============
     const lesson = await prisma.lesson.create({
       data: {
         userId: req.userId,
         grade: grade,
         subject: subject,
         topic: topic,
-        subtopic: aiContent.subtopic || '',
+        subtopic: aiContent.subtopic || subtopic || '',
         title: aiContent.title || topic,
         classSize: size,
-        duration: aiContent.duration || '40 min',
+        duration: aiContent.duration || '80 min',
         curriculum: curriculumType,
         objectives: learningOutcomesArray,
         development: lessonDevelopmentArray.map(d => d.learningPoints || d.content) || [],
@@ -1016,7 +1109,8 @@ Return ONLY the JSON object, no other text.
       data: { lessonsUsed: user.lessonsUsed + 1 }
     });
 
-    res.status(201).json({
+    // ============ RETURN RESPONSE ============
+    const responseData = {
       ...aiContent,
       id: lesson.id,
       createdAt: lesson.createdAt,
@@ -1029,7 +1123,16 @@ Return ONLY the JSON object, no other text.
       province: user.province || '',
       district: user.district || '',
       teacherName: user.fullName || ''
-    });
+    };
+
+    // Format for frontend display
+    if (curriculumType === 'cbc') {
+      responseData.lessonProgression = lessonProgressionArray;
+    } else {
+      responseData.lessonDevelopment = lessonDevelopmentArray;
+    }
+
+    res.status(201).json(responseData);
 
   } catch (error) {
     console.error('❌ Lesson generation error:', error);
