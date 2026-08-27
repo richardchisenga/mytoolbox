@@ -655,7 +655,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE (FIXED) ============
+// ============ LESSON GENERATION ROUTE (FIXED WITH OBC LESSON DEVELOPMENT) ============
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
@@ -736,10 +736,11 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
 }
 `;
       } else {
+        // ============ OBC PROMPT ============
         prompt = `
 You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
 
-⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this OBC structure:
+⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this OBC structure. The lessonDevelopment array MUST have content.
 
 {
   "title": "${topic}",
@@ -772,13 +773,13 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
   "lessonDevelopment": [
     {
       "content": "Introduction to ${topic} and key concepts",
-      "teacherActivity": "Teacher writes the example on the board and explains the concept of ${topic} using real-world examples",
+      "teacherActivity": "Teacher writes the example on the board and explains the concept of ${topic}",
       "pupilActivity": "Learners to write the example in their exercise books and listen attentively",
       "methods": "Teacher Exposition, Demonstration"
     },
     {
       "content": "Main content and examples of ${topic}",
-      "teacherActivity": "Teacher solves ${topic} problems on the board step-by-step and allows learners to ask questions",
+      "teacherActivity": "Teacher solves ${topic} problems on the board and allows learners to ask questions",
       "pupilActivity": "Learners to listen attentively and volunteer learners to go and solve on the board",
       "methods": "Question and answer, group discussion"
     },
@@ -798,7 +799,7 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
   "learnersEvaluation": [
     "Define ${topic} in your own words",
     "Give two examples of ${topic}",
-    "Solve a ${topic} problem: Determine the key features of ${topic}",
+    "Solve a ${topic} problem",
     "Explain the importance of ${topic}"
   ],
   "expectedAnswers": [
@@ -847,6 +848,37 @@ Return ONLY the JSON object, no other text.
       }
       aiContent = { ...fallback, ...aiContent };
 
+      // ============ FIX: ENSURE OBC LESSON DEVELOPMENT HAS CONTENT ============
+      if (curriculumType === 'obc' && (!aiContent.lessonDevelopment || aiContent.lessonDevelopment.length === 0)) {
+        console.log('📝 OBC lessonDevelopment was empty, populating with default content...');
+        aiContent.lessonDevelopment = [
+          {
+            content: `Introduction to ${topic} and key concepts`,
+            teacherActivity: `Teacher writes the example on the board and explains the concept of ${topic}`,
+            pupilActivity: "Learners to write the example in their exercise books and listen attentively",
+            methods: "Teacher Exposition, Demonstration"
+          },
+          {
+            content: `Main content and examples of ${topic}`,
+            teacherActivity: `Teacher solves ${topic} problems on the board and allows learners to ask questions`,
+            pupilActivity: "Learners to listen attentively and volunteer learners to go and solve on the board",
+            methods: "Question and answer, group discussion"
+          },
+          {
+            content: `Practice problems on ${topic}`,
+            teacherActivity: `Teacher writes ${topic} exercise on the board and asks volunteer learners to go and solve`,
+            pupilActivity: "Learners to write the exercise in their exercise books and volunteer to solve on the board",
+            methods: "Group work, individual practice"
+          },
+          {
+            content: `Summary and conclusion of ${topic}`,
+            teacherActivity: "Teacher consolidates learners responses and writes the summary on the board",
+            pupilActivity: "Learners to listen attentively and write the summary",
+            methods: "Review and consolidation"
+          }
+        ];
+      }
+
       console.log(`✅ ${curriculumType.toUpperCase()} lesson generated with DeepSeek`);
 
     } catch (error) {
@@ -863,7 +895,7 @@ Return ONLY the JSON object, no other text.
       }
     }
 
-    // ============ FIX: ENSURE ALL ARRAY FIELDS ARE ARRAYS ============
+    // ============ ENSURE ALL ARRAY FIELDS ARE ARRAYS ============
     const referencesArray = Array.isArray(aiContent.references) 
       ? aiContent.references 
       : (aiContent.references ? [aiContent.references] : ["Textbook", "Teacher's Guide"]);
@@ -898,12 +930,41 @@ Return ONLY the JSON object, no other text.
           { stage: "CONCLUSION", time: "10 min", teacherRole: "Summarize", learnerRole: "Share learning", assessmentCriteria: "Verbal explanation" }
         ];
 
-    const lessonDevelopmentArray = Array.isArray(aiContent.lessonDevelopment) 
+    // ============ ENSURE LESSON DEVELOPMENT FOR OBC ============
+    let lessonDevelopmentArray = Array.isArray(aiContent.lessonDevelopment) 
       ? aiContent.lessonDevelopment 
-      : [
-          { content: `Introduction to ${topic}`, teacherActivity: "Explain the concept", pupilActivity: "Listen and take notes", methods: "Lecture" },
-          { content: `Practice ${topic}`, teacherActivity: "Guide students", pupilActivity: "Work in groups", methods: "Group work" }
-        ];
+      : [];
+
+    // If empty, populate with default content
+    if (lessonDevelopmentArray.length === 0) {
+      console.log('📝 lessonDevelopment was empty, populating with default content...');
+      lessonDevelopmentArray = [
+        {
+          content: `Introduction to ${topic} and key concepts`,
+          teacherActivity: `Teacher writes the example on the board and explains the concept of ${topic}`,
+          pupilActivity: "Learners to write the example in their exercise books and listen attentively",
+          methods: "Teacher Exposition, Demonstration"
+        },
+        {
+          content: `Main content and examples of ${topic}`,
+          teacherActivity: `Teacher solves ${topic} problems on the board and allows learners to ask questions`,
+          pupilActivity: "Learners to listen attentively and volunteer learners to go and solve on the board",
+          methods: "Question and answer, group discussion"
+        },
+        {
+          content: `Practice problems on ${topic}`,
+          teacherActivity: `Teacher writes ${topic} exercise on the board and asks volunteer learners to go and solve`,
+          pupilActivity: "Learners to write the exercise in their exercise books and volunteer to solve on the board",
+          methods: "Group work, individual practice"
+        },
+        {
+          content: `Summary and conclusion of ${topic}`,
+          teacherActivity: "Teacher consolidates learners responses and writes the summary on the board",
+          pupilActivity: "Learners to listen attentively and write the summary",
+          methods: "Review and consolidation"
+        }
+      ];
+    }
 
     const lesson = await prisma.lesson.create({
       data: {
