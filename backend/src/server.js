@@ -191,12 +191,12 @@ async function generateDeepSeekJSON(messages, options = {}) {
     try {
       console.log(`🤖 DeepSeek attempt ${attempt}/${maxAttempts}`);
 
-      const maxTokens = options.max_tokens || 3000;
+      const maxTokens = options.max_tokens || 4000;
       
       const response = await deepseek.chat.completions.create({
         model: options.model || 'deepseek-chat',
         messages,
-        temperature: options.temperature || 0.1,
+        temperature: options.temperature || 0.3,
         max_tokens: maxTokens,
       });
 
@@ -265,6 +265,54 @@ async function generateDeepSeekJSON(messages, options = {}) {
 // ============ GENERATE CBC LESSON PROGRESSION ============
 function generateLessonProgression(topic, subject, grade) {
   const topicLower = topic.toLowerCase();
+  
+  // Sets topic
+  if (topicLower.includes('sets') || topicLower.includes('set')) {
+    return [
+      {
+        stage: "INTRODUCTION",
+        time: "5 min",
+        teacherRole: "Ask: 'What is a set?' Explain that a set is a collection of well-defined objects. Give examples: set of books, set of students in class. Introduce set notation: { }.",
+        learnerRole: "Listen, participate, give examples of sets they see around them.",
+        assessmentCriteria: "Observation of participation"
+      },
+      {
+        stage: "LESSON DEVELOPMENT",
+        time: "10 min",
+        teacherRole: "Put learners into groups of 4-5. Give each group different objects. Ask them to group the objects and define the set. Introduce terminology: elements/members, universal set, empty set.",
+        learnerRole: "In groups, sort objects and define the set. Discuss what elements belong to the set.",
+        assessmentCriteria: "Group collaboration and correct classification"
+      },
+      {
+        stage: "ACTIVITY 1",
+        time: "11 min",
+        teacherRole: "Display different sets on the board. Introduce set notation: A = {1, 2, 3, 4, 5}. Explain that elements are written inside curly brackets. Introduce ∈ (belongs to) and ∉ (does not belong to).",
+        learnerRole: "Observe, discuss, practice writing sets using proper notation. Identify whether an element belongs to a set or not.",
+        assessmentCriteria: "Correct use of set notation"
+      },
+      {
+        stage: "ACTIVITY 2",
+        time: "16 min",
+        teacherRole: "Introduce types of sets: Finite set, Infinite set, Empty set, Equal sets, Equivalent sets. Provide examples for each.",
+        learnerRole: "Present findings; correct own work. Practice identifying different types of sets.",
+        assessmentCriteria: "Accurate identification and classification of set types"
+      },
+      {
+        stage: "EXERCISE",
+        time: "20 min",
+        teacherRole: "Give a worksheet with exercises on set notation and types of sets.",
+        learnerRole: "Complete worksheet individually.",
+        assessmentCriteria: "Correct answers on worksheet"
+      },
+      {
+        stage: "CONCLUSION",
+        time: "10 min",
+        teacherRole: "Summarise key points: A set is a collection of well-defined objects. Sets are written using curly brackets { }. Types of sets: Finite, Infinite, Empty, Equal, Equivalent.",
+        learnerRole: "Share one thing they learned about sets.",
+        assessmentCriteria: "Verbal explanation of at least one set concept"
+      }
+    ];
+  }
   
   // Calculus - Differentiation
   if (topicLower.includes('calculus') || topicLower.includes('differentiation')) {
@@ -461,31 +509,61 @@ function generateLessonProgression(topic, subject, grade) {
 function generateLessonContent(topic, subject, grade) {
   const topicLower = topic.toLowerCase();
   
+  // Sets topic
+  if (topicLower.includes('sets') || topicLower.includes('set')) {
+    return [
+      {
+        content: `INTRODUCTION TO SETS\n\nA set is a collection of well-defined objects. Sets are fundamental in mathematics and are used in statistics, probability, and computer science.\n\nKEY CONCEPTS:\n- A set is a collection of well-defined objects\n- Elements are the objects in a set\n- Sets are written using curly brackets { }\n- ∈ means 'belongs to'\n- ∉ means 'does not belong to'\n\nTYPES OF SETS:\n1. Finite set - countable number of elements\n2. Infinite set - uncountable number of elements\n3. Empty set - no elements (∅ or { })\n4. Equal sets - exactly the same elements\n5. Equivalent sets - same number of elements`,
+        teacherActivity: "Teacher writes the definition and types of sets on the board. Teacher gives examples of each type. Teacher demonstrates set notation with examples.",
+        pupilActivity: "Learners to write the notes in their exercise books. Learners to listen attentively and give examples of sets.",
+        methods: "Teacher Exposition, Demonstration, Question and Answer"
+      },
+      {
+        content: `WORKED EXAMPLES\n\nEXAMPLE 1: Set Notation\nWrite the set of even numbers less than 10.\nSolution: A = {2, 4, 6, 8}\n\nEXAMPLE 2: Belongs to\nDetermine if 5 belongs to A = {1, 2, 3, 4, 5}\nSolution: 5 ∈ A (5 belongs to set A)\n\nEXAMPLE 3: Types of Sets\nIdentify the type of set: A = {1, 2, 3, 4, 5}\nSolution: Finite set (has 5 elements)\n\nEXAMPLE 4: Empty Set\nIdentify: C = { }\nSolution: Empty set (∅)`,
+        teacherActivity: "Teacher solves the examples on the board step by step. Teacher explains set notation clearly. Teacher asks learners to identify elements in sets.",
+        pupilActivity: "Learners to write the examples in their exercise books. Volunteer learners to go and solve on the board.",
+        methods: "Question and Answer, Demonstration, Group Discussion"
+      },
+      {
+        content: `PRACTICE EXERCISES\n\nEXERCISE:\n1. Write the set of vowels in the alphabet.\n2. Write the set of factors of 12.\n3. Identify whether the following are finite, infinite, or empty sets:\n   a) A = {2, 4, 6, 8}\n   b) B = {all prime numbers}\n   c) C = { }\n\nEXPECTED ANSWERS:\n1. {a, e, i, o, u}\n2. {1, 2, 3, 4, 6, 12}\n3. a) Finite set, b) Infinite set, c) Empty set`,
+        teacherActivity: "Teacher writes the exercise on the board. Teacher monitors progress and assists learners.",
+        pupilActivity: "Learners to write the exercise in their exercise books. Learners to work individually.",
+        methods: "Group Work, Individual Practice, Question and Answer"
+      },
+      {
+        content: `REAL-WORLD APPLICATIONS\n\nAPPLICATIONS OF SETS:\n1. Organizing data in statistics\n2. Probability calculations\n3. Database queries in computer science\n4. Classifying objects in daily life\n\nSUMMARY:\n- A set is a collection of well-defined objects\n- Sets are written using curly brackets { }\n- Types: Finite, Infinite, Empty, Equal, Equivalent\n- Set notation: ∈ and ∉\n- Sets are used in many areas of mathematics`,
+        teacherActivity: "Teacher consolidates learners' responses and writes the summary on the board. Teacher discusses applications and gives remedial work.",
+        pupilActivity: "Learners to listen attentively and write the summary. Learners to share examples of where sets are used.",
+        methods: "Review, Consolidation, Discussion"
+      }
+    ];
+  }
+  
   // Calculus - Differentiation
   if (topicLower.includes('calculus') || topicLower.includes('differentiation')) {
     return [
       {
         content: `INTRODUCTION TO DIFFERENTIATION\n\nDifferentiation is the process of finding the rate at which a quantity changes. It is a fundamental concept in calculus.\n\nKEY CONCEPTS:\n- Differentiation finds the gradient of a curve at any point\n- The derivative represents the rate of change\n- Notation: dy/dx = f'(x)\n\nRULES OF DIFFERENTIATION:\n- Power Rule: d/dx(xⁿ) = nxⁿ⁻¹\n- Constant Rule: d/dx(c) = 0\n- Sum Rule: d/dx(f+g) = f' + g'`,
-        teacherActivity: "Teacher writes the definition and rules on the board. Teacher explains the concept of rate of change with real-life examples. Teacher demonstrates the power rule with examples.",
-        pupilActivity: "Learners to write the notes in their exercise books. Learners to listen attentively and ask questions. Learners to identify the derivative of simple functions.",
+        teacherActivity: "Teacher writes the definition and rules on the board. Teacher explains the concept of rate of change with real-life examples.",
+        pupilActivity: "Learners to write the notes in their exercise books. Learners to listen attentively and ask questions.",
         methods: "Teacher Exposition, Demonstration, Question and Answer"
       },
       {
-        content: `WORKED EXAMPLES\n\nEXAMPLE 1: Power Rule\nDifferentiate y = x³\nSolution:\ndy/dx = 3x²\n\nEXAMPLE 2: Power Rule with Coefficient\nDifferentiate y = 5x⁴\nSolution:\ndy/dx = 5 × 4x³ = 20x³\n\nEXAMPLE 3: Sum Rule\nDifferentiate y = x² + 3x\nSolution:\ndy/dx = 2x + 3\n\nEXAMPLE 4: Finding Gradient\nFind the gradient of y = x² at x = 3\nSolution:\ndy/dx = 2x\nAt x = 3, dy/dx = 2(3) = 6`,
-        teacherActivity: "Teacher solves the examples on the board step by step. Teacher explains the reasoning behind each step. Teacher emphasizes the importance of applying the correct rule.",
-        pupilActivity: "Learners to write the examples in their exercise books. Learners to listen attentively and ask questions. Volunteer learners to go and solve on the board.",
+        content: `WORKED EXAMPLES\n\nEXAMPLE 1: Power Rule\nDifferentiate y = x³\nSolution: dy/dx = 3x²\n\nEXAMPLE 2: Power Rule with Coefficient\nDifferentiate y = 5x⁴\nSolution: dy/dx = 20x³\n\nEXAMPLE 3: Sum Rule\nDifferentiate y = x² + 3x\nSolution: dy/dx = 2x + 3\n\nEXAMPLE 4: Finding Gradient\nFind the gradient of y = x² at x = 3\nSolution: dy/dx = 2x, at x = 3, gradient = 6`,
+        teacherActivity: "Teacher solves the examples on the board step by step. Teacher explains the reasoning behind each step.",
+        pupilActivity: "Learners to write the examples in their exercise books. Volunteer learners to go and solve on the board.",
         methods: "Question and Answer, Demonstration, Group Discussion"
       },
       {
         content: `PRACTICE EXERCISES\n\nEXERCISE:\n1. Differentiate y = x⁵\n2. Differentiate y = 3x³\n3. Differentiate y = 2x⁴ + 5x²\n4. Differentiate y = x³ - 4x + 7\n5. Find the gradient of y = x³ at x = 2\n\nEXPECTED ANSWERS:\n1. dy/dx = 5x⁴\n2. dy/dx = 9x²\n3. dy/dx = 8x³ + 10x\n4. dy/dx = 3x² - 4\n5. dy/dx = 3x², at x = 2, gradient = 12`,
-        teacherActivity: "Teacher writes the exercise on the board. Teacher monitors progress and assists learners. Teacher asks volunteer learners to solve on the board.",
-        pupilActivity: "Learners to write the exercise in their exercise books. Learners to work individually. Volunteer learners to solve on the board.",
+        teacherActivity: "Teacher writes the exercise on the board. Teacher monitors progress and assists learners.",
+        pupilActivity: "Learners to write the exercise in their exercise books. Learners to work individually.",
         methods: "Group Work, Individual Practice, Question and Answer"
       },
       {
-        content: `REAL-WORLD APPLICATIONS\n\nAPPLICATIONS OF DIFFERENTIATION:\n1. Physics: Velocity and acceleration\n2. Economics: Marginal cost and revenue\n3. Engineering: Optimization problems\n4. Biology: Growth rates\n\nSUMMARY:\n- Differentiation finds the rate of change\n- Power rule: d/dx(xⁿ) = nxⁿ⁻¹\n- Gradient of a curve at a point = derivative at that point\n- Differentiation has wide applications in real life`,
-        teacherActivity: "Teacher consolidates learners' responses and writes the summary on the board. Teacher discusses real-world applications. Teacher gives remedial work.",
-        pupilActivity: "Learners to listen attentively and write the summary. Learners to share examples of where differentiation is used. Learners to ask questions.",
+        content: `REAL-WORLD APPLICATIONS\n\nAPPLICATIONS OF DIFFERENTIATION:\n1. Physics: Velocity and acceleration\n2. Economics: Marginal cost and revenue\n3. Engineering: Optimization problems\n4. Biology: Growth rates\n\nSUMMARY:\n- Differentiation finds the rate of change\n- Power rule: d/dx(xⁿ) = nxⁿ⁻¹\n- Gradient of a curve at a point = derivative at that point`,
+        teacherActivity: "Teacher consolidates learners' responses and writes the summary on the board. Teacher discusses applications.",
+        pupilActivity: "Learners to listen attentively and write the summary.",
         methods: "Review, Consolidation, Discussion"
       }
     ];
@@ -496,7 +574,7 @@ function generateLessonContent(topic, subject, grade) {
     return [
       {
         content: `INTRODUCTION TO MENSURATION AREAS\n\nMensuration is the branch of mathematics that deals with the measurement of geometric figures such as length, area, and volume. Area is the measure of the surface enclosed by a plane figure.\n\nFORMULAE FOR AREAS:\n- Rectangle: A = L × W\n- Square: A = L²\n- Triangle: A = ½ × base × height\n- Circle: A = πr²\n- Parallelogram: A = base × height\n- Trapezium: A = ½(a+b)h`,
-        teacherActivity: "Teacher writes the formulae on the board and explains each formula with clear examples. Teacher demonstrates how to identify the base, height, length, width, and radius in different shapes.",
+        teacherActivity: "Teacher writes the formulae on the board and explains each formula with clear examples.",
         pupilActivity: "Learners to write the formulae in their exercise books. Learners to listen attentively and identify shapes around them.",
         methods: "Teacher Exposition, Demonstration, Question and Answer"
       },
@@ -514,8 +592,8 @@ function generateLessonContent(topic, subject, grade) {
       },
       {
         content: `REAL-WORLD APPLICATIONS\n\nAPPLICATIONS:\n1. Calculating floor area for tiles/paint\n2. Calculating farm area for seed/fertilizer\n3. Calculating plot area for construction\n4. Calculating circular garden area\n\nSUMMARY:\n- Area is measured in square units (cm², m², km²)\n- Different shapes have different formulae\n- Always include the correct units`,
-        teacherActivity: "Teacher consolidates learners' responses and writes the summary on the board. Teacher discusses applications and gives remedial work.",
-        pupilActivity: "Learners to listen attentively and write the summary. Learners to share examples of where mensuration is used.",
+        teacherActivity: "Teacher consolidates learners' responses and writes the summary on the board. Teacher discusses applications.",
+        pupilActivity: "Learners to listen attentively and write the summary.",
         methods: "Review, Consolidation, Discussion"
       }
     ];
@@ -525,13 +603,13 @@ function generateLessonContent(topic, subject, grade) {
   if (topicLower.includes('quadratic')) {
     return [
       {
-        content: `INTRODUCTION TO QUADRATIC EQUATIONS\n\nA quadratic equation is an equation of the form ax² + bx + c = 0, where a, b, and c are constants and a ≠ 0.\n\nMETHODS OF SOLVING QUADRATIC EQUATIONS:\n1. Factorization Method\n2. Completing the Square Method\n3. Quadratic Formula Method\n\nQUADRATIC FORMULA:\nx = [-b ± √(b² - 4ac)] / 2a\n\nThe discriminant (b² - 4ac) determines the nature of roots:\n- If b² - 4ac > 0: Two distinct real roots\n- If b² - 4ac = 0: One repeated real root\n- If b² - 4ac < 0: No real roots (complex roots)`,
+        content: `INTRODUCTION TO QUADRATIC EQUATIONS\n\nA quadratic equation is an equation of the form ax² + bx + c = 0, where a, b, and c are constants and a ≠ 0.\n\nMETHODS OF SOLVING QUADRATIC EQUATIONS:\n1. Factorization Method\n2. Completing the Square Method\n3. Quadratic Formula Method\n\nQUADRATIC FORMULA:\nx = [-b ± √(b² - 4ac)] / 2a\n\nThe discriminant (b² - 4ac) determines the nature of roots.`,
         teacherActivity: "Teacher writes the general form of quadratic equation on the board. Teacher explains each method and demonstrates the quadratic formula.",
         pupilActivity: "Learners to write the notes in their exercise books. Learners to listen attentively and ask questions.",
         methods: "Teacher Exposition, Demonstration, Question and Answer"
       },
       {
-        content: `WORKED EXAMPLES\n\nEXAMPLE 1: Using Quadratic Formula\nSolve: x² + 5x + 6 = 0\nSolution:\na = 1, b = 5, c = 6\nx = [-5 ± √(25 - 24)] / 2\nx = [-5 ± 1] / 2\nx = -2 or x = -3\n\nEXAMPLE 2: Using Factorization\nSolve: x² - 5x + 6 = 0\nSolution:\n(x - 2)(x - 3) = 0\nx = 2 or x = 3\n\nEXAMPLE 3: Using Completing the Square\nSolve: x² + 6x - 7 = 0\nSolution:\n(x + 3)² = 16\nx = 1 or x = -7`,
+        content: `WORKED EXAMPLES\n\nEXAMPLE 1: Using Quadratic Formula\nSolve: x² + 5x + 6 = 0\nSolution: x = -2 or x = -3\n\nEXAMPLE 2: Using Factorization\nSolve: x² - 5x + 6 = 0\nSolution: x = 2 or x = 3\n\nEXAMPLE 3: Using Completing the Square\nSolve: x² + 6x - 7 = 0\nSolution: x = 1 or x = -7`,
         teacherActivity: "Teacher solves the examples on the board step by step. Teacher explains each method clearly.",
         pupilActivity: "Learners to write the examples in their exercise books. Volunteer learners to go and solve on the board.",
         methods: "Question and Answer, Demonstration, Group Discussion"
@@ -543,7 +621,7 @@ function generateLessonContent(topic, subject, grade) {
         methods: "Group Work, Individual Practice, Question and Answer"
       },
       {
-        content: `SUMMARY AND APPLICATIONS\n\nSUMMARY:\n- Quadratic equations are of the form ax² + bx + c = 0\n- Three methods: Factorization, Completing Square, Quadratic Formula\n- Discriminant determines the nature of roots\n\nAPPLICATIONS:\n- Projectile motion in Physics\n- Profit and loss calculations in Business\n- Area problems in Geometry\n- Motion problems in Kinematics`,
+        content: `SUMMARY AND APPLICATIONS\n\nSUMMARY:\n- Quadratic equations are of the form ax² + bx + c = 0\n- Three methods: Factorization, Completing Square, Quadratic Formula\n- Discriminant determines the nature of roots\n\nAPPLICATIONS:\n- Projectile motion in Physics\n- Profit and loss calculations in Business\n- Area problems in Geometry`,
         teacherActivity: "Teacher consolidates learners' responses and writes the summary on the board.",
         pupilActivity: "Learners to listen attentively and write the summary.",
         methods: "Review and Consolidation"
@@ -560,7 +638,7 @@ function generateLessonContent(topic, subject, grade) {
         methods: "Teacher Exposition, Demonstration, Question and Answer"
       },
       {
-        content: `WORKED EXAMPLES\n\nEXAMPLE 1: Find sin θ, cos θ, and tan θ for a right triangle where opposite = 3, adjacent = 4, hypotenuse = 5.\nSolution:\nsin θ = 3/5 = 0.6\ncos θ = 4/5 = 0.8\ntan θ = 3/4 = 0.75\n\nEXAMPLE 2: In a right triangle, sin θ = ½. Find θ.\nSolution:\nθ = sin⁻¹(½) = 30°`,
+        content: `WORKED EXAMPLES\n\nEXAMPLE 1: Find sin θ, cos θ, and tan θ for a right triangle where opposite = 3, adjacent = 4, hypotenuse = 5.\nSolution: sin θ = 3/5 = 0.6, cos θ = 4/5 = 0.8, tan θ = 3/4 = 0.75\n\nEXAMPLE 2: In a right triangle, sin θ = ½. Find θ.\nSolution: θ = sin⁻¹(½) = 30°`,
         teacherActivity: "Teacher solves the examples on the board step by step. Teacher emphasizes the importance of identifying sides correctly.",
         pupilActivity: "Learners to write the examples in their exercise books. Volunteer learners to go and solve on the board.",
         methods: "Question and Answer, Demonstration, Group Discussion"
@@ -767,7 +845,7 @@ function generateFallbackCBC(topic, grade, subject, classSize, user) {
     district: user?.district || 'Itezhi-Tezhi',
     date: new Date().toISOString().split('T')[0],
     time: "08:00-08:40",
-    duration: "40 min",
+    duration: "80 MINUTES",
     classSize: size,
     boys: boys,
     girls: girls,
@@ -1449,6 +1527,8 @@ Parse the information and output it in valid JSON format.
 For CBC: Include lessonProgression array with stages, times, teacherRole, learnerRole, and assessmentCriteria.
 For OBC: Include lessonDevelopment array with content, teacherActivity, pupilActivity, and methods.
 
+⚠️ CRITICAL: The lessonProgression and lessonDevelopment arrays MUST have content. Do NOT return empty arrays.
+
 Return ONLY the JSON object, no other text.
 `
         },
@@ -1459,8 +1539,8 @@ Return ONLY the JSON object, no other text.
       ];
 
       aiContent = await generateDeepSeekJSON(messages, { 
-        max_tokens: 3000,
-        temperature: 0.1
+        max_tokens: 4000,
+        temperature: 0.3
       });
       
       let fallback;
@@ -1471,17 +1551,20 @@ Return ONLY the JSON object, no other text.
       }
       aiContent = { ...fallback, ...aiContent };
 
+      // FORCE populate if empty - THIS IS THE CRITICAL FIX
       if (curriculumType === 'cbc' && (!aiContent.lessonProgression || aiContent.lessonProgression.length === 0)) {
-        console.log('📝 CBC lessonProgression was empty, populating with default content...');
+        console.log('📝 CBC lessonProgression was empty, FORCE populating with content...');
         aiContent.lessonProgression = generateLessonProgression(topic, subject, grade);
       }
 
       if (curriculumType === 'obc' && (!aiContent.lessonDevelopment || aiContent.lessonDevelopment.length === 0)) {
-        console.log('📝 OBC lessonDevelopment was empty, populating with default content...');
+        console.log('📝 OBC lessonDevelopment was empty, FORCE populating with content...');
         aiContent.lessonDevelopment = generateLessonContent(topic, subject, grade);
       }
 
       console.log(`✅ ${curriculumType.toUpperCase()} lesson generated with DeepSeek`);
+      console.log(`📝 lessonProgression length: ${aiContent.lessonProgression?.length || 0}`);
+      console.log(`📝 lessonDevelopment length: ${aiContent.lessonDevelopment?.length || 0}`);
 
     } catch (error) {
       console.log('⚠️ DeepSeek error, using fallback:', error.message);
@@ -1495,6 +1578,17 @@ Return ONLY the JSON object, no other text.
       } else {
         aiContent = generateFallbackOBC(topic, grade, subject, classSize, user);
       }
+    }
+
+    // ONE MORE FINAL CHECK - Ensure lessonProgression is populated
+    if (curriculumType === 'cbc' && (!aiContent.lessonProgression || aiContent.lessonProgression.length === 0)) {
+      console.log('🔧 FINAL FORCE: lessonProgression still empty, populating...');
+      aiContent.lessonProgression = generateLessonProgression(topic, subject, grade);
+    }
+
+    if (curriculumType === 'obc' && (!aiContent.lessonDevelopment || aiContent.lessonDevelopment.length === 0)) {
+      console.log('🔧 FINAL FORCE: lessonDevelopment still empty, populating...');
+      aiContent.lessonDevelopment = generateLessonContent(topic, subject, grade);
     }
 
     const referencesArray = Array.isArray(aiContent.references) 
@@ -1543,7 +1637,7 @@ Return ONLY the JSON object, no other text.
         subtopic: aiContent.subtopic || subtopic || '',
         title: aiContent.title || topic,
         classSize: size,
-        duration: aiContent.duration || '80 min',
+        duration: aiContent.duration || '80 MINUTES',
         curriculum: curriculumType,
         objectives: learningOutcomesArray,
         development: lessonDevelopmentArray.map(d => d.learningPoints || d.content) || [],
@@ -1616,6 +1710,1583 @@ Return ONLY the JSON object, no other text.
   }
 });
 
-// ============ REST OF SERVER (SCHEMES, NOTES, ASSESSMENTS, PAYMENTS, ADMIN, GET ROUTES) ============
-// ... (keep all the existing code for schemes, notes, assessments, payments, admin, and get routes)
-// The rest of the server code remains unchanged from your current version
+// ============ SCHEME OF WORK GENERATION ROUTE ============
+
+app.post('/api/schemes/generate', authenticate, async (req, res) => {
+  try {
+    const { 
+      grade, subject, term, year, school, 
+      weeks: totalWeeks, assessmentWeeks, testTopics, 
+      weekTopics, subtopic, curriculum 
+    } = req.body;
+
+    if (!grade || !subject) {
+      return res.status(400).json({ error: 'Missing required fields: grade, subject' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (user.schemesUsed >= user.schemesLimit) {
+      return res.status(403).json({
+        error: 'Scheme limit reached. Please upgrade your plan to generate more schemes.'
+      });
+    }
+
+    const curriculumType = curriculum || 'cbc';
+    console.log(`📝 Generating ${curriculumType.toUpperCase()} scheme with DeepSeek...`);
+    
+    const assessmentWeeksList = assessmentWeeks || [3, 6, 9, 12];
+    const customTopics = weekTopics || {};
+    const totalWeeksCount = totalWeeks || 13;
+    const subtopicsList = subtopic ? subtopic.split(',').map(s => s.trim()) : [];
+    
+    let aiContent = null;
+    let useFallback = false;
+    
+    try {
+      let prompt;
+      
+      if (curriculumType === 'cbc') {
+        let customTopicsString = '';
+        Object.keys(customTopics).forEach(week => {
+          if (customTopics[week]) {
+            customTopicsString += `Week ${week}: ${customTopics[week]}\n`;
+          }
+        });
+
+        prompt = `
+Grade: "${grade}"
+Subject: "${subject}"
+Term: "${term || 'Term 1'}"
+Curriculum: CBC (Competency-Based Curriculum)
+${customTopicsString ? `User topics:\n${customTopicsString}` : 'Generate appropriate topics for all weeks following CBC syllabus.'}
+Assessment weeks: ${assessmentWeeksList.join(', ')}
+
+Return ONLY valid JSON with this CBC scheme structure:
+{
+  "weeks": [
+    {
+      "week": 1,
+      "topics": [
+        {
+          "topic": "Topic code and name (e.g., 1.1.0 Concepts and Methods in Biology)",
+          "subtopic": "Subtopic name (e.g., 1.1.1 Nature of Science inquiry)",
+          "specificCompetence": "What learners should achieve (e.g., Apply scientific inquiry in carrying out scientific investigations)",
+          "methods": "Teaching methods (e.g., Group work, Experiments, Field work)",
+          "aids": "Teaching aids/resources (e.g., Apparatus, Books, Beakers)",
+          "references": "Reference books (e.g., 2024 New Syllabus pages 1-10)",
+          "knowledge": "Knowledge gained from the topic",
+          "skills": "Skills developed",
+          "values": "Values adopted"
+        }
+      ],
+      "assessment": null,
+      "isRevision": false,
+      "isAssessment": false
+    }
+  ],
+  "assessmentWeeks": [3, 6, 9, 12],
+  "testTopics": ["Mid-term test", "End of term test"]
+}
+`;
+      } else {
+        let customTopicsString = '';
+        Object.keys(customTopics).forEach(week => {
+          if (customTopics[week]) {
+            customTopicsString += `Week ${week}: ${customTopics[week]}\n`;
+          }
+        });
+
+        prompt = `
+Grade: "${grade}"
+Subject: "${subject}"
+Term: "${term || 'Term 1'}"
+Curriculum: OBC (Objective-Based Curriculum)
+${customTopicsString ? `User topics:\n${customTopicsString}` : 'Generate appropriate topics for all weeks.'}
+Assessment weeks: ${assessmentWeeksList.join(', ')}
+
+Return ONLY valid JSON with this OBC scheme structure:
+{
+  "weeks": [
+    {
+      "week": 1,
+      "topics": [
+        {
+          "topic": "Topic name",
+          "specificOutcome": "What learners should achieve",
+          "methods": "Teaching methods",
+          "aids": "Teaching aids",
+          "references": "Reference books",
+          "knowledge": "Knowledge gained",
+          "skills": "Skills developed",
+          "values": "Values adopted"
+        }
+      ],
+      "assessment": null
+    }
+  ],
+  "assessmentWeeks": [3, 6, 9, 12],
+  "testTopics": ["Mid-term test", "End of term test"]
+}
+`;
+      }
+
+      const messages = [
+        {
+          role: "system",
+          content: `
+You are an expert curriculum planner for Zambian schools creating ${curriculumType.toUpperCase()} schemes of work.
+
+The user will provide grade, subject, and term information.
+Parse the information and output it in valid JSON format.
+
+For CBC: Include topic code, subtopic, specificCompetence, methods, aids, references, knowledge, skills, and values.
+For OBC: Include topic, specificOutcome, methods, aids, references, knowledge, skills, and values.
+
+Return ONLY the JSON object, no other text.
+`
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ];
+
+      aiContent = await generateDeepSeekJSON(messages, { 
+        max_tokens: 4000,
+        temperature: 0.1
+      });
+      
+      console.log('✅ DeepSeek generated scheme successfully');
+
+    } catch (error) {
+      console.log('⚠️ DeepSeek error, using fallback:', error.message);
+      useFallback = true;
+    }
+    
+    if (!aiContent || useFallback) {
+      console.log(`📝 Using ${curriculumType.toUpperCase()} fallback scheme generator`);
+      if (curriculumType === 'cbc') {
+        aiContent = generateCBCScheme(grade, subject, term, user, customTopics);
+      } else {
+        aiContent = generateOBCScheme(grade, subject, term, user, customTopics);
+      }
+    }
+    
+    const weeks = aiContent.weeks.map(week => ({
+      week: week.week,
+      topics: week.topics.map(topic => ({
+        topic: topic.topic || '',
+        subtopic: topic.subtopic || '',
+        specificCompetence: topic.specificCompetence || topic.specificOutcome || '',
+        specificOutcome: topic.specificOutcome || '',
+        methods: topic.methods || '',
+        aids: topic.aids || '',
+        references: topic.references || '',
+        knowledge: topic.knowledge || '',
+        skills: topic.skills || '',
+        values: topic.values || ''
+      })),
+      assessment: week.assessment || null,
+      isRevision: week.isRevision || false,
+      isAssessment: week.isAssessment || false
+    }));
+
+    if (subtopicsList.length > 0) {
+      let weekIndex = 0;
+      for (let i = 0; i < weeks.length; i++) {
+        if (!assessmentWeeksList.includes(weeks[i].week) && !weeks[i].isRevision && !weeks[i].isAssessment) {
+          if (weekIndex < subtopicsList.length) {
+            weeks[i].topics[0].topic = subtopicsList[weekIndex];
+            if (curriculumType === 'cbc') {
+              weeks[i].topics[0].subtopic = subtopicsList[weekIndex];
+              weeks[i].topics[0].specificCompetence = `By the end of this lesson, learners will be able to understand and explain ${subtopicsList[weekIndex]}`;
+            } else {
+              weeks[i].topics[0].specificOutcome = `By the end of this lesson, learners will be able to understand and explain ${subtopicsList[weekIndex]}`;
+            }
+            weekIndex++;
+          }
+        }
+      }
+    }
+
+    const generatedScheme = {
+      grade: grade,
+      subject: subject,
+      term: term || 'Term 1',
+      year: year || new Date().getFullYear().toString(),
+      totalWeeks: totalWeeksCount,
+      school: school || user.school || '',
+      teacherName: user.fullName || '',
+      subtopic: subtopic || '',
+      weeks: weeks,
+      assessmentWeeks: assessmentWeeksList,
+      testTopics: testTopics || [`Mid-term test on ${subject}`, `End of term test on ${subject}`],
+      curriculum: curriculumType,
+      createdAt: new Date().toISOString()
+    };
+
+    const scheme = await prisma.scheme.create({
+      data: {
+        userId: req.userId,
+        grade: grade,
+        subject: subject,
+        term: term || 'Term 1',
+        year: year || new Date().getFullYear().toString(),
+        totalWeeks: totalWeeksCount,
+        weeks: weeks,
+        assessmentWeeks: generatedScheme.assessmentWeeks,
+        school: school || user.school || '',
+        teacherName: user.fullName || '',
+        subtopic: subtopic || '',
+        testTopics: generatedScheme.testTopics,
+        curriculum: curriculumType
+      }
+    });
+
+    await prisma.user.update({
+      where: { id: req.userId },
+      data: { schemesUsed: user.schemesUsed + 1 }
+    });
+
+    console.log(`✅ ${curriculumType.toUpperCase()} scheme generated successfully`);
+    res.status(201).json({
+      ...generatedScheme,
+      id: scheme.id,
+      createdAt: scheme.createdAt
+    });
+
+  } catch (error) {
+    console.error('❌ Scheme generation error:', error);
+    res.status(500).json({
+      error: 'Failed to generate scheme of work',
+      details: error.message
+    });
+  }
+});
+
+// ============ SCHEME EXPORT ROUTES ============
+
+app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const scheme = await prisma.scheme.findUnique({
+      where: { id: id },
+    });
+
+    if (!scheme) {
+      return res.status(404).json({ error: 'Scheme not found' });
+    }
+
+    if (scheme.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const tableRows = [];
+
+    const headerRow = new TableRow({
+      children: [
+        new TableCell({ children: [new Paragraph({ text: 'WEEK', bold: true })], width: { size: 5, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'TOPIC', bold: true })], width: { size: 20, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'SUBTOPIC', bold: true })], width: { size: 15, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'SPECIFIC COMPETENCE', bold: true })], width: { size: 20, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'METHODS', bold: true })], width: { size: 10, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'AIDS', bold: true })], width: { size: 10, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'REFERENCES', bold: true })], width: { size: 10, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'KNOWLEDGE', bold: true })], width: { size: 5, type: WidthType.PERCENTAGE } }),
+        new TableCell({ children: [new Paragraph({ text: 'SKILLS', bold: true })], width: { size: 5, type: WidthType.PERCENTAGE } }),
+      ],
+    });
+    tableRows.push(headerRow);
+
+    scheme.weeks.forEach(week => {
+      const topics = week.topics || [];
+      
+      const topicText = topics.map(t => t.topic || '').join('\n');
+      const subtopicText = topics.map(t => t.subtopic || '').join('\n');
+      const competenceText = topics.map(t => t.specificCompetence || t.specificOutcome || '').join('\n');
+      const methodsText = topics.map(t => t.methods || '').join('\n');
+      const aidsText = topics.map(t => t.aids || '').join('\n');
+      const refsText = topics.map(t => t.references || '').join('\n');
+      const knowledgeText = topics.map(t => t.knowledge || '').join('\n');
+      const skillsText = topics.map(t => t.skills || '').join('\n');
+      const valuesText = topics.map(t => t.values || '').join('\n');
+
+      const dataRow = new TableRow({
+        children: [
+          new TableCell({ children: [new Paragraph({ text: String(week.week) })] }),
+          new TableCell({ children: [new Paragraph({ text: topicText || '-' })] }),
+          new TableCell({ children: [new Paragraph({ text: subtopicText || '-' })] }),
+          new TableCell({ children: [new Paragraph({ text: competenceText || '-' })] }),
+          new TableCell({ children: [new Paragraph({ text: methodsText || '-' })] }),
+          new TableCell({ children: [new Paragraph({ text: aidsText || '-' })] }),
+          new TableCell({ children: [new Paragraph({ text: refsText || '-' })] }),
+          new TableCell({ children: [new Paragraph({ text: knowledgeText || '-' })] }),
+          new TableCell({ children: [new Paragraph({ text: skillsText || '-' })] }),
+        ],
+      });
+      tableRows.push(dataRow);
+    });
+
+    const doc = new Document({
+      sections: [{
+        properties: {},
+        children: [
+          new Paragraph({ text: 'MINISTRY OF EDUCATION', heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER }),
+          new Paragraph({ text: 'SCHEME OF WORK', heading: HeadingLevel.HEADING_2, alignment: AlignmentType.CENTER }),
+          new Paragraph({ text: '' }),
+          new Paragraph({ text: `School: ${scheme.school || 'School Name'}`, alignment: AlignmentType.CENTER }),
+          new Paragraph({ text: `Subject: ${scheme.subject}`, alignment: AlignmentType.CENTER }),
+          new Paragraph({ text: `Grade: ${scheme.grade}`, alignment: AlignmentType.CENTER }),
+          new Paragraph({ text: `Term: ${scheme.term}`, alignment: AlignmentType.CENTER }),
+          new Paragraph({ text: `Year: ${scheme.year}`, alignment: AlignmentType.CENTER }),
+          new Paragraph({ text: `Curriculum: ${scheme.curriculum || 'CBC'}`, alignment: AlignmentType.CENTER }),
+          new Paragraph({ text: `Assessment Weeks: ${scheme.assessmentWeeks?.join(', ') || 'None'}`, alignment: AlignmentType.CENTER }),
+          new Paragraph({ text: '' }),
+          new Table({ rows: tableRows, width: { size: 100, type: WidthType.PERCENTAGE } }),
+          new Paragraph({ text: '' }),
+          new Paragraph({ text: '© 2026 mytoolbox - Made for teachers in Zambia', alignment: AlignmentType.CENTER }),
+        ],
+      }],
+    });
+
+    const buffer = await Packer.toBuffer(doc);
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="scheme_${scheme.id}.docx"`);
+    res.send(buffer);
+
+  } catch (error) {
+    console.error('❌ Word export error:', error);
+    res.status(500).json({ error: 'Failed to export scheme as Word' });
+  }
+});
+
+app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const scheme = await prisma.scheme.findUnique({
+      where: { id: id },
+    });
+
+    if (!scheme) {
+      return res.status(404).json({ error: 'Scheme not found' });
+    }
+
+    if (scheme.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="scheme_${scheme.id}.pdf"`);
+    doc.pipe(res);
+
+    doc.fontSize(18).text('MINISTRY OF EDUCATION', { align: 'center' });
+    doc.fontSize(14).text('SCHEME OF WORK', { align: 'center' });
+    doc.moveDown();
+
+    doc.fontSize(12).text(`School: ${scheme.school || 'School Name'}`, { align: 'center' });
+    doc.text(`Subject: ${scheme.subject}`, { align: 'center' });
+    doc.text(`Grade: ${scheme.grade}`, { align: 'center' });
+    doc.text(`Term: ${scheme.term}`, { align: 'center' });
+    doc.text(`Year: ${scheme.year}`, { align: 'center' });
+    doc.text(`Curriculum: ${scheme.curriculum || 'CBC'}`, { align: 'center' });
+    doc.text(`Assessment Weeks: ${scheme.assessmentWeeks?.join(', ') || 'None'}`, { align: 'center' });
+    doc.moveDown();
+
+    const tableTop = doc.y;
+    const columnWidths = [30, 50, 50, 60, 40, 40, 40, 30, 30];
+    const headers = ['WK', 'TOPIC', 'SUBTOPIC', 'SPECIFIC COMPETENCE', 'METHODS', 'AIDS', 'REFERENCES', 'KNOWLEDGE', 'SKILLS'];
+    
+    let x = 50;
+    let y = tableTop;
+    
+    doc.rect(50, y - 5, 495, 25).fill('#e0e0e0');
+    doc.fillColor('black');
+    
+    headers.forEach((header, i) => {
+      doc.fontSize(8).text(header, x, y, { width: columnWidths[i], align: 'center' });
+      x += columnWidths[i];
+    });
+    
+    y += 25;
+    
+    scheme.weeks.forEach(week => {
+      const topics = week.topics || [];
+      const topicText = topics.map(t => t.topic || '').join('\n');
+      const subtopicText = topics.map(t => t.subtopic || '').join('\n');
+      const competenceText = topics.map(t => t.specificCompetence || t.specificOutcome || '').join('\n');
+      const methodsText = topics.map(t => t.methods || '').join('\n');
+      const aidsText = topics.map(t => t.aids || '').join('\n');
+      const refsText = topics.map(t => t.references || '').join('\n');
+      const knowledgeText = topics.map(t => t.knowledge || '').join('\n');
+      const skillsText = topics.map(t => t.skills || '').join('\n');
+      const valuesText = topics.map(t => t.values || '').join('\n');
+      
+      const rowData = [
+        String(week.week),
+        topicText || '-',
+        subtopicText || '-',
+        competenceText || '-',
+        methodsText || '-',
+        aidsText || '-',
+        refsText || '-',
+        knowledgeText || '-',
+        skillsText || '-'
+      ];
+      
+      let maxHeight = 20;
+      rowData.forEach((text, i) => {
+        doc.fontSize(7).text(text, 50 + columnWidths.slice(0, i).reduce((a, b) => a + b, 0), y, {
+          width: columnWidths[i],
+          align: 'left',
+          ellipsis: true,
+        });
+        const height = doc.heightOfString(text, { width: columnWidths[i] });
+        if (height > maxHeight) maxHeight = height;
+      });
+      
+      let currentX = 50;
+      rowData.forEach((text, i) => {
+        doc.rect(currentX, y, columnWidths[i], maxHeight + 5).stroke();
+        currentX += columnWidths[i];
+      });
+      
+      y += maxHeight + 10;
+      
+      if (y > 750) {
+        doc.addPage();
+        y = 50;
+      }
+    });
+    
+    doc.moveDown();
+    doc.fontSize(10).text('© 2026 mytoolbox - Made for teachers in Zambia', { align: 'center' });
+    
+    doc.end();
+
+  } catch (error) {
+    console.error('❌ PDF export error:', error);
+    res.status(500).json({ error: 'Failed to export scheme as PDF' });
+  }
+});
+
+// ============ NOTES ROUTES ============
+
+app.get('/api/notes', authenticate, async (req, res) => {
+  try {
+    const notes = await prisma.note.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+    res.json(notes);
+  } catch (error) {
+    console.error('Error fetching notes:', error);
+    res.status(500).json({ error: 'Failed to fetch notes' });
+  }
+});
+
+app.get('/api/notes/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const note = await prisma.note.findUnique({
+      where: { id: id },
+    });
+    if (!note) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+    if (note.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    res.json(note);
+  } catch (error) {
+    console.error('Error fetching note:', error);
+    res.status(500).json({ error: 'Failed to fetch note' });
+  }
+});
+
+app.post('/api/notes', authenticate, async (req, res) => {
+  try {
+    const { title, content, subject, grade } = req.body;
+    if (!title || !content) {
+      return res.status(400).json({ error: 'Title and content are required' });
+    }
+    const note = await prisma.note.create({
+      data: {
+        userId: req.userId,
+        title,
+        content,
+        subject,
+        grade,
+      }
+    });
+    res.status(201).json(note);
+  } catch (error) {
+    console.error('Error creating note:', error);
+    res.status(500).json({ error: 'Failed to create note' });
+  }
+});
+
+app.put('/api/notes/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, content, subject, grade } = req.body;
+    const existingNote = await prisma.note.findUnique({
+      where: { id: id },
+    });
+    if (!existingNote) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+    if (existingNote.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const note = await prisma.note.update({
+      where: { id: id },
+      data: { title, content, subject, grade },
+    });
+    res.json(note);
+  } catch (error) {
+    console.error('Error updating note:', error);
+    res.status(500).json({ error: 'Failed to update note' });
+  }
+});
+
+app.delete('/api/notes/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const existingNote = await prisma.note.findUnique({
+      where: { id: id },
+    });
+    if (!existingNote) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+    if (existingNote.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    await prisma.note.delete({
+      where: { id: id },
+    });
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error deleting note:', error);
+    res.status(500).json({ error: 'Failed to delete note' });
+  }
+});
+
+// ============ ASSESSMENTS ROUTES ============
+
+app.get('/api/assessments', authenticate, async (req, res) => {
+  try {
+    const assessments = await prisma.assessment.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+    res.json(assessments);
+  } catch (error) {
+    console.error('Error fetching assessments:', error);
+    res.status(500).json({ error: 'Failed to fetch assessments' });
+  }
+});
+
+app.get('/api/assessments/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const assessment = await prisma.assessment.findUnique({
+      where: { id: id },
+    });
+    if (!assessment) {
+      return res.status(404).json({ error: 'Assessment not found' });
+    }
+    if (assessment.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    res.json(assessment);
+  } catch (error) {
+    console.error('Error fetching assessment:', error);
+    res.status(500).json({ error: 'Failed to fetch assessment' });
+  }
+});
+
+app.post('/api/assessments', authenticate, async (req, res) => {
+  try {
+    const { title, type, subject, grade, description, questions, maxScore } = req.body;
+    if (!title || !type) {
+      return res.status(400).json({ error: 'Title and type are required' });
+    }
+    const assessment = await prisma.assessment.create({
+      data: {
+        userId: req.userId,
+        title,
+        type,
+        subject,
+        grade,
+        description,
+        questions: questions || [],
+        maxScore: maxScore || 0,
+      }
+    });
+    res.status(201).json(assessment);
+  } catch (error) {
+    console.error('Error creating assessment:', error);
+    res.status(500).json({ error: 'Failed to create assessment' });
+  }
+});
+
+app.post('/api/assessments/:id/submit', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { score, answers } = req.body;
+    const existingAssessment = await prisma.assessment.findUnique({
+      where: { id: id },
+    });
+    if (!existingAssessment) {
+      return res.status(404).json({ error: 'Assessment not found' });
+    }
+    if (existingAssessment.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const assessment = await prisma.assessment.update({
+      where: { id: id },
+      data: {
+        score: score || 0,
+        questions: answers || existingAssessment.questions,
+        completedAt: new Date(),
+      }
+    });
+    res.json(assessment);
+  } catch (error) {
+    console.error('Error submitting assessment:', error);
+    res.status(500).json({ error: 'Failed to submit assessment' });
+  }
+});
+
+app.delete('/api/assessments/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const existingAssessment = await prisma.assessment.findUnique({
+      where: { id: id },
+    });
+    if (!existingAssessment) {
+      return res.status(404).json({ error: 'Assessment not found' });
+    }
+    if (existingAssessment.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    await prisma.assessment.delete({
+      where: { id: id },
+    });
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error deleting assessment:', error);
+    res.status(500).json({ error: 'Failed to delete assessment' });
+  }
+});
+
+// ============ PAYMENT ROUTES ============
+
+app.post('/api/payments/initiate', authenticate, async (req, res) => {
+  try {
+    console.log('📥 Payment request body:', req.body);
+    
+    const { amount, phoneNumber, plan } = req.body;
+
+    if (!amount || !phoneNumber) {
+      return res.status(400).json({ error: 'Amount and phone number are required' });
+    }
+
+    const cleanNumber = phoneNumber.replace(/\s/g, '');
+    if (!cleanNumber.match(/^260[0-9]{9}$/)) {
+      return res.status(400).json({ error: 'Invalid phone number format. Use 260XXXXXXXXX' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const referenceId = `TX-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const callbackUrl = `${process.env.BACKEND_URL || 'https://mytoolbox-production.up.railway.app'}/api/payments/webhook`;
+
+    const payment = await lipilaService.createCollection({
+      referenceId,
+      amount: parseFloat(amount),
+      accountNumber: cleanNumber,
+      currency: 'ZMW',
+      callbackUrl,
+    });
+
+    const paymentRecord = await prisma.payment.create({
+      data: {
+        userId: req.userId,
+        referenceId: referenceId,
+        transactionId: payment.transactionId || referenceId,
+        amount: parseFloat(amount),
+        currency: 'ZMW',
+        provider: 'lipila',
+        phoneNumber: cleanNumber,
+        status: 'pending',
+        externalId: payment.id || null,
+        plan: plan || 'PRO',
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      }
+    });
+
+    res.status(201).json({
+      success: true,
+      payment: paymentRecord,
+      provider: payment,
+      message: 'Payment initiated. Please check your phone for the prompt.',
+    });
+
+  } catch (error) {
+    console.error('❌ Payment initiation error:', error);
+    res.status(500).json({
+      error: 'Failed to initiate payment',
+      details: error.message
+    });
+  }
+});
+
+app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const payload = req.body;
+    console.log('📥 Webhook received:', payload);
+
+    const { referenceId, status, amount, accountNumber, transactionId } = payload;
+
+    const payment = await prisma.payment.findUnique({
+      where: { referenceId: referenceId },
+      include: { user: true },
+    });
+
+    if (!payment) {
+      console.log('⚠️ Payment not found for reference:', referenceId);
+      return res.status(404).json({ error: 'Payment not found' });
+    }
+
+    if (payment.status === 'completed') {
+      console.log('⏭️ Payment already completed:', referenceId);
+      return res.status(200).json({ message: 'Already processed' });
+    }
+
+    const isSuccessful = status === 'completed' || status === 'successful';
+    const isFailed = status === 'failed' || status === 'cancelled';
+
+    let updatedStatus = 'pending';
+    if (isSuccessful) {
+      updatedStatus = 'completed';
+    } else if (isFailed) {
+      updatedStatus = 'failed';
+    }
+
+    await prisma.payment.update({
+      where: { referenceId: referenceId },
+      data: {
+        status: updatedStatus,
+        completedAt: isSuccessful ? new Date() : null,
+        externalId: transactionId || payload.id || payment.externalId,
+      }
+    });
+
+    if (isSuccessful && payment.user) {
+      const plan = payment.plan || 'PRO';
+      await prisma.user.update({
+        where: { id: payment.userId },
+        data: {
+          role: plan,
+          schemesLimit: plan === 'PRO' ? 100 : 3,
+          lessonsLimit: plan === 'PRO' ? 1000 : 5,
+          subscriptionEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        }
+      });
+      console.log(`✅ User ${payment.user.email} upgraded to ${plan}`);
+    }
+
+    res.status(200).json({ message: 'Webhook processed successfully' });
+
+  } catch (error) {
+    console.error('❌ Webhook error:', error);
+    res.status(500).json({ error: 'Webhook processing failed' });
+  }
+});
+
+app.get('/api/payments/:referenceId/status', authenticate, async (req, res) => {
+  try {
+    const { referenceId } = req.params;
+
+    const payment = await prisma.payment.findUnique({
+      where: { referenceId: referenceId },
+    });
+
+    if (!payment) {
+      return res.status(404).json({ error: 'Payment not found' });
+    }
+
+    if (payment.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const status = await lipilaService.getTransactionStatus(referenceId);
+
+    res.json({
+      payment,
+      providerStatus: status,
+    });
+
+  } catch (error) {
+    console.error('❌ Status check error:', error);
+    res.status(500).json({
+      error: 'Failed to check payment status',
+      details: error.message
+    });
+  }
+});
+
+app.get('/api/payments/history', authenticate, async (req, res) => {
+  try {
+    const payments = await prisma.payment.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+    res.json(payments);
+  } catch (error) {
+    console.error('Error fetching payment history:', error);
+    res.status(500).json({ error: 'Failed to fetch payment history' });
+  }
+});
+
+// ============ ADMIN ROUTES ============
+
+const isAdmin = async (req, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      select: { role: true }
+    });
+    
+    if (!user || user.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    next();
+  } catch (error) {
+    console.error('Admin check error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// Admin Stats (basic)
+app.get('/api/admin/stats', authenticate, isAdmin, async (req, res) => {
+  try {
+    const [
+      totalUsers,
+      totalLessons,
+      totalSchemes,
+      totalPayments,
+      recentUsers
+    ] = await Promise.all([
+      prisma.user.count().catch(() => 0),
+      prisma.lesson.count().catch(() => 0),
+      prisma.scheme.count().catch(() => 0),
+      prisma.payment.count().catch(() => 0),
+      prisma.user.findMany({
+        take: 10,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          school: true,
+          role: true,
+          createdAt: true
+        }
+      }).catch(() => [])
+    ]);
+
+    const formattedRecentUsers = recentUsers.map(user => ({
+      id: user.id || '',
+      fullName: user.fullName || '',
+      email: user.email || '',
+      school: user.school || '',
+      role: user.role || 'FREE',
+      createdAt: user.createdAt ? user.createdAt.toISOString() : new Date().toISOString()
+    }));
+
+    res.json({
+      stats: {
+        totalUsers: totalUsers || 0,
+        totalLessons: totalLessons || 0,
+        totalSchemes: totalSchemes || 0,
+        totalPayments: totalPayments || 0
+      },
+      recentUsers: formattedRecentUsers
+    });
+  } catch (error) {
+    console.error('Admin stats error:', error);
+    res.status(500).json({ error: 'Failed to fetch admin stats' });
+  }
+});
+
+// Admin Users (basic)
+app.get('/api/admin/users', authenticate, isAdmin, async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        school: true,
+        province: true,
+        district: true,
+        role: true,
+        lessonsUsed: true,
+        lessonsLimit: true,
+        schemesUsed: true,
+        schemesLimit: true,
+        createdAt: true,
+        subscriptionEndsAt: true
+      }
+    });
+    res.json(users);
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Admin Detailed Users (for admin dashboard with counts)
+app.get('/api/admin/users/detailed', authenticate, isAdmin, async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        school: true,
+        province: true,
+        district: true,
+        role: true,
+        lessonsUsed: true,
+        lessonsLimit: true,
+        schemesUsed: true,
+        schemesLimit: true,
+        createdAt: true,
+        subscriptionEndsAt: true,
+        lastActive: true,
+        _count: {
+          select: {
+            lessons: true,
+            schemes: true,
+            payments: true,
+            notes: true,
+            assessments: true
+          }
+        }
+      }
+    });
+
+    const formattedUsers = users.map(user => ({
+      id: user.id || '',
+      fullName: user.fullName || '',
+      email: user.email || '',
+      school: user.school || '',
+      province: user.province || '',
+      district: user.district || '',
+      role: user.role || 'FREE',
+      lessonsUsed: user.lessonsUsed || 0,
+      lessonsLimit: user.lessonsLimit || 5,
+      schemesUsed: user.schemesUsed || 0,
+      schemesLimit: user.schemesLimit || 3,
+      createdAt: user.createdAt ? user.createdAt.toISOString() : new Date().toISOString(),
+      subscriptionEndsAt: user.subscriptionEndsAt ? user.subscriptionEndsAt.toISOString() : null,
+      lastActive: user.lastActive ? user.lastActive.toISOString() : new Date().toISOString(),
+      totalLessons: user._count?.lessons || 0,
+      totalSchemes: user._count?.schemes || 0,
+      totalPayments: user._count?.payments || 0,
+      totalNotes: user._count?.notes || 0,
+      totalAssessments: user._count?.assessments || 0
+    }));
+
+    res.json({
+      success: true,
+      users: formattedUsers,
+      total: formattedUsers.length
+    });
+  } catch (error) {
+    console.error('❌ Error fetching detailed users:', error);
+    res.json({
+      success: false,
+      users: [],
+      total: 0,
+      error: error.message
+    });
+  }
+});
+
+// Admin User Stats (detailed user information)
+app.get('/api/admin/users/:id/stats', authenticate, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        school: true,
+        province: true,
+        district: true,
+        role: true,
+        lessonsUsed: true,
+        lessonsLimit: true,
+        schemesUsed: true,
+        schemesLimit: true,
+        createdAt: true,
+        subscriptionEndsAt: true,
+        lastActive: true,
+        _count: {
+          select: {
+            lessons: true,
+            schemes: true,
+            payments: true,
+            notes: true,
+            assessments: true
+          }
+        }
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const recentLessons = await prisma.lesson.findMany({
+      where: { userId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: {
+        id: true,
+        topic: true,
+        subject: true,
+        grade: true,
+        createdAt: true
+      }
+    }).catch(() => []);
+
+    const recentPayments = await prisma.payment.findMany({
+      where: { userId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        createdAt: true,
+        plan: true
+      }
+    }).catch(() => []);
+
+    const recentSchemes = await prisma.scheme.findMany({
+      where: { userId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: {
+        id: true,
+        subject: true,
+        grade: true,
+        term: true,
+        createdAt: true
+      }
+    }).catch(() => []);
+
+    res.json({
+      user: {
+        ...user,
+        _count: undefined
+      },
+      stats: {
+        totalLessons: user._count?.lessons || 0,
+        totalSchemes: user._count?.schemes || 0,
+        totalPayments: user._count?.payments || 0,
+        totalNotes: user._count?.notes || 0,
+        totalAssessments: user._count?.assessments || 0
+      },
+      recentLessons: recentLessons.map(l => ({
+        id: l.id || '',
+        topic: l.topic || '',
+        subject: l.subject || '',
+        grade: l.grade || '',
+        createdAt: l.createdAt ? l.createdAt.toISOString() : new Date().toISOString()
+      })),
+      recentPayments: recentPayments.map(p => ({
+        id: p.id || '',
+        amount: p.amount || 0,
+        status: p.status || 'pending',
+        createdAt: p.createdAt ? p.createdAt.toISOString() : new Date().toISOString(),
+        plan: p.plan || 'PRO'
+      })),
+      recentSchemes: recentSchemes.map(s => ({
+        id: s.id || '',
+        subject: s.subject || '',
+        grade: s.grade || '',
+        term: s.term || '',
+        createdAt: s.createdAt ? s.createdAt.toISOString() : new Date().toISOString()
+      }))
+    });
+  } catch (error) {
+    console.error('❌ Error fetching user stats:', error);
+    res.status(500).json({
+      error: 'Failed to fetch user statistics',
+      details: error.message
+    });
+  }
+});
+
+// Admin System Stats (comprehensive dashboard data)
+app.get('/api/admin/system/stats', authenticate, isAdmin, async (req, res) => {
+  try {
+    let totalUsers = 0, totalLessons = 0, totalSchemes = 0, totalPayments = 0;
+    let totalNotes = 0, totalAssessments = 0;
+    let recentUsers = [], recentLessons = [], recentPayments = [];
+    let revenue = 0;
+    let proUsers = 0, schoolUsers = 0, freeUsers = 0, adminUsers = 0;
+    let newUsersLast30Days = 0;
+
+    try {
+      totalUsers = await prisma.user.count() || 0;
+    } catch (e) { totalUsers = 0; }
+    
+    try {
+      totalLessons = await prisma.lesson.count() || 0;
+    } catch (e) { totalLessons = 0; }
+    
+    try {
+      totalSchemes = await prisma.scheme.count() || 0;
+    } catch (e) { totalSchemes = 0; }
+    
+    try {
+      totalPayments = await prisma.payment.count() || 0;
+    } catch (e) { totalPayments = 0; }
+    
+    try {
+      totalNotes = await prisma.note.count() || 0;
+    } catch (e) { totalNotes = 0; }
+    
+    try {
+      totalAssessments = await prisma.assessment.count() || 0;
+    } catch (e) { totalAssessments = 0; }
+
+    try {
+      const revenueResult = await prisma.payment.aggregate({
+        where: { status: 'completed' },
+        _sum: { amount: true }
+      });
+      revenue = revenueResult?._sum?.amount || 0;
+    } catch (e) { revenue = 0; }
+
+    try {
+      recentUsers = await prisma.user.findMany({
+        take: 10,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          school: true,
+          role: true,
+          createdAt: true,
+          lessonsUsed: true,
+          schemesUsed: true
+        }
+      }) || [];
+    } catch (e) { recentUsers = []; }
+
+    try {
+      recentLessons = await prisma.lesson.findMany({
+        take: 10,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: {
+            select: {
+              fullName: true,
+              email: true,
+              school: true
+            }
+          }
+        }
+      }) || [];
+    } catch (e) { recentLessons = []; }
+
+    try {
+      recentPayments = await prisma.payment.findMany({
+        where: { status: 'completed' },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        include: {
+          user: {
+            select: {
+              fullName: true,
+              email: true
+            }
+          }
+        }
+      }) || [];
+    } catch (e) { recentPayments = []; }
+
+    try {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      newUsersLast30Days = await prisma.user.count({
+        where: { createdAt: { gte: thirtyDaysAgo } }
+      }) || 0;
+    } catch (e) { newUsersLast30Days = 0; }
+
+    try {
+      proUsers = await prisma.user.count({ where: { role: 'PRO' } }) || 0;
+    } catch (e) { proUsers = 0; }
+    
+    try {
+      schoolUsers = await prisma.user.count({ where: { role: 'SCHOOL' } }) || 0;
+    } catch (e) { schoolUsers = 0; }
+    
+    try {
+      freeUsers = await prisma.user.count({ where: { role: 'FREE' } }) || 0;
+    } catch (e) { freeUsers = 0; }
+    
+    try {
+      adminUsers = await prisma.user.count({ where: { role: 'ADMIN' } }) || 0;
+    } catch (e) { adminUsers = 0; }
+
+    const formattedRecentUsers = recentUsers.map(user => ({
+      id: String(user.id || ''),
+      fullName: String(user.fullName || ''),
+      email: String(user.email || ''),
+      school: String(user.school || ''),
+      role: String(user.role || 'FREE'),
+      createdAt: user.createdAt ? user.createdAt.toISOString() : new Date().toISOString(),
+      lessonsUsed: Number(user.lessonsUsed || 0),
+      schemesUsed: Number(user.schemesUsed || 0)
+    }));
+
+    const formattedRecentLessons = recentLessons.map(lesson => ({
+      id: String(lesson.id || ''),
+      topic: String(lesson.topic || ''),
+      subject: String(lesson.subject || ''),
+      grade: String(lesson.grade || ''),
+      createdAt: lesson.createdAt ? lesson.createdAt.toISOString() : new Date().toISOString(),
+      user: {
+        fullName: String(lesson.user?.fullName || ''),
+        email: String(lesson.user?.email || ''),
+        school: String(lesson.user?.school || '')
+      }
+    }));
+
+    const formattedRecentPayments = recentPayments.map(payment => ({
+      id: String(payment.id || ''),
+      amount: Number(payment.amount || 0),
+      status: String(payment.status || 'pending'),
+      createdAt: payment.createdAt ? payment.createdAt.toISOString() : new Date().toISOString(),
+      plan: String(payment.plan || 'PRO'),
+      user: {
+        fullName: String(payment.user?.fullName || ''),
+        email: String(payment.user?.email || '')
+      }
+    }));
+
+    const response = {
+      totals: {
+        users: Number(totalUsers) || 0,
+        lessons: Number(totalLessons) || 0,
+        schemes: Number(totalSchemes) || 0,
+        payments: Number(totalPayments) || 0,
+        notes: Number(totalNotes) || 0,
+        assessments: Number(totalAssessments) || 0,
+        revenue: Number(revenue) || 0
+      },
+      growth: {
+        newUsersLast30Days: Number(newUsersLast30Days) || 0
+      },
+      subscriptions: {
+        free: Number(freeUsers) || 0,
+        pro: Number(proUsers) || 0,
+        school: Number(schoolUsers) || 0,
+        admin: Number(adminUsers) || 0
+      },
+      recent: {
+        users: formattedRecentUsers,
+        lessons: formattedRecentLessons,
+        payments: formattedRecentPayments
+      }
+    };
+
+    res.json(response);
+
+  } catch (error) {
+    console.error('❌ Error fetching system stats:', error);
+    res.json({
+      totals: { users: 0, lessons: 0, schemes: 0, payments: 0, notes: 0, assessments: 0, revenue: 0 },
+      growth: { newUsersLast30Days: 0 },
+      subscriptions: { free: 0, pro: 0, school: 0, admin: 0 },
+      recent: { users: [], lessons: [], payments: [] }
+    });
+  }
+});
+
+// Admin Update User Role
+app.put('/api/admin/users/:id/role', authenticate, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    if (!['FREE', 'PRO', 'SCHOOL', 'ADMIN'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role. Must be FREE, PRO, SCHOOL, or ADMIN' });
+    }
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: { role },
+      select: { id: true, fullName: true, email: true, role: true }
+    });
+
+    res.json(user);
+  } catch (error) {
+    console.error('Error updating user role:', error);
+    res.status(500).json({ error: 'Failed to update user role' });
+  }
+});
+
+// Admin Lessons
+app.get('/api/admin/lessons', authenticate, isAdmin, async (req, res) => {
+  try {
+    const lessons = await prisma.lesson.findMany({
+      take: 50,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            email: true,
+            school: true
+          }
+        }
+      }
+    });
+    res.json(lessons);
+  } catch (error) {
+    console.error('Error fetching lessons:', error);
+    res.status(500).json({ error: 'Failed to fetch lessons' });
+  }
+});
+
+// Admin Schemes
+app.get('/api/admin/schemes', authenticate, isAdmin, async (req, res) => {
+  try {
+    const schemes = await prisma.scheme.findMany({
+      take: 50,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            email: true,
+            school: true
+          }
+        }
+      }
+    });
+    res.json(schemes);
+  } catch (error) {
+    console.error('Error fetching schemes:', error);
+    res.status(500).json({ error: 'Failed to fetch schemes' });
+  }
+});
+
+// Admin Payments
+app.get('/api/admin/payments', authenticate, isAdmin, async (req, res) => {
+  try {
+    const payments = await prisma.payment.findMany({
+      take: 50,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            email: true
+          }
+        }
+      }
+    });
+    res.json(payments);
+  } catch (error) {
+    console.error('Error fetching payments:', error);
+    res.status(500).json({ error: 'Failed to fetch payments' });
+  }
+});
+
+// Admin Delete User (with safety checks)
+app.delete('/api/admin/users/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (id === req.userId) {
+      return res.status(400).json({ error: 'Cannot delete your own account' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    await prisma.user.delete({
+      where: { id }
+    });
+
+    res.json({ success: true, message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// Admin System Health Check
+app.get('/api/admin/health', authenticate, isAdmin, async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    
+    let deepseekStatus = 'unknown';
+    try {
+      await deepseek.chat.completions.create({
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: 'test' }],
+        max_tokens: 5
+      });
+      deepseekStatus = 'healthy';
+    } catch (error) {
+      deepseekStatus = 'unhealthy';
+    }
+
+    res.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      services: {
+        database: 'connected',
+        deepseek: deepseekStatus,
+        lipila: 'configured'
+      },
+      memory: process.memoryUsage(),
+      version: process.version
+    });
+  } catch (error) {
+    console.error('Health check error:', error);
+    res.status(500).json({
+      status: 'unhealthy',
+      error: error.message
+    });
+  }
+});
+
+// ============ GET ROUTES ============
+
+app.get('/api/lessons', authenticate, async (req, res) => {
+  try {
+    const lessons = await prisma.lesson.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+    res.json(lessons);
+  } catch (error) {
+    console.error('Error fetching lessons:', error);
+    res.status(500).json({ error: 'Failed to fetch lessons' });
+  }
+});
+
+app.get('/api/lessons/mine', authenticate, async (req, res) => {
+  try {
+    const lessons = await prisma.lesson.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+    res.json(lessons);
+  } catch (error) {
+    console.error('Error fetching lessons:', error);
+    res.status(500).json({ error: 'Failed to fetch lessons' });
+  }
+});
+
+app.get('/api/schemes', authenticate, async (req, res) => {
+  try {
+    const schemes = await prisma.scheme.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 10
+    });
+    res.json(schemes);
+  } catch (error) {
+    console.error('Error fetching schemes:', error);
+    res.status(500).json({ error: 'Failed to fetch schemes' });
+  }
+});
+
+app.get('/api/schemes/mine', authenticate, async (req, res) => {
+  try {
+    const schemes = await prisma.scheme.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 10
+    });
+    res.json(schemes);
+  } catch (error) {
+    console.error('Error fetching schemes:', error);
+    res.status(500).json({ error: 'Failed to fetch schemes' });
+  }
+});
+
+// ============ START SERVER ============
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`✅ Health check: http://localhost:${PORT}/health`);
+  console.log(`✅ Auth routes available at /api/auth/*`);
+  console.log(`✅ Lesson generation available at /api/lessons/generate`);
+  console.log(`✅ Scheme generation available at /api/schemes/generate`);
+  console.log(`✅ Scheme export available at /api/schemes/export/:id/:format`);
+  console.log(`✅ Notes routes available at /api/notes`);
+  console.log(`✅ Assessments routes available at /api/assessments`);
+  console.log(`✅ Payment routes available at /api/payments/*`);
+  console.log(`✅ Admin routes available at /api/admin/*`);
+  console.log(`✅ Get lessons at /api/lessons`);
+  console.log(`✅ Get schemes at /api/schemes`);
+  console.log(`✅ Get lessons (alias) at /api/lessons/mine`);
+  console.log(`✅ Get schemes (alias) at /api/schemes/mine`);
+  console.log(`✅ DeepSeek AI integration enabled`);
+  console.log(`✅ Lipila payment integration enabled`);
+  console.log(`✅ CORS enabled for Vercel and Render frontend`);
+});
+
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, closing server...');
+  prisma.$disconnect();
+  process.exit(0);
+});
