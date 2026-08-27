@@ -155,4 +155,5 @@ enum Plan {
   FREE
   PRO
   SCHOOL
+ADMIN
 }
