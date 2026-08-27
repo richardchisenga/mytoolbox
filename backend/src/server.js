@@ -80,36 +80,44 @@ class LipilaService {
 
 const lipilaService = new LipilaService();
 
-// ============ CORS CONFIGURATION (UPDATED FOR RENDER) ============
+// ============ CORS CONFIGURATION ============
 const corsOptions = {
-  origin: [
-    // Render frontend URLs
-    'https://mytoolbox-frontend.onrender.com',
-    'https://mytoolbox-1.onrender.com',
-    'https://mytoolbox.onrender.com',
-    /\.onrender\.com$/,
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
     
-    // Vercel frontend URLs (backup)
-    'https://mytoolbox-nine.vercel.app',
-    'https://mytoolbox-0e80w147vy-ryichietechn.vercel.app',
-    /\.vercel\.app$/,
+    const allowedOrigins = [
+      'https://mytoolbox-1.onrender.com',
+      'https://mytoolbox-frontend.onrender.com',
+      'https://mytoolbox.onrender.com',
+      'https://mytoolbox-nine.vercel.app',
+      'https://mytoolbox-0e80w147vy-ryichietechn.vercel.app',
+      'https://mytoolbox-api.onrender.com',
+      'https://mytoolbox-production.up.railway.app',
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:8080',
+      'http://localhost:5000'
+    ];
     
-    // Backend URLs
-    'https://mytoolbox-api.onrender.com',
-    'https://mytoolbox-production.up.railway.app',
+    // Check if the origin is allowed
+    const isAllowed = allowedOrigins.includes(origin) || 
+                      /\.onrender\.com$/.test(origin) || 
+                      /\.vercel\.app$/.test(origin);
     
-    // Local development
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'http://localhost:8080',
-    'http://localhost:5000'
-  ],
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   credentials: true,
   optionsSuccessStatus: 200
 };
 
+app.use(cors(corsOptions));
 // ============ MIDDLEWARE ============
 app.use(helmet());
 app.use(cors(corsOptions));
