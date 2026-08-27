@@ -42,43 +42,43 @@ model Lesson {
   grade               String
   subject             String
   topic               String
-  subtopic            String?
-  title               String?
+  subtopic            String?  @default("")
+  title               String?  @default("")
   classSize           Int      @default(40)
-  duration            String   @default("40 min")
+  duration            String   @default("80 MINUTES")
   curriculum          String   @default("cbc")
-  teacherName         String?
-  school              String?
-  province            String?
-  district            String?
-  date                String?
-  time                String?
-  boys                Int?
-  girls               Int?
-  generalCompetences  String[]
-  specificCompetence  String?
-  lessonGoal          String?
-  rationale           String?
-  priorKnowledge      String?
-  references          String[]
-  learningEnvironment String?
-  materials           String[]
-  expectedStandard    String?
-  lessonProgression   Json?
-  homework            String?
-  lessonEvaluation    String?
-  teacherEvaluation   String?
-  learningOutcomes    String[]
-  lessonDevelopment   Json?
-  learnersEvaluation  String[]
-  teachingAids        String[]
-  objectives          String[]
-  development         String[]
-  activities          String[]
-  assessment          String
-  curriculumCodes     String[]
-  provinceContext     String?
-  lessonConclusion    String?
+  teacherName         String?  @default("")
+  school              String?  @default("")
+  province            String?  @default("")
+  district            String?  @default("")
+  date                String?  @default("")
+  time                String?  @default("")
+  boys                Int?     @default(0)
+  girls               Int?     @default(0)
+  generalCompetences  String[] @default([])
+  specificCompetence  String?  @default("")
+  lessonGoal          String?  @default("")
+  rationale           String?  @default("")
+  priorKnowledge      String?  @default("")
+  references          String[] @default([])
+  learningEnvironment String?  @default("")
+  materials           String[] @default([])
+  expectedStandard    String?  @default("")
+  lessonProgression   Json?    @default("[]")
+  homework            String?  @default("")
+  lessonEvaluation    String?  @default("")
+  teacherEvaluation   String?  @default("")
+  learningOutcomes    String[] @default([])
+  lessonDevelopment   Json?    @default("[]")
+  learnersEvaluation  String[] @default([])
+  teachingAids        String[] @default([])
+  objectives          String[] @default([])
+  development         String[] @default([])
+  activities          String[] @default([])
+  assessment          String   @default("")
+  curriculumCodes     String[] @default([])
+  provinceContext     String?  @default("")
+  lessonConclusion    String?  @default("")
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
@@ -89,15 +89,16 @@ model Scheme {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   grade           String
   subject         String
-  term            String
+  term            String   @default("Term 1")
   year            String   @default("2026")
   totalWeeks      Int      @default(13)
-  school          String
-  teacherName     String?
-  subtopic        String?
-  weeks           Json
-  assessmentWeeks Int[]
-  testTopics      Json?
+  school          String?  @default("")
+  teacherName     String?  @default("")
+  subtopic        String?  @default("")
+  weeks           Json     @default("[]")
+  assessmentWeeks Int[]    @default([3, 6, 9, 12])
+  testTopics      Json?    @default("[]")
+  curriculum      String   @default("cbc")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
