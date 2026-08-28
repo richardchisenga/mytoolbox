@@ -61,9 +61,47 @@ export default function AdminDashboard() {
         setError("Administrator access required.");
         return;
       }
-      if (!statsRes.ok || !usersRes.ok) throw new Error("Failed to load administrator data.");
-      setStats(await statsRes.json());
-      setUsers(await usersRes.json());
+      if (!statsRes.ok || !usersRes.ok) {
+        const statsText = await statsRes.text().catch(() => "");
+        const usersText = await usersRes.text().catch(() => "");
+        console.error("Admin API responses:", {
+          statsStatus: statsRes.status,
+          statsBody: statsText,
+          usersStatus: usersRes.status,
+          usersBody: usersText,
+        });
+        throw new Error("Failed to load administrator data.");
+      }
+
+      // The backend returns { stats: {...} } and { users: [...] }.
+      // Normalize both responses so the dashboard never crashes when a
+      // backend response is wrapped or a value is missing.
+      const statsPayload = await statsRes.json();
+      const usersPayload = await usersRes.json();
+
+      const rawStats = statsPayload?.stats ?? statsPayload ?? {};
+      const normalizedStats = {
+        totalUsers: Number(rawStats.totalUsers ?? 0),
+        totalLessons: Number(rawStats.totalLessons ?? 0),
+        totalSchemes: Number(rawStats.totalSchemes ?? 0),
+        totalPayments: Number(rawStats.totalPayments ?? 0),
+        revenue: Number(rawStats.revenue ?? 0),
+        newUsersToday: Number(rawStats.newUsersToday ?? 0),
+        lessonsToday: Number(rawStats.lessonsToday ?? 0),
+        schemesToday: Number(rawStats.schemesToday ?? 0),
+        paymentsToday: Number(rawStats.paymentsToday ?? 0),
+        systemHealth: rawStats.systemHealth ?? "Operational",
+        uptime: rawStats.uptime ?? "—",
+        activeUsers: Number(rawStats.activeUsers ?? 0),
+        pendingModeration: Number(rawStats.pendingModeration ?? 0),
+      };
+
+      const normalizedUsers = Array.isArray(usersPayload)
+        ? usersPayload
+        : (Array.isArray(usersPayload?.users) ? usersPayload.users : []);
+
+      setStats(normalizedStats);
+      setUsers(normalizedUsers);
     } catch (error: any) {
       console.error("Failed to fetch stats:", error);
       setError(error.message || "Failed to load administrator data.");
@@ -99,11 +137,14 @@ export default function AdminDashboard() {
   }
 
   // Stats Cards
+  const safeStats = stats ?? {};
+  const revenue = Number(safeStats.revenue ?? 0);
+
   const statCards = [
     { label: "Total Users", value: stats.totalUsers, icon: UsersIcon, color: "text-blue-600", bg: "bg-blue-100" },
     { label: "Lessons Created", value: stats.totalLessons, icon: DocumentTextIcon, color: "text-green-600", bg: "bg-green-100" },
     { label: "Schemes of Work", value: stats.totalSchemes, icon: AcademicCapIcon, color: "text-purple-600", bg: "bg-purple-100" },
-    { label: "Revenue (ZMW)", value: `K${stats.revenue.toLocaleString()}`, icon: CurrencyDollarIcon, color: "text-yellow-600", bg: "bg-yellow-100" },
+    { label: "Revenue (ZMW)", value: `K${revenue.toLocaleString()}`, icon: CurrencyDollarIcon, color: "text-yellow-600", bg: "bg-yellow-100" },
   ];
 
   return (
@@ -209,7 +250,7 @@ export default function AdminDashboard() {
             onClick={() => setShowPayments(!showPayments)}
             className="bg-green-600 text-white p-3 rounded-lg hover:bg-green-700 transition-colors"
           >
-            💰 View Payments (K{stats.revenue.toLocaleString()})
+            💰 View Payments (K{revenue.toLocaleString()})
           </button>
           <button className="bg-purple-600 text-white p-3 rounded-lg hover:bg-purple-700 transition-colors">
             🛡️ Moderation
@@ -268,7 +309,7 @@ export default function AdminDashboard() {
                 <div className="text-xs text-gray-500">Total Payments</div>
               </div>
               <div className="bg-gray-50 p-4 rounded-lg text-center">
-                <div className="text-2xl font-bold text-primary">K{stats.revenue.toLocaleString()}</div>
+                <div className="text-2xl font-bold text-primary">K{revenue.toLocaleString()}</div>
                 <div className="text-xs text-gray-500">Total Revenue</div>
               </div>
               <div className="bg-gray-50 p-4 rounded-lg text-center">
