@@ -29,84 +29,81 @@ if (OpenAI && process.env.DEEPSEEK_API_KEY) {
 // ============ HELPERS ============
 
 function cleanAndParseJson(content) {
-  // Remove markdown code blocks
-  let cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
-  
-  // Try to find the JSON object
-  let jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    cleaned = jsonMatch[0];
-  }
-  
-  // Fix common JSON issues
-  cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
-  cleaned = cleaned.replace(/'/g, '"');
-  
-  try {
-    return JSON.parse(cleaned);
-  } catch (e) {
-    // If still failing, try to fix incomplete JSON
-    let fixed = cleaned;
-    let openBraces = (fixed.match(/\{/g) || []).length;
-    let closeBraces = (fixed.match(/\}/g) || []).length;
-    while (closeBraces < openBraces) {
-      fixed += '}';
-      closeBraces++;
-    }
-    return JSON.parse(fixed);
+  if (typeof content !== 'string') throw new Error('AI response was not text');
+  let cleaned = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  const first = cleaned.indexOf('{');
+  const last = cleaned.lastIndexOf('}');
+  if (first >= 0 && last > first) cleaned = cleaned.slice(first, last + 1);
+  cleaned = cleaned.replace(/,\s*([}\]])/g, '$1');
+  try { return JSON.parse(cleaned); } catch (e) {
+    throw new Error(`Invalid JSON from AI: ${e.message}`);
   }
 }
 
-// ============ SHORTER PROMPTS ============
+function ensureOBCDevelopment(lesson, topic) {
+  const rows = Array.isArray(lesson?.lessonDevelopment) ? lesson.lessonDevelopment : [];
+  const validRows = rows.filter((row) => row && typeof row === 'object').map((row) => ({
+    time: String(row.time || '').trim(),
+    learningPoints: String(row.learningPoints || '').trim(),
+    teacherActivities: String(row.teacherActivities || '').trim(),
+    pupilActivities: String(row.pupilActivities || '').trim(),
+  })).filter((row) => row.time || row.learningPoints || row.teacherActivities || row.pupilActivities);
+
+  if (validRows.length >= 4 && validRows.every((row) => row.learningPoints && row.teacherActivities && row.pupilActivities)) {
+    return validRows;
+  }
+
+  // Guarantee an exportable OBC table even when the AI returns an incomplete array.
+  return [
+    { time: '10 min', learningPoints: `Meaning, characteristics and examples of ${topic}`, teacherActivities: `Introduce ${topic} using a familiar example, state the lesson outcome and ask focused questions about ${topic}.`, pupilActivities: `Discuss the example, define ${topic} in their own words and give one relevant example.` },
+    { time: '15 min', learningPoints: `Key concepts, components or stages of ${topic}`, teacherActivities: `Guide learners through the key concepts or stages of ${topic} with a board illustration, examples and probing questions.`, pupilActivities: `Observe the illustration, identify the key parts or stages of ${topic}, discuss them in pairs and record the main points.` },
+    { time: '15 min', learningPoints: `Application and practice of ${topic}`, teacherActivities: `Give a topic-specific classification, calculation, diagram, demonstration or problem-solving task on ${topic}, then facilitate group work.`, pupilActivities: `Work individually or in groups to complete the task on ${topic}, compare answers and explain their reasoning.` },
+    { time: '10 min', learningPoints: `Summary, misconceptions and assessment of ${topic}`, teacherActivities: `Ask short topic-specific assessment questions, correct misconceptions and summarise the essential points about ${topic}.`, pupilActivities: `Answer the assessment questions, correct their work and state the key points learned about ${topic}.` },
+  ];
+}
 
 function buildCBCPrompt(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district) {
-  return `
-Create a CBC lesson plan for ${grade} ${subject} on "${topic}".
-
-Return ONLY valid JSON with these exact fields:
+  return `You are an expert Zambian teacher preparing a Competence Based Curriculum (CBC) lesson plan.
+Create ONE lesson for ${grade} ${subject} specifically on the exact topic: "${topic}".
+Do not use generic placeholders. Every outcome, activity, assessment and progression step must explicitly teach, practise or assess ${topic}.
+Use age-appropriate Zambian classroom practice and CBC language. Include learner-centred activities, competencies, values and formative assessment.
+Return ONLY one valid JSON object. No markdown and no commentary.
+Required shape:
 {
-  "title": "${topic}",
-  "grade": "${grade}",
-  "subject": "${subject}",
-  "generalCompetences": ["Critical thinking", "Communication", "Collaboration"],
-  "specificCompetence": "Specific competence for this lesson",
-  "lessonGoal": "By the end of this lesson, learners will be able to...",
-  "rationale": "Why this topic is important",
-  "priorKnowledge": "What learners already know",
-  "references": ["Reference 1"],
-  "learningEnvironment": "Classroom",
-  "materials": ["Material 1"],
-  "expectedStandard": "Expected achievement",
-  "lessonProgression": [
-    {"stage": "INTRODUCTION", "time": "5 min", "teacherRole": "Introduce topic", "learnerRole": "Listen", "assessmentCriteria": "Participation"},
-    {"stage": "DEVELOPMENT", "time": "20 min", "teacherRole": "Explain concepts", "learnerRole": "Take notes", "assessmentCriteria": "Understanding"},
-    {"stage": "CONCLUSION", "time": "10 min", "teacherRole": "Summarize", "learnerRole": "Share learning", "assessmentCriteria": "Verbal explanation"}
+  "title":"${topic}", "grade":"${grade}", "subject":"${subject}", "topic":"${topic}",
+  "generalCompetences":["..."], "specificCompetence":"...", "lessonGoal":"...", "rationale":"...",
+  "priorKnowledge":"...", "references":["..."], "learningEnvironment":"...", "materials":["..."],
+  "expectedStandard":"...",
+  "lessonProgression":[
+    {"stage":"INTRODUCTION","time":"5 min","teacherRole":"...","learnerRole":"...","assessmentCriteria":"..."},
+    {"stage":"DEVELOPMENT","time":"15 min","teacherRole":"...","learnerRole":"...","assessmentCriteria":"..."},
+    {"stage":"PRACTICE/APPLICATION","time":"15 min","teacherRole":"...","learnerRole":"...","assessmentCriteria":"..."},
+    {"stage":"CONCLUSION","time":"5 min","teacherRole":"...","learnerRole":"...","assessmentCriteria":"..."}
   ],
-  "homework": "Research the topic",
-  "lessonEvaluation": "Lesson was successful"
+  "homework":"...", "lessonEvaluation":"..."
 }
-Keep it short and valid JSON.`;
+Make the progression activities concrete and topic-specific. Do not write phrases such as "explain concepts", "research the topic", or "understand the topic" without specifying what about ${topic}.`;
 }
 
 function buildOBCPrompt(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district) {
-  return `
-Create an OBC lesson plan for ${grade} ${subject} on "${topic}".
-
-Return ONLY valid JSON with these exact fields:
+  return `You are an expert Zambian teacher preparing an Objective Based Curriculum (OBC) lesson plan.
+Create ONE lesson for ${grade} ${subject} specifically on the exact topic: "${topic}".
+The lesson development table MUST contain detailed, topic-specific learning points, teacher activities and pupil activities. Do not use generic placeholders.
+Return ONLY one valid JSON object. No markdown and no commentary.
+Required shape:
 {
-  "title": "${topic}",
-  "grade": "${grade}",
-  "subject": "${subject}",
-  "references": ["Reference 1", "Reference 2"],
-  "teachingAids": ["Chart", "Whiteboard"],
-  "rationale": "Why this topic is important",
-  "learningOutcomes": ["Outcome 1", "Outcome 2"],
-  "lessonDevelopment": [
-    {"time": "10 min", "learningPoints": "Introduction", "teacherActivities": "Explain", "pupilActivities": "Listen"}
+  "title":"${topic}", "grade":"${grade}", "subject":"${subject}", "topic":"${topic}",
+  "references":["..."], "teachingAids":["..."], "rationale":"...",
+  "learningOutcomes":["By the end of the lesson, pupils should be able to ..."],
+  "lessonDevelopment":[
+    {"time":"10 min","learningPoints":"A precise point about ${topic}","teacherActivities":"A concrete teacher action using ${topic}","pupilActivities":"A concrete pupil action demonstrating ${topic}"},
+    {"time":"15 min","learningPoints":"...","teacherActivities":"...","pupilActivities":"..."},
+    {"time":"15 min","learningPoints":"...","teacherActivities":"...","pupilActivities":"..."},
+    {"time":"10 min","learningPoints":"...","teacherActivities":"...","pupilActivities":"..."}
   ],
-  "learnersEvaluation": ["Question 1", "Question 2"]
+  "learnersEvaluation":["...","..."]
 }
-Keep it short and valid JSON.`;
+All rows must directly relate to ${topic}. Avoid generic text such as "Introduction", "Explain", "Listen", or "Research the topic" unless the action also states the exact ${topic} content.`;
 }
 
 // ============ MOCK FUNCTIONS ============
@@ -138,9 +135,10 @@ function generateCBCMockLesson(grade, subject, topic, size, boys, girls, teacher
     materials: ["Whiteboard", "Markers"],
     expectedStandard: "Understanding of the topic",
     lessonProgression: [
-      { stage: "INTRODUCTION", time: "5 min", teacherRole: "Introduce", learnerRole: "Listen", assessmentCriteria: "Participation" },
-      { stage: "DEVELOPMENT", time: "20 min", teacherRole: "Explain", learnerRole: "Discuss", assessmentCriteria: "Understanding" },
-      { stage: "CONCLUSION", time: "10 min", teacherRole: "Summarize", learnerRole: "Share", assessmentCriteria: "Verbal" }
+      { stage: "INTRODUCTION", time: "5 min", teacherRole: `Elicit prior knowledge and introduce the key idea of ${topic} using a question or real example.`, learnerRole: `Respond to questions and state what they already know about ${topic}.`, assessmentCriteria: `Correctly identifies a relevant prior idea about ${topic}.` },
+      { stage: "DEVELOPMENT", time: "15 min", teacherRole: `Guide learners through the main concepts, processes or features of ${topic} using examples.`, learnerRole: `Discuss, observe examples and record the key points about ${topic}.`, assessmentCriteria: `Explains at least two accurate points about ${topic}.` },
+      { stage: "PRACTICE/APPLICATION", time: "15 min", teacherRole: `Facilitate a learner-centred task requiring application of ${topic}.`, learnerRole: `Work individually or in groups to apply knowledge of ${topic} to a task/problem.`, assessmentCriteria: `Applies the concept of ${topic} correctly in the task.` },
+      { stage: "CONCLUSION", time: "5 min", teacherRole: `Review the main learning points about ${topic} and correct misconceptions.`, learnerRole: `Summarise what was learned about ${topic} and answer exit questions.`, assessmentCriteria: `Gives an accurate summary of ${topic}.` }
     ],
     homework: "Research the topic",
     lessonEvaluation: "Successful",
@@ -173,9 +171,7 @@ function generateOBCMockLesson(grade, subject, topic, size, boys, girls, teacher
     teachingAids: ["Chart", "Whiteboard"],
     rationale: `${topic} is important`,
     learningOutcomes: ["Outcome 1", "Outcome 2"],
-    lessonDevelopment: [
-      { time: "10 min", learningPoints: "Introduction", teacherActivities: "Explain", pupilActivities: "Listen" }
-    ],
+    lessonDevelopment: ensureOBCDevelopment({ lessonDevelopment: [] }, topic),
     learnersEvaluation: ["Question 1", "Question 2"],
     teacherEvaluation: "Successful",
     curriculum: 'obc',
@@ -280,8 +276,9 @@ router.post('/generate', authenticate, async (req, res) => {
             { role: "system", content: "You are an expert Zambian teacher. Always return valid JSON only." },
             { role: "user", content: prompt }
           ],
-          temperature: 0.7,
-          max_tokens: 1500 // Reduced to prevent truncation
+          temperature: 0.4,
+          max_tokens: 3000,
+          response_format: { type: "json_object" }
         });
 
         console.log('📝 DeepSeek response received');
@@ -289,6 +286,9 @@ router.post('/generate', authenticate, async (req, res) => {
         try {
           const rawContent = completion.choices[0].message.content;
           lessonData = cleanAndParseJson(rawContent);
+          if (curriculumType === 'obc') {
+            lessonData.lessonDevelopment = ensureOBCDevelopment(lessonData, topic);
+          }
           useMock = false;
           console.log('✅ DeepSeek response parsed successfully');
         } catch (parseError) {
@@ -309,6 +309,10 @@ router.post('/generate', authenticate, async (req, res) => {
       lessonData = curriculumType === 'obc'
         ? generateOBCMockLesson(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district)
         : generateCBCMockLesson(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district);
+    }
+
+    if (curriculumType === 'obc') {
+      lessonData.lessonDevelopment = ensureOBCDevelopment(lessonData, topic);
     }
 
     // Save to database
