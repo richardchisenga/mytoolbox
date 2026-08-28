@@ -15,21 +15,29 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET;
-
 // ============ DEEPSEEK AI CLIENT ============
 const deepseek = new OpenAI({
   apiKey: process.env.DEEPSEEK_API_KEY,
   baseURL: "https://api.deepseek.com"
 });
-
 // ============ LIPILA PAYMENT SERVICE ============
+const https = require('https');
 class LipilaService {
   constructor() {
     this.apiKey = process.env.LIPILA_API_KEY || process.env.LIPIJA_API_KEY;
     const isSandbox = this.apiKey?.startsWith('lsk_');
+    
+    // Use correct sandbox URL
     this.baseURL = isSandbox 
       ? 'https://sandbox.lipila.com' 
       : 'https://api.lipila.com';
+    
+    // Create HTTPS agent with proper SSL settings
+    const httpsAgent = new https.Agent({
+      rejectUnauthorized: true, // Keep this true for production
+      minVersion: 'TLSv1.2',
+      maxVersion: 'TLSv1.3',
+    });
     
     this.client = axios.create({
       baseURL: this.baseURL,
@@ -38,22 +46,49 @@ class LipilaService {
         'Content-Type': 'application/json',
       },
       timeout: 30000,
+      httpsAgent: httpsAgent,
     });
   }
 
   async createCollection({ referenceId, amount, accountNumber, currency = 'ZMW', callbackUrl }) {
     try {
-      const response = await this.client.post('/api/v1/collections', {
+      console.log('📤 Sending payment request to Lipila...');
+      console.log(`📍 URL: ${this.baseURL}/api/v1/collections`);
+      console.log(`📋 Reference: ${referenceId}`);
+      console.log(`💰 Amount: ${amount} ${currency}`);
+      console.log(`📱 Account: ${accountNumber}`);
+      
+      const payload = {
         referenceId,
         amount,
         accountNumber,
         currency,
         callbackUrl,
-      });
+      };
+      
+      console.log('📦 Payload:', JSON.stringify(payload, null, 2));
+      
+      const response = await this.client.post('/api/v1/collections', payload);
+      
+      console.log('✅ Lipila response received:', response.status);
       return response.data;
     } catch (error) {
-      console.error('Lipila collection error:', error.response?.data || error.message);
-      throw new Error(error.response?.data?.message || 'Payment initiation failed');
+      console.error('❌ Lipila collection error details:');
+      console.error('  Message:', error.message);
+      console.error('  Code:', error.code);
+      
+      if (error.response) {
+        console.error('  Response status:', error.response.status);
+        console.error('  Response data:', JSON.stringify(error.response.data, null, 2));
+        throw new Error(error.response.data?.message || 'Payment initiation failed');
+      } else if (error.request) {
+        console.error('  No response received from Lipila');
+        console.error('  Request URL:', error.config?.url);
+        throw new Error('No response from Lipila server');
+      } else {
+        console.error('  Error:', error);
+        throw new Error(error.message || 'Payment initiation failed');
+      }
     }
   }
 
@@ -77,9 +112,6 @@ class LipilaService {
     }
   }
 }
-
-const lipilaService = new LipilaService();
-
 // ============ CORS CONFIGURATION ============
 const corsOptions = {
   origin: [
