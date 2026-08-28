@@ -85,7 +85,29 @@ export default function GeneratePage() {
 
   const exportToPDF = () => {
     if (!generatedLesson) return;
-    window.print();
+
+    // Print a clean, dedicated lesson document. The browser's Print dialog can
+    // then be saved as PDF, and OBC's lesson-development table is included.
+    const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1000,height=800');
+    if (!printWindow) {
+      alert('Please allow pop-ups for this site to export the lesson as PDF.');
+      return;
+    }
+
+    const html = generateWordHTML(generatedLesson).replace(
+      '</head>',
+      `<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0 !important; } table { page-break-inside: auto; } tr { page-break-inside: avoid; page-break-after: auto; } .section { break-inside: auto; }</style></head>`
+    );
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 250);
+    };
   };
 
   const exportToWord = () => {
@@ -105,6 +127,15 @@ export default function GeneratePage() {
   // ============================================
 
   const generateOBCWordHTML = (lesson: any) => {
+    const development = Array.isArray(lesson.lessonDevelopment) && lesson.lessonDevelopment.length
+      ? lesson.lessonDevelopment
+      : [
+          { time: '10 min', learningPoints: `Meaning, characteristics and examples of ${lesson.topic || lesson.title || 'the topic'}`, teacherActivities: `Introduce ${lesson.topic || lesson.title || 'the topic'} using a relevant example and ask focused questions.`, pupilActivities: `Discuss the example, define the topic in their own words and give one relevant example.` },
+          { time: '15 min', learningPoints: `Key concepts or stages of ${lesson.topic || lesson.title || 'the topic'}`, teacherActivities: `Guide learners through the key concepts or stages using examples and probing questions.`, pupilActivities: `Identify, discuss and record the key concepts or stages.` },
+          { time: '15 min', learningPoints: `Application and practice of ${lesson.topic || lesson.title || 'the topic'}`, teacherActivities: `Facilitate a topic-specific task or problem-solving activity.`, pupilActivities: `Complete the task and explain their answers.` },
+          { time: '10 min', learningPoints: `Summary and assessment of ${lesson.topic || lesson.title || 'the topic'}`, teacherActivities: `Ask topic-specific assessment questions and correct misconceptions.`, pupilActivities: `Answer questions and summarise the key points learned.` }
+        ];
+
     return `
 <!DOCTYPE html>
 <html>
@@ -185,7 +216,7 @@ export default function GeneratePage() {
       </tr>
     </thead>
     <tbody>
-      ${(lesson.lessonDevelopment || []).map((item: any) => `
+      ${development.map((item: any) => `
         <tr>
           <td style="text-align:center;font-weight:bold;">${item.time || ""}</td>
           <td>${item.learningPoints || ""}</td>
