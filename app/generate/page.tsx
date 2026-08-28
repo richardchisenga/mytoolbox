@@ -61,6 +61,18 @@ export default function GeneratePage() {
       }
 
       const data = await response.json();
+
+      // Normalize OBC development fields for data returned by older/newer
+      // backend generators. This keeps the screen and exports compatible.
+      if (data.curriculum === "obc" && Array.isArray(data.lessonDevelopment)) {
+        data.lessonDevelopment = data.lessonDevelopment.map((item: any) => ({
+          ...item,
+          learningPoints: item.learningPoints ?? item.content ?? "",
+          teacherActivities: item.teacherActivities ?? item.teacherActivity ?? "",
+          pupilActivities: item.pupilActivities ?? item.pupilActivity ?? ""
+        }));
+      }
+
       setGeneratedLesson(data);
     } catch (error: any) {
       console.error("Generation failed:", error);
@@ -219,9 +231,9 @@ export default function GeneratePage() {
       ${development.map((item: any) => `
         <tr>
           <td style="text-align:center;font-weight:bold;">${item.time || ""}</td>
-          <td>${item.learningPoints || ""}</td>
-          <td>${item.teacherActivities || ""}</td>
-          <td>${item.pupilActivities || ""}</td>
+          <td>${item.learningPoints ?? item.content ?? ""}</td>
+          <td>${item.teacherActivities ?? item.teacherActivity ?? ""}</td>
+          <td>${item.pupilActivities ?? item.pupilActivity ?? ""}</td>
         </tr>
       `).join("")}
     </tbody>
@@ -597,9 +609,9 @@ export default function GeneratePage() {
                         {(generatedLesson.lessonDevelopment || []).map((item: any, index: number) => (
                           <tr key={index} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                             <td className="border border-gray-300 p-2 text-center font-medium">{item.time || ""}</td>
-                            <td className="border border-gray-300 p-2">{item.learningPoints || ""}</td>
-                            <td className="border border-gray-300 p-2">{item.teacherActivities || ""}</td>
-                            <td className="border border-gray-300 p-2">{item.pupilActivities || ""}</td>
+                            <td className="border border-gray-300 p-2">{item.learningPoints ?? item.content ?? ""}</td>
+                            <td className="border border-gray-300 p-2">{item.teacherActivities ?? item.teacherActivity ?? ""}</td>
+                            <td className="border border-gray-300 p-2">{item.pupilActivities ?? item.pupilActivity ?? ""}</td>
                           </tr>
                         ))}
                       </tbody>
