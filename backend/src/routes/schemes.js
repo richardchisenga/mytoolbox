@@ -10,7 +10,11 @@ const prisma = new PrismaClient();
 // Generate scheme with custom topics per week
 router.post('/generate', authenticate, async (req, res) => {
   try {
-    const { grade, subject, term, weeks, assessmentWeeks, testTopics, weekTopics } = req.body;
+    const { grade, subject, term, weeks, assessmentWeeks, testTopics, weekTopics, curriculum } = req.body;
+    const curriculumType = String(curriculum || 'cbc').toLowerCase();
+    if (!['cbc', 'obc'].includes(curriculumType)) {
+      return res.status(400).json({ error: 'Curriculum must be either CBC or OBC' });
+    }
     
     console.log('📝 Received weekTopics:', weekTopics);
 
@@ -49,40 +53,39 @@ router.post('/generate', authenticate, async (req, res) => {
       
       console.log(`📝 Week ${weekNum}:`, topic);
       
+      const cbcCompetencies = isAssessmentWeek
+        ? ['Assessment competence', 'Critical thinking']
+        : ['Communication', 'Collaboration', 'Problem solving'];
+      const obcObjectives = isAssessmentWeek
+        ? ['Demonstrate knowledge of covered topics', 'Apply learned concepts correctly', 'Show mastery through assessment']
+        : [`State key facts and concepts about ${topic}`, `Explain ${topic} using relevant examples`, `Apply knowledge of ${topic} in classroom tasks`];
+
       generatedWeeks.push({
         week: weekNum,
         topic: topic,
         isAssessment: isAssessmentWeek,
         assessmentType: isAssessmentWeek ? 'Test/Assessment' : '',
-        specificOutcome: isAssessmentWeek 
-          ? `Assessment on topics covered in weeks ${Math.max(1, weekNum - 3)} - ${weekNum}`
-          : `By the end of this week, learners will be able to understand and apply ${subject} concepts related to ${topic}`,
-        methods: isAssessmentWeek 
+        curriculum: curriculumType,
+        specificOutcome: isAssessmentWeek
+          ? `Assessment of topics covered in weeks ${Math.max(1, weekNum - 3)} - ${weekNum}`
+          : curriculumType === 'obc'
+            ? `By the end of the lesson, learners should be able to state, explain and apply knowledge related to ${topic}`
+            : `By the end of the week, learners will demonstrate competencies in ${subject} related to ${topic}`,
+        methods: isAssessmentWeek
           ? ['Assessment', 'Test', 'Evaluation']
-          : [
-              methods[i % methods.length],
-              methods[(i + 1) % methods.length]
-            ],
+          : [methods[i % methods.length], methods[(i + 1) % methods.length]],
         aids: isAssessmentWeek
           ? ['Test papers', 'Assessment rubrics', 'Marking guide']
-          : [
-              aids[i % aids.length],
-              aids[(i + 1) % aids.length]
-            ],
+          : [aids[i % aids.length], aids[(i + 1) % aids.length]],
         objectives: isAssessmentWeek
-          ? [
-              `Demonstrate understanding of topics covered`,
-              `Apply knowledge to solve problems`,
-              'Show mastery of key concepts'
-            ]
-          : [
-              `Understand key concepts of ${topic}`,
-              `Apply knowledge to solve problems`,
-              'Demonstrate understanding through practical tasks'
-            ],
+          ? obcObjectives
+          : curriculumType === 'obc'
+            ? obcObjectives
+            : [`Develop understanding of ${topic}`, `Apply knowledge of ${topic}`, 'Demonstrate competency through practical tasks'],
+        competencies: curriculumType === 'cbc' ? cbcCompetencies : [],
         knowledge: isAssessmentWeek ? 'Assessment of covered topics' : `Key concepts in ${topic}`,
         skills: isAssessmentWeek ? 'Evaluation, Critical thinking' : 'Critical thinking, problem-solving, analysis',
-        values: isAssessmentWeek ? 'Honesty, Responsibility' : 'Curiosity, responsibility, collaboration'
+        values: isAssessmentWeek ? 'Honesty, Responsibility' : 'Responsibility, collaboration, curiosity'
       });
     }
 
@@ -92,8 +95,9 @@ router.post('/generate', authenticate, async (req, res) => {
       grade: `Grade ${grade}`,
       subject,
       term: `Term ${term}`,
-      year: "2026",
+      year: String(new Date().getFullYear()),
       totalWeeks: totalWeeks,
+      curriculum: curriculumType,
       assessmentWeeks: assessmentWeekNumbers,
       testTopics: testTopicMap,
       weekTopics: customWeekTopics,
@@ -105,7 +109,7 @@ router.post('/generate', authenticate, async (req, res) => {
     res.status(201).json(scheme);
   } catch (error) {
     console.error('Scheme generation error:', error);
-    res.status(500).json({ error: 'Scheme generation failed' });
+    res.status(500).json({ error: 'Scheme generation failed', details: error.message });
   }
 });
 
