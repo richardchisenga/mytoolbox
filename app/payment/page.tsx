@@ -11,6 +11,7 @@ const plans = {
     amount: 150,
     description: "Unlimited lesson plans",
   },
+
   SCHOOL: {
     name: "School",
     amount: 500,
@@ -21,42 +22,96 @@ const plans = {
 export default function PaymentPage() {
   const [plan, setPlan] = useState<Plan>("PRO");
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [provider, setProvider] = useState<Provider>("MTN");
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
+  const [provider, setProvider] =
+    useState<Provider>("MTN");
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [message, setMessage] =
+    useState("");
+
+  const [messageType, setMessageType] =
+    useState<"success" | "error" | "info">(
+      "info"
+    );
 
   const selectedPlan = plans[plan];
 
-  async function handlePayment(e: React.FormEvent<HTMLFormElement>) {
+  async function handlePayment(
+    e: React.FormEvent<HTMLFormElement>
+  ) {
     e.preventDefault();
 
     setLoading(true);
     setMessage("");
+    setMessageType("info");
 
     try {
-      const response = await fetch("/api/payments/initiate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          plan,
-          phoneNumber,
-          provider,
-        }),
-      });
+      /*
+       * Send EVERYTHING to backend.
+       */
+      const paymentRequest = {
+        plan,
+        phoneNumber,
+        amount: selectedPlan.amount,
+        provider,
+      };
 
-      const data = await response.json();
+      console.log(
+        "📤 PAYMENT REQUEST:",
+        paymentRequest
+      );
+
+      const response = await fetch(
+        "/api/payments/initiate",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify(
+            paymentRequest
+          ),
+        }
+      );
+
+      const data =
+        await response.json().catch(
+          () => ({})
+        );
+
+      console.log(
+        "📥 PAYMENT RESPONSE:",
+        data
+      );
 
       if (!response.ok) {
-        throw new Error(data.message || data.error || "Payment failed");
+        throw new Error(
+          data.message ||
+            data.error ||
+            "Payment failed."
+        );
       }
 
+      setMessageType("success");
+
       setMessage(
-        data.message ||
+        data.instructions ||
+          data.message ||
           "Payment request sent. Please approve the payment on your phone."
       );
     } catch (error) {
+      console.error(
+        "❌ PAYMENT ERROR:",
+        error
+      );
+
+      setMessageType("error");
+
       setMessage(
         error instanceof Error
           ? error.message
@@ -75,24 +130,37 @@ export default function PaymentPage() {
         </h1>
 
         <p className="text-gray-600 text-center mt-2">
-          Pay securely using Zambian mobile money.
+          Pay securely using Zambian mobile
+          money.
         </p>
 
         <div className="bg-white rounded-xl shadow-md p-6 mt-6">
-          <h2 className="text-xl font-semibold mb-4">Choose a plan</h2>
+          <h2 className="text-xl font-semibold mb-4">
+            Choose a plan
+          </h2>
 
+          {/* PLANS */}
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
-              onClick={() => setPlan("PRO")}
+              onClick={() =>
+                setPlan("PRO")
+              }
+              disabled={loading}
               className={`rounded-lg border p-4 text-left ${
                 plan === "PRO"
                   ? "border-primary bg-primary/10"
                   : "border-gray-300"
               }`}
             >
-              <div className="font-bold">Pro</div>
-              <div className="text-lg">ZMW 150</div>
+              <div className="font-bold">
+                Pro
+              </div>
+
+              <div className="text-lg">
+                ZMW 150
+              </div>
+
               <div className="text-sm text-gray-600">
                 Unlimited lesson plans
               </div>
@@ -100,22 +168,36 @@ export default function PaymentPage() {
 
             <button
               type="button"
-              onClick={() => setPlan("SCHOOL")}
+              onClick={() =>
+                setPlan("SCHOOL")
+              }
+              disabled={loading}
               className={`rounded-lg border p-4 text-left ${
                 plan === "SCHOOL"
                   ? "border-primary bg-primary/10"
                   : "border-gray-300"
               }`}
             >
-              <div className="font-bold">School</div>
-              <div className="text-lg">ZMW 500</div>
+              <div className="font-bold">
+                School
+              </div>
+
+              <div className="text-lg">
+                ZMW 500
+              </div>
+
               <div className="text-sm text-gray-600">
                 School-wide access
               </div>
             </button>
           </div>
 
-          <form onSubmit={handlePayment} className="mt-6 space-y-4">
+          {/* PAYMENT FORM */}
+          <form
+            onSubmit={handlePayment}
+            className="mt-6 space-y-4"
+          >
+            {/* PHONE */}
             <div>
               <label
                 htmlFor="phoneNumber"
@@ -128,17 +210,24 @@ export default function PaymentPage() {
                 id="phoneNumber"
                 type="tel"
                 value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
+                onChange={(e) =>
+                  setPhoneNumber(
+                    e.target.value
+                  )
+                }
                 placeholder="0971234567"
                 required
+                disabled={loading}
                 className="w-full rounded-lg border border-gray-300 px-4 py-3"
               />
 
               <p className="text-xs text-gray-500 mt-1">
-                Example: 0971234567 or +260971234567
+                Example: 0971234567 or
+                +260971234567
               </p>
             </div>
 
+            {/* PROVIDER */}
             <div>
               <label
                 htmlFor="provider"
@@ -151,30 +240,57 @@ export default function PaymentPage() {
                 id="provider"
                 value={provider}
                 onChange={(e) =>
-                  setProvider(e.target.value as Provider)
+                  setProvider(
+                    e.target.value as Provider
+                  )
                 }
+                disabled={loading}
                 className="w-full rounded-lg border border-gray-300 px-4 py-3"
               >
-                <option value="MTN">MTN Mobile Money</option>
-                <option value="AIRTEL">Airtel Money</option>
-                <option value="ZAMTEL">Zamtel Money</option>
+                <option value="MTN">
+                  MTN Mobile Money
+                </option>
+
+                <option value="AIRTEL">
+                  Airtel Money
+                </option>
+
+                <option value="ZAMTEL">
+                  Zamtel Money
+                </option>
               </select>
             </div>
 
+            {/* SUMMARY */}
             <div className="rounded-lg bg-gray-100 p-4">
               <div className="flex justify-between">
-                <span className="font-medium">Selected plan</span>
-                <span className="font-bold">{selectedPlan.name}</span>
+                <span className="font-medium">
+                  Selected plan
+                </span>
+
+                <span className="font-bold">
+                  {selectedPlan.name}
+                </span>
+              </div>
+
+              <div className="flex justify-between mt-2">
+                <span>Provider</span>
+
+                <span className="font-bold">
+                  {provider}
+                </span>
               </div>
 
               <div className="flex justify-between mt-2">
                 <span>Amount</span>
+
                 <span className="font-bold">
                   ZMW {selectedPlan.amount}
                 </span>
               </div>
             </div>
 
+            {/* PAY BUTTON */}
             <button
               type="submit"
               disabled={loading}
@@ -186,8 +302,17 @@ export default function PaymentPage() {
             </button>
           </form>
 
+          {/* MESSAGE */}
           {message && (
-            <div className="mt-4 rounded-lg bg-gray-100 p-4 text-sm">
+            <div
+              className={`mt-4 rounded-lg p-4 text-sm ${
+                messageType === "success"
+                  ? "bg-green-100 text-green-800"
+                  : messageType === "error"
+                  ? "bg-red-100 text-red-800"
+                  : "bg-gray-100 text-gray-800"
+              }`}
+            >
               {message}
             </div>
           )}
