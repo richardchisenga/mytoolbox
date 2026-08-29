@@ -9,6 +9,7 @@ export default function RegisterPage() {
   const [step, setStep] = useState(1);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [school, setSchool] = useState("");
@@ -46,6 +47,7 @@ export default function RegisterPage() {
           body: JSON.stringify({
             fullName,
             email,
+            phone,
             password,
             school,
             province,
@@ -115,6 +117,20 @@ export default function RegisterPage() {
                 className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="you@example.com"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-dark">Zambian mobile number</label>
+              <input
+                type="tel"
+                required
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                pattern="(?:\+260|0)(?:7|9)\d{8}"
+                title="Enter a valid Zambian mobile number, e.g. 0971234567 or +260971234567"
+                className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="0971234567 or +260971234567"
+              />
+              <p className="text-xs text-gray-500 mt-1">Use a Zambian mobile number starting with 07 or 09.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-dark">Password</label>
