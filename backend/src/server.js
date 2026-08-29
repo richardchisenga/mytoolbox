@@ -15,103 +15,87 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET;
+
 // ============ DEEPSEEK AI CLIENT ============
 const deepseek = new OpenAI({
   apiKey: process.env.DEEPSEEK_API_KEY,
   baseURL: "https://api.deepseek.com"
 });
+
 // ============ LIPILA PAYMENT SERVICE ============
-const https = require('https');
 class LipilaService {
   constructor() {
-    this.apiKey = process.env.LIPILA_API_KEY || process.env.LIPIJA_API_KEY;
-    const isSandbox = this.apiKey?.startsWith('lsk_');
-    
-    // Use correct sandbox URL
-    this.baseURL = isSandbox 
-      ? 'https://sandbox.lipila.com' 
-      : 'https://api.lipila.com';
-    
-    // Create HTTPS agent with proper SSL settings
-    const httpsAgent = new https.Agent({
-      rejectUnauthorized: true, // Keep this true for production
-      minVersion: 'TLSv1.2',
-      maxVersion: 'TLSv1.3',
-    });
-    
+    this.apiKey = process.env.LIPILA_API_KEY;
+    this.walletId = process.env.LIPILA_WALLET_ID;
+    this.baseURL = (process.env.LIPILA_BASE_URL || 'https://console.lipila.tech/api/v1').replace(/\/$/, '');
+
     this.client = axios.create({
       baseURL: this.baseURL,
       headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
+        'x-api-key': this.apiKey,
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
       timeout: 30000,
-      httpsAgent: httpsAgent,
     });
   }
 
-  async createCollection({ referenceId, amount, accountNumber, currency = 'ZMW', callbackUrl }) {
+  normalizeProvider(provider) {
+    const map = {
+      mtn: 'MTN_MOMO_ZMB',
+      airtel: 'AIRTEL_OAPI_ZMB',
+      zamtel: 'ZAMTEL_ZMB',
+      MTN_MOMO_ZMB: 'MTN_MOMO_ZMB',
+      AIRTEL_OAPI_ZMB: 'AIRTEL_OAPI_ZMB',
+      ZAMTEL_ZMB: 'ZAMTEL_ZMB',
+    };
+    return map[provider] || null;
+  }
+
+  async createMobileMoneyPayment({ reference, amount, payer, provider, payerEmail, payerMessage, metadata }) {
+    if (!this.apiKey) throw new Error('LIPILA_API_KEY is not configured');
+    if (!this.walletId) throw new Error('LIPILA_WALLET_ID is not configured');
+
+    const normalizedProvider = this.normalizeProvider(provider);
+    if (!normalizedProvider) throw new Error('Unsupported mobile money provider');
+
     try {
-      console.log('📤 Sending payment request to Lipila...');
-      console.log(`📍 URL: ${this.baseURL}/api/v1/collections`);
-      console.log(`📋 Reference: ${referenceId}`);
-      console.log(`💰 Amount: ${amount} ${currency}`);
-      console.log(`📱 Account: ${accountNumber}`);
-      
-      const payload = {
-        referenceId,
-        amount,
-        accountNumber,
-        currency,
-        callbackUrl,
-      };
-      
-      console.log('📦 Payload:', JSON.stringify(payload, null, 2));
-      
-      const response = await this.client.post('/api/v1/collections', payload);
-      
-      console.log('✅ Lipila response received:', response.status);
+      const response = await this.client.post(`/payments/mobile-money/${encodeURIComponent(this.walletId)}/`, {
+        reference,
+        amount: Number(amount).toFixed(2),
+        payer,
+        provider: normalizedProvider,
+        ...(payerEmail ? { payer_email: payerEmail } : {}),
+        ...(payerMessage ? { payer_message: payerMessage } : {}),
+        ...(metadata ? { metadata } : {}),
+      });
       return response.data;
     } catch (error) {
-      console.error('❌ Lipila collection error details:');
-      console.error('  Message:', error.message);
-      console.error('  Code:', error.code);
-      
-      if (error.response) {
-        console.error('  Response status:', error.response.status);
-        console.error('  Response data:', JSON.stringify(error.response.data, null, 2));
-        throw new Error(error.response.data?.message || 'Payment initiation failed');
-      } else if (error.request) {
-        console.error('  No response received from Lipila');
-        console.error('  Request URL:', error.config?.url);
-        throw new Error('No response from Lipila server');
-      } else {
-        console.error('  Error:', error);
-        throw new Error(error.message || 'Payment initiation failed');
-      }
+      console.error('Lipila payment error:', error.response?.status, error.response?.data || error.message);
+      const detail = error.response?.data?.detail || error.response?.data?.message || error.response?.data?.error;
+      throw new Error(detail || `Lipila payment initiation failed (${error.response?.status || 'network error'})`);
     }
   }
 
-  async getTransactionStatus(referenceId) {
+  async getPaymentStatus(reference) {
     try {
-      const response = await this.client.get(`/api/v1/transactions/${referenceId}/status`);
+      const response = await this.client.get(`/payments/${encodeURIComponent(reference)}/`);
       return response.data;
     } catch (error) {
-      console.error('Status check error:', error.response?.data || error.message);
-      throw new Error('Failed to check transaction status');
+      console.error('Lipila status error:', error.response?.status, error.response?.data || error.message);
+      const detail = error.response?.data?.detail || error.response?.data?.message || error.response?.data?.error;
+      throw new Error(detail || `Failed to check Lipila transaction status (${error.response?.status || 'network error'})`);
     }
   }
 
-  async getBalance() {
-    try {
-      const response = await this.client.get('/api/v1/balance');
-      return response.data;
-    } catch (error) {
-      console.error('Balance check error:', error.response?.data || error.message);
-      throw new Error('Failed to get balance');
-    }
+  async health() {
+    const response = await this.client.get('/status/');
+    return response.data;
   }
 }
+
+const lipilaService = new LipilaService();
+
 // ============ CORS CONFIGURATION ============
 const corsOptions = {
   origin: [
@@ -2454,165 +2438,169 @@ app.delete('/api/assessments/:id', authenticate, async (req, res) => {
 });
 
 // ============ PAYMENT ROUTES ============
+const PLAN_CONFIG = {
+  PRO: { amount: 150, role: 'PRO', schemesLimit: 100, lessonsLimit: 1000 },
+  SCHOOL: { amount: 500, role: 'SCHOOL', schemesLimit: 1000, lessonsLimit: 10000 },
+};
+
+function normalizePlan(plan) {
+  const value = String(plan || 'PRO').trim().toUpperCase();
+  if (value === 'SCHOOL') return 'SCHOOL';
+  return 'PRO';
+}
+
+function normalizeZambianPhone(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (/^260\d{9}$/.test(digits)) return digits;
+  if (/^0\d{9}$/.test(digits)) return `260${digits.slice(1)}`;
+  throw new Error('Invalid Zambian phone number. Use 260XXXXXXXXX or 0XXXXXXXXX.');
+}
+
+function providerStatusIs(status) {
+  return String(status || '').toLowerCase();
+}
+
+async function applySuccessfulPayment(payment) {
+  const config = PLAN_CONFIG[payment.plan] || PLAN_CONFIG.PRO;
+  await prisma.payment.update({
+    where: { referenceId: payment.referenceId },
+    data: { status: 'completed', completedAt: new Date() }
+  });
+  await prisma.user.update({
+    where: { id: payment.userId },
+    data: {
+      role: config.role,
+      schemesLimit: config.schemesLimit,
+      lessonsLimit: config.lessonsLimit,
+      subscriptionEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    }
+  });
+}
 
 app.post('/api/payments/initiate', authenticate, async (req, res) => {
   try {
     console.log('📥 Payment request body:', req.body);
-    
-    const { amount, phoneNumber, plan } = req.body;
+    const { phoneNumber, plan, provider, payerEmail } = req.body;
+    const normalizedPlan = normalizePlan(plan);
+    const config = PLAN_CONFIG[normalizedPlan];
+    const cleanNumber = normalizeZambianPhone(phoneNumber);
 
-    if (!amount || !phoneNumber) {
-      return res.status(400).json({ error: 'Amount and phone number are required' });
-    }
+    if (!provider) return res.status(400).json({ error: 'Mobile money provider is required' });
+    if (!lipilaService.normalizeProvider(provider)) return res.status(400).json({ error: 'Unsupported mobile money provider' });
 
-    const cleanNumber = phoneNumber.replace(/\s/g, '');
-    if (!cleanNumber.match(/^260[0-9]{9}$/)) {
-      return res.status(400).json({ error: 'Invalid phone number format. Use 260XXXXXXXXX' });
-    }
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const user = await prisma.user.findUnique({
-      where: { id: req.userId }
+    const referenceId = `MT-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    const payment = await lipilaService.createMobileMoneyPayment({
+      reference: referenceId,
+      amount: config.amount,
+      payer: cleanNumber,
+      provider,
+      payerEmail: payerEmail || user.email,
+      payerMessage: `MyToolbox ${normalizedPlan} plan`,
+      metadata: { userId: req.userId, plan: normalizedPlan },
     });
 
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const referenceId = `TX-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    const callbackUrl = `${process.env.BACKEND_URL || 'https://mytoolbox-production.up.railway.app'}/api/payments/webhook`;
-
-    const payment = await lipilaService.createCollection({
-      referenceId,
-      amount: parseFloat(amount),
-      accountNumber: cleanNumber,
-      currency: 'ZMW',
-      callbackUrl,
-    });
-
+    const providerTransactionId = payment.transaction_id || payment.transactionId || payment.id || referenceId;
     const paymentRecord = await prisma.payment.create({
       data: {
         userId: req.userId,
-        referenceId: referenceId,
-        transactionId: payment.transactionId || referenceId,
-        amount: parseFloat(amount),
+        referenceId,
+        transactionId: providerTransactionId,
+        amount: config.amount,
         currency: 'ZMW',
         provider: 'lipila',
         phoneNumber: cleanNumber,
-        status: 'pending',
-        externalId: payment.id || null,
-        plan: plan || 'PRO',
+        status: providerStatusIs(payment.status) === 'completed' ? 'completed' : 'pending',
+        externalId: payment.id || payment.transaction_id || null,
+        plan: normalizedPlan,
         expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+        completedAt: providerStatusIs(payment.status) === 'completed' ? new Date() : null,
       }
     });
 
-    res.status(201).json({
+    if (paymentRecord.status === 'completed') await applySuccessfulPayment(paymentRecord);
+
+    return res.status(201).json({
       success: true,
       payment: paymentRecord,
       provider: payment,
-      message: 'Payment initiated. Please check your phone for the prompt.',
+      message: paymentRecord.status === 'completed'
+        ? 'Payment completed successfully.'
+        : 'Payment initiated. Please approve the mobile money request on your phone.',
     });
-
   } catch (error) {
     console.error('❌ Payment initiation error:', error);
-    res.status(500).json({
-      error: 'Failed to initiate payment',
-      details: error.message
-    });
+    return res.status(400).json({ error: error.message || 'Failed to initiate payment' });
   }
 });
 
-app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+app.post('/api/payments/webhook', async (req, res) => {
   try {
-    const payload = req.body;
-    console.log('📥 Webhook received:', payload);
+    const body = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : req.body;
+    const payload = typeof body === 'string' ? JSON.parse(body || '{}') : (body || {});
+    const data = payload.data || payload;
+    const referenceId = data.reference || data.referenceId || payload.reference || payload.referenceId;
+    const status = providerStatusIs(data.status || payload.status);
+    const transactionId = data.transaction_id || data.transactionId || data.id || payload.transaction_id || payload.transactionId;
 
-    const { referenceId, status, amount, accountNumber, transactionId } = payload;
+    console.log('📥 Lipila webhook:', { event: payload.event, referenceId, status });
+    if (!referenceId) return res.status(400).json({ error: 'Missing payment reference' });
 
-    const payment = await prisma.payment.findUnique({
-      where: { referenceId: referenceId },
-      include: { user: true },
-    });
+    const payment = await prisma.payment.findUnique({ where: { referenceId }, include: { user: true } });
+    if (!payment) return res.status(404).json({ error: 'Payment not found' });
 
-    if (!payment) {
-      console.log('⚠️ Payment not found for reference:', referenceId);
-      return res.status(404).json({ error: 'Payment not found' });
-    }
-
-    if (payment.status === 'completed') {
-      console.log('⏭️ Payment already completed:', referenceId);
-      return res.status(200).json({ message: 'Already processed' });
-    }
-
-    const isSuccessful = status === 'completed' || status === 'successful';
-    const isFailed = status === 'failed' || status === 'cancelled';
-
-    let updatedStatus = 'pending';
-    if (isSuccessful) {
-      updatedStatus = 'completed';
-    } else if (isFailed) {
-      updatedStatus = 'failed';
-    }
-
-    await prisma.payment.update({
-      where: { referenceId: referenceId },
-      data: {
-        status: updatedStatus,
-        completedAt: isSuccessful ? new Date() : null,
-        externalId: transactionId || payload.id || payment.externalId,
-      }
-    });
-
-    if (isSuccessful && payment.user) {
-      const plan = payment.plan || 'PRO';
-      await prisma.user.update({
-        where: { id: payment.userId },
-        data: {
-          role: plan,
-          schemesLimit: plan === 'PRO' ? 100 : 3,
-          lessonsLimit: plan === 'PRO' ? 1000 : 5,
-          subscriptionEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        }
+    if (['completed', 'successful', 'success'].includes(status)) {
+      await prisma.payment.update({
+        where: { referenceId },
+        data: { externalId: transactionId || payment.externalId }
       });
-      console.log(`✅ User ${payment.user.email} upgraded to ${plan}`);
+      await applySuccessfulPayment(payment);
+    } else if (['failed', 'cancelled', 'canceled', 'rejected', 'expired'].includes(status)) {
+      await prisma.payment.update({
+        where: { referenceId },
+        data: { status: 'failed', externalId: transactionId || payment.externalId }
+      });
     }
 
-    res.status(200).json({ message: 'Webhook processed successfully' });
-
+    return res.status(200).json({ received: true });
   } catch (error) {
-    console.error('❌ Webhook error:', error);
-    res.status(500).json({ error: 'Webhook processing failed' });
+    console.error('❌ Lipila webhook error:', error);
+    return res.status(400).json({ error: 'Webhook processing failed' });
   }
 });
 
 app.get('/api/payments/:referenceId/status', authenticate, async (req, res) => {
   try {
     const { referenceId } = req.params;
+    const payment = await prisma.payment.findUnique({ where: { referenceId } });
+    if (!payment) return res.status(404).json({ error: 'Payment not found' });
+    if (payment.userId !== req.userId) return res.status(403).json({ error: 'Unauthorized' });
 
-    const payment = await prisma.payment.findUnique({
-      where: { referenceId: referenceId },
-    });
+    const providerStatus = await lipilaService.getPaymentStatus(referenceId);
+    const rawStatus = providerStatusIs(providerStatus.status || providerStatus.data?.status);
 
-    if (!payment) {
-      return res.status(404).json({ error: 'Payment not found' });
+    if (['completed', 'successful', 'success'].includes(rawStatus) && payment.status !== 'completed') {
+      await applySuccessfulPayment(payment);
+    } else if (['failed', 'cancelled', 'canceled', 'rejected', 'expired'].includes(rawStatus) && payment.status !== 'failed') {
+      await prisma.payment.update({ where: { referenceId }, data: { status: 'failed' } });
     }
 
-    if (payment.userId !== req.userId) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
-
-    const status = await lipilaService.getTransactionStatus(referenceId);
-
-    res.json({
-      payment,
-      providerStatus: status,
-    });
-
+    const freshPayment = await prisma.payment.findUnique({ where: { referenceId } });
+    return res.json({ payment: freshPayment, providerStatus });
   } catch (error) {
     console.error('❌ Status check error:', error);
-    res.status(500).json({
-      error: 'Failed to check payment status',
-      details: error.message
-    });
+    return res.status(502).json({ error: error.message || 'Failed to check payment status' });
+  }
+});
+
+app.get('/api/payments/lipila/health', authenticate, async (req, res) => {
+  try {
+    const result = await lipilaService.health();
+    return res.json({ configured: true, lipila: result });
+  } catch (error) {
+    return res.status(502).json({ configured: Boolean(process.env.LIPILA_API_KEY && process.env.LIPILA_WALLET_ID), error: error.message });
   }
 });
 
