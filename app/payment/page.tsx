@@ -1,255 +1,197 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+
+type Plan = "PRO" | "SCHOOL";
+type Provider = "MTN" | "AIRTEL" | "ZAMTEL";
+
+const plans = {
+  PRO: {
+    name: "Pro",
+    amount: 150,
+    description: "Unlimited lesson plans",
+  },
+  SCHOOL: {
+    name: "School",
+    amount: 500,
+    description: "School-wide access",
+  },
+};
 
 export default function PaymentPage() {
-  const router = useRouter();
+  const [plan, setPlan] = useState<Plan>("PRO");
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [provider, setProvider] = useState("mtn");
+  const [provider, setProvider] = useState<Provider>("MTN");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const handlePayment = async (e: React.FormEvent) => {
+  const selectedPlan = plans[plan];
+
+  async function handlePayment(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
     setLoading(true);
-    setError("");
+    setMessage("");
 
     try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        router.push("/login");
-        return;
-      }
+      const response = await fetch("/api/payments/initiate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          plan,
+          phoneNumber,
+          provider,
+        }),
+      });
 
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/payments/initiate`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            amount: 150,
-            phoneNumber: phoneNumber,
-            provider: provider,
-            plan: "PRO",
-          }),
-        }
-      );
+      const data = await response.json();
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Payment initiation failed");
+        throw new Error(data.message || data.error || "Payment failed");
       }
 
-      setSuccess(true);
-    } catch (error: any) {
-      setError(error.message);
+      setMessage(
+        data.message ||
+          "Payment request sent. Please approve the payment on your phone."
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to start payment."
+      );
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   return (
     <div className="min-h-screen bg-cream p-8">
       <div className="max-w-md mx-auto">
-        <h1 className="text-3xl font-bold text-primary text-center">💳 Upgrade to Pro</h1>
-        <p className="text-gray-600 text-center mt-2">Pay ZMW 150 for unlimited lesson plans</p>
+        <h1 className="text-3xl font-bold text-primary text-center">
+          💳 Upgrade
+        </h1>
 
-        {success ? (
-          <div className="bg-white p-6 rounded-xl shadow-md mt-6 text-center">
-            <div className="text-6xl mb-4">✅</div>
-            <h2 className="text-xl font-bold text-primary">Payment Initiated!</h2>
-            <p className="text-gray-600 mt-2">Please complete the payment on your phone.</p>
+        <p className="text-gray-600 text-center mt-2">
+          Pay securely using Zambian mobile money.
+        </p>
+
+        <div className="bg-white rounded-xl shadow-md p-6 mt-6">
+          <h2 className="text-xl font-semibold mb-4">Choose a plan</h2>
+
+          <div className="grid grid-cols-2 gap-3">
             <button
-              onClick={() => router.push("/dashboard")}
-              className="mt-4 bg-yellow-500 text-black px-6 py-2 rounded-md hover:bg-yellow-400"
+              type="button"
+              onClick={() => setPlan("PRO")}
+              className={`rounded-lg border p-4 text-left ${
+                plan === "PRO"
+                  ? "border-primary bg-primary/10"
+                  : "border-gray-300"
+              }`}
             >
-              Go to Dashboard
+              <div className="font-bold">Pro</div>
+              <div className="text-lg">ZMW 150</div>
+              <div className="text-sm text-gray-600">
+                Unlimited lesson plans
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPlan("SCHOOL")}
+              className={`rounded-lg border p-4 text-left ${
+                plan === "SCHOOL"
+                  ? "border-primary bg-primary/10"
+                  : "border-gray-300"
+              }`}
+            >
+              <div className="font-bold">School</div>
+              <div className="text-lg">ZMW 500</div>
+              <div className="text-sm text-gray-600">
+                School-wide access
+              </div>
             </button>
           </div>
-        ) : (
-          <form onSubmit={handlePayment} className="bg-white p-6 rounded-xl shadow-md mt-6">
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
-                ❌ {error}
-              </div>
-            )}
 
+          <form onSubmit={handlePayment} className="mt-6 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Mobile Money Provider</label>
-              <select
-                value={provider}
-                onChange={(e) => setProvider(e.target.value)}
-                className="mt-1 w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                required
+              <label
+                htmlFor="phoneNumber"
+                className="block text-sm font-medium mb-1"
               >
-                <option value="mtn">MTN Mobile Money</option>
-                <option value="airtel">Airtel Money</option>
-                <option value="zamtel">Zamtel Kwacha</option>
-              </select>
-            </div>
+                Zambian phone number
+              </label>
 
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700">Phone Number</label>
               <input
+                id="phoneNumber"
                 type="tel"
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
-                placeholder="e.g. 260977123456"
-                className="mt-1 w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="0971234567"
                 required
+                className="w-full rounded-lg border border-gray-300 px-4 py-3"
               />
-              <p className="text-xs text-gray-500 mt-1">Format: 260XXXXXXXXX (without +)</p>
+
+              <p className="text-xs text-gray-500 mt-1">
+                Example: 0971234567 or +260971234567
+              </p>
             </div>
 
-            <button
-  "use client";
-
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-
-export default function PaymentPage() {
-  const router = useRouter();
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [provider, setProvider] = useState("mtn");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
-
-  const handlePayment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        router.push("/login");
-        return;
-      }
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/payments/initiate`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            amount: 150,
-            phoneNumber: phoneNumber,
-            provider: provider,
-            plan: "PRO",
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Payment initiation failed");
-      }
-
-      setSuccess(true);
-    } catch (error: any) {
-      setError(error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-cream p-8">
-      <div className="max-w-md mx-auto">
-        <h1 className="text-3xl font-bold text-primary text-center">💳 Upgrade to Pro</h1>
-        <p className="text-gray-600 text-center mt-2">Pay ZMW 150 for unlimited lesson plans</p>
-
-        {success ? (
-          <div className="bg-white p-6 rounded-xl shadow-md mt-6 text-center">
-            <div className="text-6xl mb-4">✅</div>
-            <h2 className="text-xl font-bold text-primary">Payment Initiated!</h2>
-            <p className="text-gray-600 mt-2">Please complete the payment on your phone.</p>
-            <button
-              onClick={() => router.push("/dashboard")}
-              className="mt-4 bg-yellow-500 text-black px-6 py-2 rounded-md hover:bg-yellow-400"
-            >
-              Go to Dashboard
-            </button>
-          </div>
-        ) : (
-          <form onSubmit={handlePayment} className="bg-white p-6 rounded-xl shadow-md mt-6">
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
-                ❌ {error}
-              </div>
-            )}
-
             <div>
-              <label className="block text-sm font-medium text-gray-700">Mobile Money Provider</label>
-              <select
-                value={provider}
-                onChange={(e) => setProvider(e.target.value)}
-                className="mt-1 w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                required
+              <label
+                htmlFor="provider"
+                className="block text-sm font-medium mb-1"
               >
-                <option value="mtn">MTN Mobile Money</option>
-                <option value="airtel">Airtel Money</option>
-                <option value="zamtel">Zamtel Kwacha</option>
+                Mobile money provider
+              </label>
+
+              <select
+                id="provider"
+                value={provider}
+                onChange={(e) =>
+                  setProvider(e.target.value as Provider)
+                }
+                className="w-full rounded-lg border border-gray-300 px-4 py-3"
+              >
+                <option value="MTN">MTN Mobile Money</option>
+                <option value="AIRTEL">Airtel Money</option>
+                <option value="ZAMTEL">Zamtel Money</option>
               </select>
             </div>
 
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700">Phone Number</label>
-              <input
-                type="tel"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                placeholder="e.g. 260977123456"
-                className="mt-1 w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                required
-              />
-              <p className="text-xs text-gray-500 mt-1">Format: 260XXXXXXXXX (without +)</p>
+            <div className="rounded-lg bg-gray-100 p-4">
+              <div className="flex justify-between">
+                <span className="font-medium">Selected plan</span>
+                <span className="font-bold">{selectedPlan.name}</span>
+              </div>
+
+              <div className="flex justify-between mt-2">
+                <span>Amount</span>
+                <span className="font-bold">
+                  ZMW {selectedPlan.amount}
+                </span>
+              </div>
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="mt-6 w-full bg-yellow-500 text-black py-3 rounded-lg hover:bg-yellow-400 disabled:opacity-50 font-semibold"
+              className="w-full rounded-lg bg-primary text-white py-3 font-semibold disabled:opacity-50"
             >
-              {loading ? "Processing..." : "Pay Now"}
+              {loading
+                ? "Processing..."
+                : `Pay ZMW ${selectedPlan.amount}`}
             </button>
-
-            <div className="text-center mt-4">
-              <Link href="/pricing" className="text-sm text-primary hover:underline">
-                ← Back to Pricing
-              </Link>
-            </div>
           </form>
-        )}
-      </div>
-    </div>
-  );
-}
-            type="submit"
-              disabled={loading}
-              className="mt-6 w-full bg-yellow-500 text-black py-3 rounded-lg hover:bg-yellow-400 disabled:opacity-50 font-semibold"
-            >
-              {loading ? "Processing..." : "Pay Now"}
-            </button>
 
-            <div className="text-center mt-4">
-              <Link href="/pricing" className="text-sm text-primary hover:underline">
-                ← Back to Pricing
-              </Link>
+          {message && (
+            <div className="mt-4 rounded-lg bg-gray-100 p-4 text-sm">
+              {message}
             </div>
-          </form>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
