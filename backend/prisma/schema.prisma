@@ -12,6 +12,7 @@ model User {
   id                 String    @id @default(cuid())
   fullName           String
   email              String    @unique
+  phone              String
   passwordHash       String
   school             String
   province           String
@@ -95,6 +96,7 @@ model Scheme {
   school          String?  @default("")
   teacherName     String?  @default("")
   subtopic        String?  @default("")
+  weekTopics      Json?    @default("{}")
   weeks           Json     @default("[]")
   assessmentWeeks Int[]    @default([3, 6, 9, 12])
   testTopics      Json?    @default("[]")
