@@ -10,6 +10,7 @@ const prisma = new PrismaClient();
 const registerSchema = z.object({
   fullName: z.string().trim().min(2).max(120),
   email: z.string().trim().email().max(254).transform(v => v.toLowerCase()),
+  phone: z.string().trim().min(9).max(16),
   password: z.string().min(8).max(128),
   school: z.string().trim().min(2).max(200),
   province: z.string().trim().min(2).max(100),
@@ -21,6 +22,37 @@ const loginSchema = z.object({ email: z.string().trim().email().transform(v => v
 
 function adminEmails() {
   return new Set((process.env.ADMIN_EMAILS || '').split(',').map(v => v.trim().toLowerCase()).filter(Boolean));
+}
+
+function normalizeZambianPhone(value) {
+  const compact = String(value || '').replace(/[\s-]/g, '');
+  if (/^0(?:7|9)\d{8}$/.test(compact)) return `+260${compact.slice(1)}`;
+  if (/^\+260(?:7|9)\d{8}$/.test(compact)) return compact;
+  throw new Error('Enter a valid Zambian mobile number, e.g. 0971234567 or +260971234567');
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>'"]/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+  }[c]));
+}
+
+async function sendWelcomeEmail(user) {
+  if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM) {
+    console.warn('Welcome email skipped: RESEND_API_KEY or RESEND_FROM is not configured');
+    return;
+  }
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: process.env.RESEND_FROM,
+      to: [user.email],
+      subject: 'Welcome to MyToolbox',
+      html: `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>Welcome to MyToolbox, ${escapeHtml(user.fullName)}!</h2><p>Your account has been created successfully.</p><p>You can now sign in and start creating CBC/OBC lesson plans, schemes and other teaching resources.</p><p><strong>Registered phone:</strong> ${escapeHtml(user.phone)}</p><p>Thank you for joining MyToolbox.</p></div>`
+    })
+  });
+  if (!response.ok) throw new Error(`Welcome email provider returned ${response.status}`);
 }
 
 function publicUser(user) {
@@ -93,6 +125,7 @@ router.post('/reset-password', async (req, res) => {
 router.post('/register', async (req, res) => {
   try {
     const input = registerSchema.parse(req.body);
+    input.phone = normalizeZambianPhone(input.phone);
     const existingUser = await prisma.user.findUnique({ where: { email: input.email } });
     if (existingUser) return res.status(409).json({ error: 'An account with this email already exists' });
 
@@ -101,6 +134,7 @@ router.post('/register', async (req, res) => {
     const user = await prisma.user.create({
       data: { ...input, passwordHash, role, lastActive: new Date() }
     });
+    sendWelcomeEmail(user).catch(error => console.error('Welcome email error:', error));
     res.status(201).json({ user: publicUser(user), token: signAccessToken(user) });
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ error: 'Invalid registration details', details: error.flatten().fieldErrors });
