@@ -1,4 +1,3 @@
-```tsx
 "use client";
 
 import { useState } from "react";
@@ -12,7 +11,6 @@ const plans = {
     amount: 150,
     description: "Unlimited lesson plans",
   },
-
   SCHOOL: {
     name: "School",
     amount: 500,
@@ -21,48 +19,34 @@ const plans = {
 };
 
 export default function PaymentPage() {
-  const [plan, setPlan] =
-    useState<Plan>("PRO");
+  const [plan, setPlan] = useState<Plan>("PRO");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [provider, setProvider] = useState<Provider>("MTN");
 
-  const [phoneNumber, setPhoneNumber] =
-    useState("");
-
-  const [provider, setProvider] =
-    useState<Provider>("MTN");
-
-  const [loading, setLoading] =
-    useState(false);
-
-  const [message, setMessage] =
-    useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
   const [messageType, setMessageType] =
-    useState<
-      "success" | "error" | "info"
-    >("info");
+    useState<"success" | "error" | "info">("info");
 
-  const selectedPlan =
-    plans[plan];
+  const selectedPlan = plans[plan];
 
   async function handlePayment(
     e: React.FormEvent<HTMLFormElement>
   ) {
     e.preventDefault();
 
-    if (loading) {
-      return;
-    }
+    if (loading) return;
 
     setLoading(true);
     setMessage("");
     setMessageType("info");
 
     try {
-      const cleanedPhone =
-        phoneNumber
-          .trim()
-          .replace(/\s+/g, "")
-          .replace(/-/g, "");
+      const cleanedPhone = phoneNumber
+        .trim()
+        .replace(/\s+/g, "")
+        .replace(/-/g, "");
 
       if (!cleanedPhone) {
         throw new Error(
@@ -72,22 +56,14 @@ export default function PaymentPage() {
 
       /*
        * IMPORTANT:
-       *
-       * provider MUST be included.
+       * provider is included in the request.
        */
 
       const paymentRequest = {
-        plan:
-          plan.toLowerCase(),
-
-        phoneNumber:
-          cleanedPhone,
-
-        amount:
-          selectedPlan.amount,
-
-        provider:
-          provider,
+        plan: plan.toLowerCase(),
+        phoneNumber: cleanedPhone,
+        amount: selectedPlan.amount,
+        provider: provider,
       };
 
       console.log(
@@ -95,34 +71,25 @@ export default function PaymentPage() {
         paymentRequest
       );
 
-      const response =
-        await fetch(
-          "/api/payments/initiate",
-          {
-            method: "POST",
+      const response = await fetch(
+        "/api/payments/initiate",
+        {
+          method: "POST",
 
-            headers: {
-              "Content-Type":
-                "application/json",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
 
-              Accept:
-                "application/json",
-            },
+          credentials: "include",
 
-            credentials:
-              "include",
+          body: JSON.stringify(paymentRequest),
+        }
+      );
 
-            body:
-              JSON.stringify(
-                paymentRequest
-              ),
-          }
-        );
-
-      const data =
-        await response
-          .json()
-          .catch(() => ({}));
+      const data = await response
+        .json()
+        .catch(() => ({}));
 
       console.log(
         "📥 PAYMENT RESPONSE:",
@@ -137,9 +104,7 @@ export default function PaymentPage() {
         );
       }
 
-      setMessageType(
-        "success"
-      );
+      setMessageType("success");
 
       setMessage(
         data?.instructions ||
@@ -152,9 +117,7 @@ export default function PaymentPage() {
         error
       );
 
-      setMessageType(
-        "error"
-      );
+      setMessageType("error");
 
       setMessage(
         error instanceof Error
@@ -170,6 +133,8 @@ export default function PaymentPage() {
     <div className="min-h-screen bg-cream p-8">
       <div className="max-w-md mx-auto">
 
+        {/* HEADER */}
+
         <h1 className="text-3xl font-bold text-primary text-center">
           💳 Upgrade
         </h1>
@@ -177,6 +142,8 @@ export default function PaymentPage() {
         <p className="text-gray-600 text-center mt-2">
           Pay securely using Zambian mobile money.
         </p>
+
+        {/* CARD */}
 
         <div className="bg-white rounded-xl shadow-md p-6 mt-6">
 
@@ -188,16 +155,16 @@ export default function PaymentPage() {
 
           <div className="grid grid-cols-2 gap-3">
 
+            {/* PRO */}
+
             <button
               type="button"
               disabled={loading}
-              onClick={() =>
-                setPlan("PRO")
-              }
-              className={`rounded-lg border p-4 text-left ${
+              onClick={() => setPlan("PRO")}
+              className={`rounded-lg border p-4 text-left transition ${
                 plan === "PRO"
                   ? "border-primary bg-primary/10"
-                  : "border-gray-300"
+                  : "border-gray-300 hover:border-primary"
               }`}
             >
               <div className="font-bold">
@@ -213,16 +180,16 @@ export default function PaymentPage() {
               </div>
             </button>
 
+            {/* SCHOOL */}
+
             <button
               type="button"
               disabled={loading}
-              onClick={() =>
-                setPlan("SCHOOL")
-              }
-              className={`rounded-lg border p-4 text-left ${
+              onClick={() => setPlan("SCHOOL")}
+              className={`rounded-lg border p-4 text-left transition ${
                 plan === "SCHOOL"
                   ? "border-primary bg-primary/10"
-                  : "border-gray-300"
+                  : "border-gray-300 hover:border-primary"
               }`}
             >
               <div className="font-bold">
@@ -239,6 +206,8 @@ export default function PaymentPage() {
             </button>
 
           </div>
+
+          {/* PAYMENT FORM */}
 
           <form
             onSubmit={handlePayment}
@@ -260,14 +229,12 @@ export default function PaymentPage() {
                 type="tel"
                 value={phoneNumber}
                 onChange={(e) =>
-                  setPhoneNumber(
-                    e.target.value
-                  )
+                  setPhoneNumber(e.target.value)
                 }
                 placeholder="0976638676"
                 required
                 disabled={loading}
-                className="w-full rounded-lg border border-gray-300 px-4 py-3"
+                className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-primary"
               />
 
               <p className="text-xs text-gray-500 mt-1">
@@ -295,7 +262,7 @@ export default function PaymentPage() {
                 }
                 disabled={loading}
                 required
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 bg-white"
+                className="w-full rounded-lg border border-gray-300 px-4 py-3 bg-white outline-none focus:border-primary"
               >
                 <option value="MTN">
                   MTN Mobile Money
@@ -316,7 +283,7 @@ export default function PaymentPage() {
             <div className="rounded-lg bg-gray-100 p-4">
 
               <div className="flex justify-between">
-                <span>
+                <span className="font-medium">
                   Plan
                 </span>
 
@@ -347,7 +314,7 @@ export default function PaymentPage() {
 
             </div>
 
-            {/* BUTTON */}
+            {/* PAY BUTTON */}
 
             <button
               type="submit"
@@ -355,7 +322,7 @@ export default function PaymentPage() {
                 loading ||
                 !phoneNumber.trim()
               }
-              className="w-full rounded-lg bg-primary text-white py-3 font-semibold disabled:opacity-50"
+              className="w-full rounded-lg bg-primary text-white py-3 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading
                 ? "Processing..."
@@ -380,6 +347,8 @@ export default function PaymentPage() {
             </div>
           )}
 
+          {/* SECURITY */}
+
           <div className="text-center text-xs text-gray-500 mt-5">
             🔒 Your payment is secure and processed by Lipila
           </div>
@@ -389,4 +358,3 @@ export default function PaymentPage() {
     </div>
   );
 }
-```
