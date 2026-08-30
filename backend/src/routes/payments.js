@@ -1,4 +1,3 @@
-```javascript
 const express = require("express");
 const router = express.Router();
 const { v4: uuidv4 } = require("uuid");
@@ -8,42 +7,28 @@ const { authenticate } = require("../utils/auth");
 
 const prisma = new PrismaClient();
 
-/*
-|--------------------------------------------------------------------------
-| LIPILA CONFIG
-|--------------------------------------------------------------------------
-*/
-
 const LIPILA_API_BASE =
   process.env.LIPILA_BASE_URL ||
   "https://console.lipila.tech/api/v1";
 
-/*
-|--------------------------------------------------------------------------
-| PRICING
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   PLANS
+========================================================= */
 
 const pricing = {
   pro: {
     amount: 150,
     label: "Pro Plan",
   },
-
   school: {
     amount: 500,
     label: "School Plan",
   },
 };
 
-/*
-|--------------------------------------------------------------------------
-| LIPILA PROVIDERS
-|--------------------------------------------------------------------------
-|
-| These are the actual provider codes expected by Lipila.
-|
-*/
+/* =========================================================
+   LIPILA PROVIDERS
+========================================================= */
 
 const providers = {
   MTN: "MTN_MOMO_ZMB",
@@ -51,47 +36,27 @@ const providers = {
   ZAMTEL: "ZAMTEL_ZMB",
 };
 
-/*
-|--------------------------------------------------------------------------
-| VALIDATION
-|--------------------------------------------------------------------------
-|
-| provider is OPTIONAL here because we can infer it from
-| the Zambian phone number if the frontend doesn't send it.
-|
-*/
+/* =========================================================
+   VALIDATION
+========================================================= */
 
 const paymentSchema = z.object({
-  plan: z.enum([
-    "PRO",
-    "SCHOOL",
-    "pro",
-    "school",
-  ]),
+  plan: z.string().trim().min(2),
 
   phoneNumber: z
     .string()
     .trim()
     .min(9),
 
-  amount: z
-    .union([
-      z.number(),
-      z.string(),
-    ])
-    .optional(),
-
   provider: z
     .string()
     .trim()
-    .optional(),
+    .min(2),
 });
 
-/*
-|--------------------------------------------------------------------------
-| NORMALIZE PLAN
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   NORMALIZE PLAN
+========================================================= */
 
 function normalizePlan(plan) {
   return String(plan)
@@ -99,27 +64,19 @@ function normalizePlan(plan) {
     .toLowerCase();
 }
 
-/*
-|--------------------------------------------------------------------------
-| NORMALIZE PROVIDER
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   NORMALIZE PROVIDER
+========================================================= */
 
 function normalizeProvider(provider) {
-  if (!provider) {
-    return null;
-  }
-
   return String(provider)
     .trim()
     .toUpperCase();
 }
 
-/*
-|--------------------------------------------------------------------------
-| NORMALIZE PHONE
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   NORMALIZE ZAMBIAN PHONE
+========================================================= */
 
 function normalizePhone(phone) {
   let value = String(phone)
@@ -132,7 +89,6 @@ function normalizePhone(phone) {
    * ->
    * 260976638676
    */
-
   if (value.startsWith("+260")) {
     value = value.substring(1);
   }
@@ -142,7 +98,6 @@ function normalizePhone(phone) {
    * ->
    * 260976638676
    */
-
   if (value.startsWith("0")) {
     if (value.length !== 10) {
       throw new Error(
@@ -156,9 +111,10 @@ function normalizePhone(phone) {
   }
 
   /*
-   * Final validation
+   * Final format:
+   *
+   * 260 + 9 digits
    */
-
   if (!/^260\d{9}$/.test(value)) {
     throw new Error(
       "Enter a valid Zambian mobile money number."
@@ -168,74 +124,9 @@ function normalizePhone(phone) {
   return value;
 }
 
-/*
-|--------------------------------------------------------------------------
-| AUTOMATIC PROVIDER DETECTION
-|--------------------------------------------------------------------------
-|
-| This is a backup.
-|
-| If frontend sends provider, we use it.
-|
-| If frontend DOES NOT send provider, we determine
-| it from the Zambian mobile number.
-|
-| Airtel:
-| 097 / 097...
-|
-| MTN:
-| 096 / 076...
-|
-| Zamtel:
-| 095 / 075...
-|
-*/
-
-function detectProviderFromPhone(phone) {
-  const localNumber =
-    phone.substring(3);
-
-  /*
-   * Airtel
-   */
-
-  if (
-    localNumber.startsWith("97") ||
-    localNumber.startsWith("77")
-  ) {
-    return "AIRTEL";
-  }
-
-  /*
-   * MTN
-   */
-
-  if (
-    localNumber.startsWith("96") ||
-    localNumber.startsWith("76")
-  ) {
-    return "MTN";
-  }
-
-  /*
-   * Zamtel
-   */
-
-  if (
-    localNumber.startsWith("95") ||
-    localNumber.startsWith("75")
-  ) {
-    return "ZAMTEL";
-  }
-
-  return null;
-}
-
-/*
-|--------------------------------------------------------------------------
-| ACTIVATE SUBSCRIPTION
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   ACTIVATE SUBSCRIPTION
+========================================================= */
 
 async function activateSubscription(tx, payment) {
   const now = new Date();
@@ -245,7 +136,6 @@ async function activateSubscription(tx, payment) {
       where: {
         id: payment.userId,
       },
-
       select: {
         subscriptionEndsAt: true,
       },
@@ -271,23 +161,18 @@ async function activateSubscription(tx, payment) {
 
     data: {
       role: payment.plan,
-
       lessonsLimit: 999999,
-
       lessonsUsed: 0,
-
       lastResetAt: now,
-
       subscriptionEndsAt,
     },
   });
 }
 
-/*
-|--------------------------------------------------------------------------
-| INITIATE PAYMENT
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   INITIATE PAYMENT
+   POST /api/payments/initiate
+========================================================= */
 
 router.post(
   "/initiate",
@@ -299,23 +184,23 @@ router.post(
     );
 
     try {
-      /*
-       * Validate request
-       */
+      /* ---------------------------------------------------
+         Validate request
+      --------------------------------------------------- */
 
       const input =
         paymentSchema.parse(req.body);
 
-      /*
-       * Check credentials
-       */
+      /* ---------------------------------------------------
+         Check environment variables
+      --------------------------------------------------- */
 
       if (
         !process.env.LIPILA_API_KEY ||
         !process.env.LIPILA_WALLET_ID
       ) {
         console.error(
-          "❌ Lipila credentials missing."
+          "❌ Lipila environment variables missing."
         );
 
         return res.status(503).json({
@@ -324,9 +209,9 @@ router.post(
         });
       }
 
-      /*
-       * PLAN
-       */
+      /* ---------------------------------------------------
+         PLAN
+      --------------------------------------------------- */
 
       const plan =
         normalizePlan(input.plan);
@@ -341,9 +226,9 @@ router.post(
         });
       }
 
-      /*
-       * PHONE
-       */
+      /* ---------------------------------------------------
+         PHONE
+      --------------------------------------------------- */
 
       let payer;
 
@@ -364,52 +249,67 @@ router.post(
         });
       }
 
-      /*
-       * PROVIDER
-       *
-       * First use the provider sent by frontend.
-       */
+      /* ---------------------------------------------------
+         PROVIDER
+      --------------------------------------------------- */
 
-      let providerKey =
+      const providerKey =
         normalizeProvider(
           input.provider
         );
 
-      /*
-       * If provider is missing, automatically
-       * detect it from the phone number.
-       */
+      console.log(
+        "🔎 Provider received:",
+        input.provider
+      );
 
-      if (!providerKey) {
-        providerKey =
-          detectProviderFromPhone(
-            payer
-          );
+      console.log(
+        "🔎 Provider normalized:",
+        providerKey
+      );
 
-        console.log(
-          "🔎 Provider was missing from frontend."
-        );
+      /* ---------------------------------------------------
+         IMPORTANT:
+         Convert frontend provider to Lipila provider
+      --------------------------------------------------- */
 
-        console.log(
-          "🔎 Provider detected from phone:",
-          providerKey
-        );
+      let lipilaProvider;
+
+      if (providerKey === "MTN") {
+        lipilaProvider =
+          "MTN_MOMO_ZMB";
+      } else if (
+        providerKey === "AIRTEL"
+      ) {
+        lipilaProvider =
+          "AIRTEL_OAPI_ZMB";
+      } else if (
+        providerKey === "ZAMTEL"
+      ) {
+        lipilaProvider =
+          "ZAMTEL_ZMB";
       }
 
-      /*
-       * Validate provider.
-       */
+      console.log(
+        "🔎 Lipila provider:",
+        lipilaProvider
+      );
 
-      if (
-        !providerKey ||
-        !providers[providerKey]
-      ) {
+      /* ---------------------------------------------------
+         Check provider
+      --------------------------------------------------- */
+
+      if (!lipilaProvider) {
         return res.status(400).json({
           error:
-            "Unable to determine mobile money provider. Please select MTN, Airtel or Zamtel.",
-          phoneNumber: payer,
+            "Unsupported mobile money provider.",
+
           providerReceived:
-            input.provider || null,
+            input.provider,
+
+          providerNormalized:
+            providerKey,
+
           supportedProviders: [
             "MTN",
             "AIRTEL",
@@ -418,46 +318,15 @@ router.post(
         });
       }
 
-      /*
-       * Convert frontend provider to Lipila provider.
-       */
-
-      const lipilaProvider =
-        providers[providerKey];
-
-      console.log(
-        "🔎 Provider received:",
-        input.provider || "NOT SENT"
-      );
-
-      console.log(
-        "🔎 Provider selected:",
-        providerKey
-      );
-
-      console.log(
-        "🔎 Lipila provider:",
-        lipilaProvider
-      );
-
-      console.log(
-        "📱 Payer:",
-        payer
-      );
-
-      /*
-       * Generate internal IDs.
-       */
+      /* ---------------------------------------------------
+         CREATE INTERNAL PAYMENT
+      --------------------------------------------------- */
 
       const referenceId =
         `MYTOOLBOX-${uuidv4()}`;
 
       const transactionId =
         `TX-${uuidv4()}`;
-
-      /*
-       * Create database payment.
-       */
 
       const payment =
         await prisma.payment.create({
@@ -495,16 +364,22 @@ router.post(
           },
         });
 
-      /*
-       * LIPILA URL
-       */
+      /* ---------------------------------------------------
+         LIPILA URL
+      --------------------------------------------------- */
 
       const lipilaUrl =
-        `${LIPILA_API_BASE}/payments/mobile-money/${process.env.LIPILA_WALLET_ID}/`;
+        `${LIPILA_API_BASE}/payments/mobile-money/` +
+        `${process.env.LIPILA_WALLET_ID}/`;
 
-      /*
-       * LIPILA REQUEST
-       */
+      console.log(
+        "🌐 Lipila URL:",
+        lipilaUrl
+      );
+
+      /* ---------------------------------------------------
+         LIPILA PAYLOAD
+      --------------------------------------------------- */
 
       const lipilaPayload = {
         reference:
@@ -531,25 +406,24 @@ router.post(
 
           plan:
             plan.toUpperCase(),
-
-          provider:
-            providerKey,
         },
       };
 
       console.log(
-        "🌐 Lipila URL:",
-        lipilaUrl
+        "📤 Sending payment to Lipila:"
       );
 
       console.log(
-        "📤 Lipila request:",
-        lipilaPayload
+        JSON.stringify(
+          lipilaPayload,
+          null,
+          2
+        )
       );
 
-      /*
-       * SEND TO LIPILA
-       */
+      /* ---------------------------------------------------
+         SEND TO LIPILA
+      --------------------------------------------------- */
 
       let response;
 
@@ -561,8 +435,13 @@ router.post(
               method: "POST",
 
               headers: {
+                "X-API-KEY":
+                  process.env
+                    .LIPILA_API_KEY,
+
                 "x-api-key":
-                  process.env.LIPILA_API_KEY,
+                  process.env
+                    .LIPILA_API_KEY,
 
                 "Content-Type":
                   "application/json",
@@ -600,9 +479,9 @@ router.post(
         });
       }
 
-      /*
-       * READ RESPONSE
-       */
+      /* ---------------------------------------------------
+         READ LIPILA RESPONSE
+      --------------------------------------------------- */
 
       const responseText =
         await response.text();
@@ -632,13 +511,22 @@ router.post(
         data
       );
 
-      /*
-       * LIPILA REJECTED
-       */
+      /* ---------------------------------------------------
+         LIPILA ERROR
+      --------------------------------------------------- */
 
       if (!response.ok) {
         console.error(
-          "❌ Lipila rejected payment:",
+          "❌ Lipila rejected payment:"
+        );
+
+        console.error(
+          "Status:",
+          response.status
+        );
+
+        console.error(
+          "Response:",
           data
         );
 
@@ -665,15 +553,12 @@ router.post(
 
           lipilaResponse:
             data,
-
-          providerSent:
-            lipilaProvider,
         });
       }
 
-      /*
-       * SAVE EXTERNAL ID
-       */
+      /* ---------------------------------------------------
+         SAVE LIPILA TRANSACTION ID
+      --------------------------------------------------- */
 
       const externalId =
         data?.transaction_id ||
@@ -691,12 +576,12 @@ router.post(
         },
       });
 
-      /*
-       * SUCCESS
-       */
+      /* ---------------------------------------------------
+         SUCCESS
+      --------------------------------------------------- */
 
       console.log(
-        "✅ Lipila payment initiated."
+        "✅ Lipila payment initiated successfully."
       );
 
       return res.json({
@@ -722,9 +607,6 @@ router.post(
 
         lipilaProvider,
 
-        phoneNumber:
-          payer,
-
         status:
           "pending",
 
@@ -733,36 +615,23 @@ router.post(
           "Payment request sent. Please approve the payment on your phone.",
       });
     } catch (error) {
-      /*
-       * ZOD ERROR
-       */
+      console.error(
+        "❌ Payment initiation error:",
+        error
+      );
 
       if (
         error instanceof
         z.ZodError
       ) {
-        console.error(
-          "❌ Validation error:",
-          error.errors
-        );
-
         return res.status(400).json({
           error:
-            "Invalid payment request.",
+            "Please provide a valid plan, phone number and provider.",
 
           details:
             error.errors,
         });
       }
-
-      /*
-       * GENERAL ERROR
-       */
-
-      console.error(
-        "❌ Payment initiation error:",
-        error
-      );
 
       return res.status(500).json({
         error:
@@ -773,11 +642,10 @@ router.post(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| PAYMENT STATUS
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   PAYMENT STATUS
+   GET /api/payments/status/:transactionId
+========================================================= */
 
 router.get(
   "/status/:transactionId",
@@ -817,8 +685,7 @@ router.get(
 
           select: {
             role: true,
-            subscriptionEndsAt:
-              true,
+            subscriptionEndsAt: true,
           },
         });
 
@@ -875,11 +742,10 @@ router.get(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| PAYMENT HISTORY
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   PAYMENT HISTORY
+   GET /api/payments/history
+========================================================= */
 
 router.get(
   "/history",
@@ -916,11 +782,10 @@ router.get(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| LIPILA WEBHOOK
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   LIPILA WEBHOOK
+   POST /api/payments/webhook
+========================================================= */
 
 router.post(
   "/webhook",
@@ -941,10 +806,6 @@ router.post(
         body.data ||
         body;
 
-      /*
-       * Find reference
-       */
-
       const referenceId =
         data.reference ||
         data.referenceId;
@@ -955,10 +816,6 @@ router.post(
         });
       }
 
-      /*
-       * Find payment
-       */
-
       const payment =
         await prisma.payment.findUnique({
           where: {
@@ -967,14 +824,15 @@ router.post(
         });
 
       if (!payment) {
+        console.log(
+          "ℹ️ Unknown payment reference:",
+          referenceId
+        );
+
         return res.status(200).json({
           received: true,
         });
       }
-
-      /*
-       * Already completed
-       */
 
       if (
         payment.status ===
@@ -985,52 +843,30 @@ router.post(
         });
       }
 
-      /*
-       * STATUS
-       */
-
       const status =
         String(
           data.status ||
-            event ||
-            ""
+          event ||
+          ""
         ).toLowerCase();
 
-      /*
-       * SUCCESS
-       */
-
       const completed =
-        status ===
-          "completed" ||
-        status ===
-          "success" ||
-        status ===
-          "successful" ||
-        status ===
-          "paid" ||
+        status === "completed" ||
+        status === "success" ||
+        status === "paid" ||
         event ===
           "deposit.completed";
 
-      /*
-       * FAILED
-       */
-
       const failed =
-        status ===
-          "failed" ||
-        status ===
-          "cancelled" ||
-        status ===
-          "canceled" ||
-        status ===
-          "expired" ||
+        status === "failed" ||
+        status === "cancelled" ||
+        status === "expired" ||
         event ===
           "deposit.failed";
 
-      /*
-       * COMPLETED
-       */
+      /* ---------------------------------------------------
+         PAYMENT SUCCESS
+      --------------------------------------------------- */
 
       if (completed) {
         await prisma.$transaction(
@@ -1054,8 +890,6 @@ router.post(
 
                   externalId:
                     data.transaction_id ||
-                    data.transactionId ||
-                    data.identifier ||
                     data.id ||
                     payment.externalId,
                 },
@@ -1070,7 +904,7 @@ router.post(
               );
 
               console.log(
-                "✅ Subscription activated:",
+                "✅ Subscription activated for:",
                 payment.userId
               );
             }
@@ -1078,11 +912,11 @@ router.post(
         );
       }
 
-      /*
-       * FAILED
-       */
+      /* ---------------------------------------------------
+         PAYMENT FAILED
+      --------------------------------------------------- */
 
-      else if (failed) {
+      if (failed) {
         await prisma.payment.update({
           where: {
             id:
@@ -1095,8 +929,6 @@ router.post(
 
             externalId:
               data.transaction_id ||
-              data.transactionId ||
-              data.identifier ||
               data.id ||
               payment.externalId,
           },
@@ -1126,4 +958,3 @@ router.post(
 );
 
 module.exports = router;
-```
