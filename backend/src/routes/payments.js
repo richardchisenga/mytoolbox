@@ -7,6 +7,10 @@ const { authenticate } = require("../utils/auth");
 
 const prisma = new PrismaClient();
 
+/* =========================================================
+   LIPILA CONFIGURATION
+========================================================= */
+
 const LIPILA_API_BASE =
   process.env.LIPILA_BASE_URL ||
   "https://console.lipila.tech/api/v1";
@@ -20,6 +24,7 @@ const pricing = {
     amount: 150,
     label: "Pro Plan",
   },
+
   school: {
     amount: 500,
     label: "School Plan",
@@ -27,14 +32,41 @@ const pricing = {
 };
 
 /* =========================================================
-   LIPILA PROVIDERS
+   PROVIDER MAPPING
+=========================================================
+
+   Frontend sends:
+
+   MTN
+   AIRTEL
+   ZAMTEL
+
+   Backend sends to Lipila:
+
+   MTN_MOMO_ZMB
+   AIRTEL_OAPI_ZMB
+   ZAMTEL_ZMB
 ========================================================= */
 
-const providers = {
-  MTN: "MTN_MOMO_ZMB",
-  AIRTEL: "AIRTEL_OAPI_ZMB",
-  ZAMTEL: "ZAMTEL_ZMB",
-};
+function getLipilaProvider(provider) {
+  const value = String(provider || "")
+    .trim()
+    .toUpperCase();
+
+  if (value === "MTN") {
+    return "MTN_MOMO_ZMB";
+  }
+
+  if (value === "AIRTEL") {
+    return "AIRTEL_OAPI_ZMB";
+  }
+
+  if (value === "ZAMTEL") {
+    return "ZAMTEL_ZMB";
+  }
+
+  return null;
+}
 
 /* =========================================================
    VALIDATION
@@ -59,27 +91,17 @@ const paymentSchema = z.object({
 ========================================================= */
 
 function normalizePlan(plan) {
-  return String(plan)
+  return String(plan || "")
     .trim()
     .toLowerCase();
 }
 
 /* =========================================================
-   NORMALIZE PROVIDER
-========================================================= */
-
-function normalizeProvider(provider) {
-  return String(provider)
-    .trim()
-    .toUpperCase();
-}
-
-/* =========================================================
-   NORMALIZE ZAMBIAN PHONE
+   NORMALIZE PHONE
 ========================================================= */
 
 function normalizePhone(phone) {
-  let value = String(phone)
+  let value = String(phone || "")
     .trim()
     .replace(/\s+/g, "")
     .replace(/-/g, "");
@@ -89,6 +111,7 @@ function normalizePhone(phone) {
    * ->
    * 260976638676
    */
+
   if (value.startsWith("+260")) {
     value = value.substring(1);
   }
@@ -98,6 +121,7 @@ function normalizePhone(phone) {
    * ->
    * 260976638676
    */
+
   if (value.startsWith("0")) {
     if (value.length !== 10) {
       throw new Error(
@@ -105,16 +129,13 @@ function normalizePhone(phone) {
       );
     }
 
-    value =
-      "260" +
-      value.substring(1);
+    value = "260" + value.substring(1);
   }
 
   /*
-   * Final format:
-   *
-   * 260 + 9 digits
+   * 260976638676
    */
+
   if (!/^260\d{9}$/.test(value)) {
     throw new Error(
       "Enter a valid Zambian mobile money number."
@@ -136,13 +157,15 @@ async function activateSubscription(tx, payment) {
       where: {
         id: payment.userId,
       },
+
       select: {
         subscriptionEndsAt: true,
       },
     });
 
   const baseDate =
-    currentUser?.subscriptionEndsAt &&
+    currentUser &&
+    currentUser.subscriptionEndsAt &&
     currentUser.subscriptionEndsAt > now
       ? currentUser.subscriptionEndsAt
       : now;
@@ -161,9 +184,13 @@ async function activateSubscription(tx, payment) {
 
     data: {
       role: payment.plan,
+
       lessonsLimit: 999999,
+
       lessonsUsed: 0,
+
       lastResetAt: now,
+
       subscriptionEndsAt,
     },
   });
@@ -171,6 +198,7 @@ async function activateSubscription(tx, payment) {
 
 /* =========================================================
    INITIATE PAYMENT
+
    POST /api/payments/initiate
 ========================================================= */
 
@@ -178,43 +206,78 @@ router.post(
   "/initiate",
   authenticate,
   async (req, res) => {
+    console.log("");
     console.log(
-      "📥 Payment request body:",
-      req.body
+      "=========================================="
+    );
+    console.log(
+      "📥 PAYMENT REQUEST RECEIVED"
+    );
+    console.log(
+      "=========================================="
+    );
+
+    console.log(
+      JSON.stringify(
+        req.body,
+        null,
+        2
+      )
     );
 
     try {
-      /* ---------------------------------------------------
-         Validate request
-      --------------------------------------------------- */
+      /* =====================================================
+         VALIDATE REQUEST
+      ===================================================== */
 
       const input =
-        paymentSchema.parse(req.body);
+        paymentSchema.parse(
+          req.body
+        );
 
-      /* ---------------------------------------------------
-         Check environment variables
-      --------------------------------------------------- */
+      /* =====================================================
+         CHECK LIPILA CONFIG
+      ===================================================== */
 
       if (
-        !process.env.LIPILA_API_KEY ||
-        !process.env.LIPILA_WALLET_ID
+        !process.env.LIPILA_API_KEY
       ) {
         console.error(
-          "❌ Lipila environment variables missing."
+          "❌ LIPILA_API_KEY is missing."
         );
 
         return res.status(503).json({
           error:
-            "Lipila payments are not configured. Check LIPILA_API_KEY and LIPILA_WALLET_ID.",
+            "Lipila API key is not configured.",
         });
       }
 
-      /* ---------------------------------------------------
+      if (
+        !process.env.LIPILA_WALLET_ID
+      ) {
+        console.error(
+          "❌ LIPILA_WALLET_ID is missing."
+        );
+
+        return res.status(503).json({
+          error:
+            "Lipila wallet ID is not configured.",
+        });
+      }
+
+      /* =====================================================
          PLAN
-      --------------------------------------------------- */
+      ===================================================== */
 
       const plan =
-        normalizePlan(input.plan);
+        normalizePlan(
+          input.plan
+        );
+
+      console.log(
+        "📋 Plan:",
+        plan
+      );
 
       const selectedPlan =
         pricing[plan];
@@ -223,12 +286,16 @@ router.post(
         return res.status(400).json({
           error:
             "Invalid payment plan.",
+          received:
+            input.plan,
+          supported:
+            ["pro", "school"],
         });
       }
 
-      /* ---------------------------------------------------
+      /* =====================================================
          PHONE
-      --------------------------------------------------- */
+      ===================================================== */
 
       let payer;
 
@@ -239,7 +306,7 @@ router.post(
           );
       } catch (phoneError) {
         console.error(
-          "❌ Phone error:",
+          "❌ PHONE ERROR:",
           phoneError.message
         );
 
@@ -249,68 +316,75 @@ router.post(
         });
       }
 
-      /* ---------------------------------------------------
-         PROVIDER
-      --------------------------------------------------- */
+      console.log(
+        "📱 Payer:",
+        payer
+      );
 
-      const providerKey =
-        normalizeProvider(
-          input.provider
+      /* =====================================================
+         PROVIDER
+      ===================================================== */
+
+      const providerReceived =
+        input.provider;
+
+      const providerNormalized =
+        String(
+          providerReceived || ""
+        )
+          .trim()
+          .toUpperCase();
+
+      console.log(
+        "📡 Provider received:",
+        providerReceived
+      );
+
+      console.log(
+        "📡 Provider normalized:",
+        providerNormalized
+      );
+
+      /*
+       * THIS IS THE IMPORTANT FIX.
+       *
+       * Do not use:
+       *
+       * providers[input.provider]
+       *
+       * We explicitly convert it.
+       */
+
+      const lipilaProvider =
+        getLipilaProvider(
+          providerNormalized
         );
 
       console.log(
-        "🔎 Provider received:",
-        input.provider
-      );
-
-      console.log(
-        "🔎 Provider normalized:",
-        providerKey
-      );
-
-      /* ---------------------------------------------------
-         IMPORTANT:
-         Convert frontend provider to Lipila provider
-      --------------------------------------------------- */
-
-      let lipilaProvider;
-
-      if (providerKey === "MTN") {
-        lipilaProvider =
-          "MTN_MOMO_ZMB";
-      } else if (
-        providerKey === "AIRTEL"
-      ) {
-        lipilaProvider =
-          "AIRTEL_OAPI_ZMB";
-      } else if (
-        providerKey === "ZAMTEL"
-      ) {
-        lipilaProvider =
-          "ZAMTEL_ZMB";
-      }
-
-      console.log(
-        "🔎 Lipila provider:",
+        "📡 Lipila provider:",
         lipilaProvider
       );
 
-      /* ---------------------------------------------------
-         Check provider
-      --------------------------------------------------- */
+      /* =====================================================
+         PROVIDER VALIDATION
+      ===================================================== */
 
       if (!lipilaProvider) {
+        console.error(
+          "❌ UNSUPPORTED PROVIDER"
+        );
+
         return res.status(400).json({
           error:
             "Unsupported mobile money provider.",
 
-          providerReceived:
-            input.provider,
+          received:
+            providerReceived,
 
-          providerNormalized:
-            providerKey,
+          normalized:
+            providerNormalized,
 
-          supportedProviders: [
+          supported: [
             "MTN",
             "AIRTEL",
             "ZAMTEL",
@@ -318,15 +392,29 @@ router.post(
         });
       }
 
-      /* ---------------------------------------------------
-         CREATE INTERNAL PAYMENT
-      --------------------------------------------------- */
+      /* =====================================================
+         INTERNAL PAYMENT IDS
+      ===================================================== */
 
       const referenceId =
         `MYTOOLBOX-${uuidv4()}`;
 
       const transactionId =
         `TX-${uuidv4()}`;
+
+      console.log(
+        "🔖 Reference:",
+        referenceId
+      );
+
+      console.log(
+        "🔖 Transaction:",
+        transactionId
+      );
+
+      /* =====================================================
+         CREATE DATABASE PAYMENT
+      ===================================================== */
 
       const payment =
         await prisma.payment.create({
@@ -349,9 +437,11 @@ router.post(
             phoneNumber:
               payer,
 
-            referenceId,
+            referenceId:
+              referenceId,
 
-            transactionId,
+            transactionId:
+              transactionId,
 
             status:
               "pending",
@@ -364,12 +454,18 @@ router.post(
           },
         });
 
-      /* ---------------------------------------------------
+      console.log(
+        "✅ Payment created:",
+        payment.id
+      );
+
+      /* =====================================================
          LIPILA URL
-      --------------------------------------------------- */
+      ===================================================== */
 
       const lipilaUrl =
-        `${LIPILA_API_BASE}/payments/mobile-money/` +
+        `${LIPILA_API_BASE}` +
+        `/payments/mobile-money/` +
         `${process.env.LIPILA_WALLET_ID}/`;
 
       console.log(
@@ -377,9 +473,9 @@ router.post(
         lipilaUrl
       );
 
-      /* ---------------------------------------------------
+      /* =====================================================
          LIPILA PAYLOAD
-      --------------------------------------------------- */
+      ===================================================== */
 
       const lipilaPayload = {
         reference:
@@ -390,7 +486,8 @@ router.post(
             selectedPlan.amount
           ),
 
-        payer,
+        payer:
+          payer,
 
         provider:
           lipilaProvider,
@@ -399,7 +496,8 @@ router.post(
           `MyToolbox ${selectedPlan.label}`,
 
         metadata: {
-          transactionId,
+          transactionId:
+            transactionId,
 
           userId:
             req.userId,
@@ -409,8 +507,15 @@ router.post(
         },
       };
 
+      console.log("");
       console.log(
-        "📤 Sending payment to Lipila:"
+        "=========================================="
+      );
+      console.log(
+        "📤 SENDING TO LIPILA"
+      );
+      console.log(
+        "=========================================="
       );
 
       console.log(
@@ -421,9 +526,9 @@ router.post(
         )
       );
 
-      /* ---------------------------------------------------
-         SEND TO LIPILA
-      --------------------------------------------------- */
+      /* =====================================================
+         CALL LIPILA
+      ===================================================== */
 
       let response;
 
@@ -435,11 +540,11 @@ router.post(
               method: "POST",
 
               headers: {
-                "X-API-KEY":
+                "x-api-key":
                   process.env
                     .LIPILA_API_KEY,
 
-                "x-api-key":
+                "X-API-KEY":
                   process.env
                     .LIPILA_API_KEY,
 
@@ -458,13 +563,17 @@ router.post(
           );
       } catch (networkError) {
         console.error(
-          "❌ Lipila connection error:",
+          "❌ LIPILA CONNECTION ERROR"
+        );
+
+        console.error(
           networkError
         );
 
         await prisma.payment.update({
           where: {
-            id: payment.id,
+            id:
+              payment.id,
           },
 
           data: {
@@ -479,60 +588,66 @@ router.post(
         });
       }
 
-      /* ---------------------------------------------------
+      /* =====================================================
          READ LIPILA RESPONSE
-      --------------------------------------------------- */
+      ===================================================== */
 
       const responseText =
         await response.text();
 
-      let data = {};
+      let lipilaData = {};
 
-      try {
-        data =
-          responseText
-            ? JSON.parse(
-                responseText
-              )
-            : {};
-      } catch {
-        data = {
-          raw: responseText,
-        };
+      if (responseText) {
+        try {
+          lipilaData =
+            JSON.parse(
+              responseText
+            );
+        } catch (parseError) {
+          lipilaData = {
+            raw:
+              responseText,
+          };
+        }
       }
 
+      console.log("");
       console.log(
-        "📥 Lipila HTTP status:",
+        "=========================================="
+      );
+      console.log(
+        "📥 LIPILA RESPONSE"
+      );
+      console.log(
+        "=========================================="
+      );
+
+      console.log(
+        "HTTP:",
         response.status
       );
 
       console.log(
-        "📥 Lipila response:",
-        data
+        JSON.stringify(
+          lipilaData,
+          null,
+          2
+        )
       );
 
-      /* ---------------------------------------------------
-         LIPILA ERROR
-      --------------------------------------------------- */
+      /* =====================================================
+         LIPILA REJECTED REQUEST
+      ===================================================== */
 
       if (!response.ok) {
         console.error(
-          "❌ Lipila rejected payment:"
-        );
-
-        console.error(
-          "Status:",
-          response.status
-        );
-
-        console.error(
-          "Response:",
-          data
+          "❌ LIPILA REJECTED PAYMENT"
         );
 
         await prisma.payment.update({
           where: {
-            id: payment.id,
+            id:
+              payment.id,
           },
 
           data: {
@@ -543,45 +658,55 @@ router.post(
 
         return res.status(502).json({
           error:
-            data?.message ||
-            data?.detail ||
-            data?.error ||
+            lipilaData?.message ||
+            lipilaData?.detail ||
+            lipilaData?.error ||
             "Lipila payment could not be started.",
 
           lipilaStatus:
             response.status,
 
           lipilaResponse:
-            data,
+            lipilaData,
         });
       }
 
-      /* ---------------------------------------------------
-         SAVE LIPILA TRANSACTION ID
-      --------------------------------------------------- */
+      /* =====================================================
+         EXTERNAL TRANSACTION ID
+      ===================================================== */
 
       const externalId =
-        data?.transaction_id ||
-        data?.identifier ||
-        data?.id ||
+        lipilaData?.transaction_id ||
+        lipilaData?.transactionId ||
+        lipilaData?.identifier ||
+        lipilaData?.id ||
         null;
 
       await prisma.payment.update({
         where: {
-          id: payment.id,
+          id:
+            payment.id,
         },
 
         data: {
-          externalId,
+          externalId:
+            externalId,
         },
       });
 
-      /* ---------------------------------------------------
+      /* =====================================================
          SUCCESS
-      --------------------------------------------------- */
+      ===================================================== */
 
+      console.log("");
       console.log(
-        "✅ Lipila payment initiated successfully."
+        "=========================================="
+      );
+      console.log(
+        "✅ PAYMENT REQUEST SENT TO LIPILA"
+      );
+      console.log(
+        "=========================================="
       );
 
       return res.json({
@@ -590,11 +715,14 @@ router.post(
         paymentId:
           payment.id,
 
-        transactionId,
+        transactionId:
+          transactionId,
 
-        referenceId,
+        referenceId:
+          referenceId,
 
-        externalId,
+        externalId:
+          externalId,
 
         amount:
           selectedPlan.amount,
@@ -603,20 +731,31 @@ router.post(
           plan.toUpperCase(),
 
         provider:
-          providerKey,
+          providerNormalized,
 
-        lipilaProvider,
+        lipilaProvider:
+          lipilaProvider,
 
         status:
           "pending",
 
         instructions:
-          data?.message ||
+          lipilaData?.message ||
+          lipilaData?.detail ||
           "Payment request sent. Please approve the payment on your phone.",
       });
     } catch (error) {
+      console.error("");
       console.error(
-        "❌ Payment initiation error:",
+        "=========================================="
+      );
+      console.error(
+        "❌ PAYMENT INITIATION ERROR"
+      );
+      console.error(
+        "=========================================="
+      );
+      console.error(
         error
       );
 
@@ -626,7 +765,7 @@ router.post(
       ) {
         return res.status(400).json({
           error:
-            "Please provide a valid plan, phone number and provider.",
+            "Invalid payment request.",
 
           details:
             error.errors,
@@ -644,6 +783,7 @@ router.post(
 
 /* =========================================================
    PAYMENT STATUS
+
    GET /api/payments/status/:transactionId
 ========================================================= */
 
@@ -652,11 +792,14 @@ router.get(
   authenticate,
   async (req, res) => {
     try {
+      const transactionId =
+        req.params.transactionId;
+
       const payment =
         await prisma.payment.findUnique({
           where: {
             transactionId:
-              req.params.transactionId,
+              transactionId,
           },
         });
 
@@ -680,12 +823,15 @@ router.get(
       const user =
         await prisma.user.findUnique({
           where: {
-            id: req.userId,
+            id:
+              req.userId,
           },
 
           select: {
             role: true,
-            subscriptionEndsAt: true,
+
+            subscriptionEndsAt:
+              true,
           },
         });
 
@@ -707,6 +853,12 @@ router.get(
 
         plan:
           payment.plan,
+
+        provider:
+          payment.provider,
+
+        phoneNumber:
+          payment.phoneNumber,
 
         createdAt:
           payment.createdAt,
@@ -744,6 +896,7 @@ router.get(
 
 /* =========================================================
    PAYMENT HISTORY
+
    GET /api/payments/history
 ========================================================= */
 
@@ -766,7 +919,8 @@ router.get(
         });
 
       return res.json({
-        payments,
+        payments:
+          payments,
       });
     } catch (error) {
       console.error(
@@ -784,6 +938,7 @@ router.get(
 
 /* =========================================================
    LIPILA WEBHOOK
+
    POST /api/payments/webhook
 ========================================================= */
 
@@ -794,13 +949,28 @@ router.post(
       const body =
         req.body || {};
 
+      console.log("");
       console.log(
-        "📥 Lipila webhook received:",
-        body
+        "=========================================="
+      );
+      console.log(
+        "📥 LIPILA WEBHOOK"
+      );
+      console.log(
+        "=========================================="
+      );
+
+      console.log(
+        JSON.stringify(
+          body,
+          null,
+          2
+        )
       );
 
       const event =
-        body.event;
+        body.event ||
+        "";
 
       const data =
         body.data ||
@@ -808,29 +978,37 @@ router.post(
 
       const referenceId =
         data.reference ||
-        data.referenceId;
+        data.referenceId ||
+        data.reference_id;
 
       if (!referenceId) {
+        console.log(
+          "ℹ️ Webhook has no reference."
+        );
+
         return res.status(200).json({
-          received: true,
+          received:
+            true,
         });
       }
 
       const payment =
         await prisma.payment.findUnique({
           where: {
-            referenceId,
+            referenceId:
+              referenceId,
           },
         });
 
       if (!payment) {
         console.log(
-          "ℹ️ Unknown payment reference:",
+          "ℹ️ Unknown payment:",
           referenceId
         );
 
         return res.status(200).json({
-          received: true,
+          received:
+            true,
         });
       }
 
@@ -839,34 +1017,55 @@ router.post(
         "completed"
       ) {
         return res.status(200).json({
-          received: true,
+          received:
+            true,
         });
       }
 
       const status =
         String(
           data.status ||
+          data.payment_status ||
           event ||
           ""
-        ).toLowerCase();
+        )
+          .trim()
+          .toLowerCase();
+
+      console.log(
+        "Webhook status:",
+        status
+      );
+
+      /* =====================================================
+         SUCCESS STATUSES
+      ===================================================== */
 
       const completed =
         status === "completed" ||
         status === "success" ||
+        status === "successful" ||
         status === "paid" ||
+        status === "successful_payment" ||
         event ===
           "deposit.completed";
 
+      /* =====================================================
+         FAILED STATUSES
+      ===================================================== */
+
       const failed =
         status === "failed" ||
+        status === "failure" ||
         status === "cancelled" ||
+        status === "canceled" ||
         status === "expired" ||
         event ===
           "deposit.failed";
 
-      /* ---------------------------------------------------
-         PAYMENT SUCCESS
-      --------------------------------------------------- */
+      /* =====================================================
+         COMPLETED
+      ===================================================== */
 
       if (completed) {
         await prisma.$transaction(
@@ -890,6 +1089,8 @@ router.post(
 
                   externalId:
                     data.transaction_id ||
+                    data.transactionId ||
+                    data.identifier ||
                     data.id ||
                     payment.externalId,
                 },
@@ -904,7 +1105,7 @@ router.post(
               );
 
               console.log(
-                "✅ Subscription activated for:",
+                "✅ Subscription activated:",
                 payment.userId
               );
             }
@@ -912,11 +1113,11 @@ router.post(
         );
       }
 
-      /* ---------------------------------------------------
-         PAYMENT FAILED
-      --------------------------------------------------- */
+      /* =====================================================
+         FAILED
+      ===================================================== */
 
-      if (failed) {
+      else if (failed) {
         await prisma.payment.update({
           where: {
             id:
@@ -929,19 +1130,26 @@ router.post(
 
             externalId:
               data.transaction_id ||
+              data.transactionId ||
+              data.identifier ||
               data.id ||
               payment.externalId,
           },
         });
 
         console.log(
-          "❌ Payment failed:",
+          "❌ Payment marked failed:",
           payment.referenceId
         );
       }
 
+      /* =====================================================
+         ACKNOWLEDGE LIPILA
+      ===================================================== */
+
       return res.status(200).json({
-        received: true,
+        received:
+          true,
       });
     } catch (error) {
       console.error(
@@ -956,5 +1164,9 @@ router.post(
     }
   }
 );
+
+/* =========================================================
+   EXPORT
+========================================================= */
 
 module.exports = router;
