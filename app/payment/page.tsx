@@ -1,323 +1,932 @@
-"use client";
+const express = require("express");
+const router = express.Router();
+const { v4: uuidv4 } = require("uuid");
+const { PrismaClient } = require("@prisma/client");
+const { z } = require("zod");
+const { authenticate } = require("../utils/auth");
 
-import { useState } from "react";
+const prisma = new PrismaClient();
 
-type Plan = "PRO" | "SCHOOL";
-type Provider = "MTN" | "AIRTEL" | "ZAMTEL";
+const LIPILA_API_BASE =
+  process.env.LIPILA_BASE_URL ||
+  "https://console.lipila.tech/api/v1";
 
-const plans = {
-  PRO: {
-    name: "Pro",
+/*
+ * ============================================================
+ * PLANS
+ * ============================================================
+ */
+
+const pricing = {
+  pro: {
     amount: 150,
-    description: "Unlimited lesson plans",
+    label: "Pro Plan",
   },
 
-  SCHOOL: {
-    name: "School",
+  school: {
     amount: 500,
-    description: "School-wide access",
+    label: "School Plan",
   },
 };
 
-export default function PaymentPage() {
-  const [plan, setPlan] = useState<Plan>("PRO");
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [provider, setProvider] =
-    useState<Provider>("MTN");
+/*
+ * ============================================================
+ * FRONTEND PROVIDER -> LIPILA PROVIDER
+ *
+ * IMPORTANT:
+ * Frontend sends:
+ *   MTN
+ *   AIRTEL
+ *   ZAMTEL
+ *
+ * Lipila requires:
+ *   MTN_MOMO_ZMB
+ *   AIRTEL_OAPI_ZMB
+ *   ZAMTEL_ZMB
+ * ============================================================
+ */
 
-  const [loading, setLoading] =
-    useState(false);
+const providers = {
+  MTN: "MTN_MOMO_ZMB",
+  AIRTEL: "AIRTEL_OAPI_ZMB",
+  ZAMTEL: "ZAMTEL_ZMB",
+};
 
-  const [message, setMessage] =
-    useState("");
+/*
+ * ============================================================
+ * VALIDATION
+ * ============================================================
+ */
 
-  const [messageType, setMessageType] =
-    useState<"success" | "error" | "info">(
-      "info"
+const paymentSchema = z.object({
+  plan: z.enum([
+    "PRO",
+    "SCHOOL",
+    "pro",
+    "school",
+  ]),
+
+  phoneNumber: z
+    .string()
+    .trim()
+    .min(9),
+
+  provider: z.enum([
+    "MTN",
+    "AIRTEL",
+    "ZAMTEL",
+  ]),
+});
+
+/*
+ * ============================================================
+ * NORMALIZE PLAN
+ * ============================================================
+ */
+
+function normalizePlan(plan) {
+  return String(plan).toLowerCase();
+}
+
+/*
+ * ============================================================
+ * NORMALIZE ZAMBIAN PHONE
+ *
+ * Accepted:
+ *
+ * 0976638676
+ * 260976638676
+ * +260976638676
+ *
+ * Output:
+ *
+ * 260976638676
+ * ============================================================
+ */
+
+function normalizePhone(phone) {
+  let value = String(phone)
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/-/g, "");
+
+  if (value.startsWith("+260")) {
+    value = value.substring(1);
+  }
+
+  if (value.startsWith("0")) {
+    if (value.length !== 10) {
+      throw new Error(
+        "Enter a valid 10-digit Zambian phone number."
+      );
+    }
+
+    value = `260${value.substring(1)}`;
+  }
+
+  if (!/^260\d{9}$/.test(value)) {
+    throw new Error(
+      "Enter a valid Zambian mobile money number."
     );
+  }
 
-  const selectedPlan = plans[plan];
+  return value;
+}
 
-  async function handlePayment(
-    e: React.FormEvent<HTMLFormElement>
-  ) {
-    e.preventDefault();
+/*
+ * ============================================================
+ * ACTIVATE SUBSCRIPTION
+ * ============================================================
+ */
 
-    setLoading(true);
-    setMessage("");
-    setMessageType("info");
+async function activateSubscription(tx, payment) {
+  const now = new Date();
+
+  const currentUser =
+    await tx.user.findUnique({
+      where: {
+        id: payment.userId,
+      },
+
+      select: {
+        subscriptionEndsAt: true,
+      },
+    });
+
+  const baseDate =
+    currentUser?.subscriptionEndsAt &&
+    currentUser.subscriptionEndsAt > now
+      ? currentUser.subscriptionEndsAt
+      : now;
+
+  const subscriptionEndsAt =
+    new Date(baseDate);
+
+  subscriptionEndsAt.setMonth(
+    subscriptionEndsAt.getMonth() + 1
+  );
+
+  return tx.user.update({
+    where: {
+      id: payment.userId,
+    },
+
+    data: {
+      role: payment.plan,
+
+      lessonsLimit: 999999,
+
+      lessonsUsed: 0,
+
+      lastResetAt: now,
+
+      subscriptionEndsAt,
+    },
+  });
+}
+
+/*
+ * ============================================================
+ * START PAYMENT
+ * POST /api/payments/initiate
+ * ============================================================
+ */
+
+router.post(
+  "/initiate",
+  authenticate,
+  async (req, res) => {
+    console.log(
+      "📥 Payment request body:",
+      req.body
+    );
 
     try {
       /*
-       * Send EVERYTHING to backend.
+       * Validate frontend request
        */
-      const paymentRequest = {
-        plan,
-        phoneNumber,
-        amount: selectedPlan.amount,
-        provider,
-      };
+      const input =
+        paymentSchema.parse(req.body);
 
-      console.log(
-        "📤 PAYMENT REQUEST:",
-        paymentRequest
-      );
-
-      const response = await fetch(
-        "/api/payments/initiate",
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body: JSON.stringify(
-            paymentRequest
-          ),
-        }
-      );
-
-      const data =
-        await response.json().catch(
-          () => ({})
+      /*
+       * Check Lipila configuration
+       */
+      if (
+        !process.env.LIPILA_API_KEY ||
+        !process.env.LIPILA_WALLET_ID
+      ) {
+        console.error(
+          "❌ Lipila environment variables missing."
         );
 
-      console.log(
-        "📥 PAYMENT RESPONSE:",
-        data
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          data.message ||
-            data.error ||
-            "Payment failed."
-        );
+        return res.status(503).json({
+          error:
+            "Lipila payments are not configured. Check LIPILA_API_KEY and LIPILA_WALLET_ID.",
+        });
       }
 
-      setMessageType("success");
+      /*
+       * Normalize plan
+       */
+      const plan =
+        normalizePlan(input.plan);
 
-      setMessage(
-        data.instructions ||
-          data.message ||
-          "Payment request sent. Please approve the payment on your phone."
+      const selectedPlan =
+        pricing[plan];
+
+      if (!selectedPlan) {
+        return res.status(400).json({
+          error:
+            "Invalid payment plan.",
+        });
+      }
+
+      /*
+       * Normalize phone
+       */
+      let payer;
+
+      try {
+        payer = normalizePhone(
+          input.phoneNumber
+        );
+      } catch (phoneError) {
+        return res.status(400).json({
+          error:
+            phoneError.message,
+        });
+      }
+
+      /*
+       * Convert frontend provider
+       * to Lipila provider
+       */
+      const lipilaProvider =
+        providers[input.provider];
+
+      if (!lipilaProvider) {
+        return res.status(400).json({
+          error:
+            "Unsupported mobile money provider.",
+        });
+      }
+
+      console.log(
+        "📱 Frontend provider:",
+        input.provider
       );
+
+      console.log(
+        "📱 Lipila provider:",
+        lipilaProvider
+      );
+
+      console.log(
+        "📞 Lipila payer:",
+        payer
+      );
+
+      console.log(
+        "💰 Amount:",
+        selectedPlan.amount
+      );
+
+      /*
+       * Generate IDs
+       */
+      const referenceId =
+        `MYTOOLBOX-${uuidv4()}`;
+
+      const transactionId =
+        `TX-${uuidv4()}`;
+
+      /*
+       * Create local payment
+       */
+      const payment =
+        await prisma.payment.create({
+          data: {
+            userId: req.userId,
+
+            amount:
+              selectedPlan.amount,
+
+            plan:
+              plan.toUpperCase(),
+
+            currency: "ZMW",
+
+            provider: "lipila",
+
+            phoneNumber: payer,
+
+            referenceId,
+
+            transactionId,
+
+            status: "pending",
+
+            expiresAt:
+              new Date(
+                Date.now() +
+                  30 * 60 * 1000
+              ),
+          },
+        });
+
+      /*
+       * ======================================================
+       * SEND PAYMENT TO LIPILA
+       * ======================================================
+       */
+
+      try {
+        const lipilaUrl =
+          `${LIPILA_API_BASE}` +
+          `/payments/mobile-money/` +
+          `${process.env.LIPILA_WALLET_ID}/`;
+
+        console.log(
+          "🌐 Lipila URL:",
+          lipilaUrl
+        );
+
+        const lipilaPayload = {
+          reference:
+            referenceId,
+
+          amount:
+            String(
+              selectedPlan.amount
+            ),
+
+          payer,
+
+          provider:
+            lipilaProvider,
+
+          payer_message:
+            `MyToolbox ${selectedPlan.label}`,
+
+          metadata: {
+            transactionId,
+
+            userId:
+              req.userId,
+
+            plan:
+              plan.toUpperCase(),
+          },
+        };
+
+        console.log(
+          "📤 Sending to Lipila:",
+          {
+            ...lipilaPayload,
+
+            /*
+             * Do not expose secrets
+             */
+            payer: payer,
+          }
+        );
+
+        const response =
+          await fetch(
+            lipilaUrl,
+            {
+              method: "POST",
+
+              headers: {
+                /*
+                 * Lipila documentation uses
+                 * x-api-key.
+                 */
+                "x-api-key":
+                  process.env
+                    .LIPILA_API_KEY,
+
+                "Content-Type":
+                  "application/json",
+
+                Accept:
+                  "application/json",
+              },
+
+              body: JSON.stringify(
+                lipilaPayload
+              ),
+            }
+          );
+
+        const responseText =
+          await response.text();
+
+        let data = {};
+
+        try {
+          data =
+            responseText
+              ? JSON.parse(
+                  responseText
+                )
+              : {};
+        } catch {
+          data = {
+            raw: responseText,
+          };
+        }
+
+        console.log(
+          "📥 Lipila response status:",
+          response.status
+        );
+
+        console.log(
+          "📥 Lipila response:",
+          data
+        );
+
+        /*
+         * Lipila rejected request
+         */
+        if (!response.ok) {
+          console.error(
+            "❌ Lipila API error:",
+            response.status,
+            data
+          );
+
+          await prisma.payment.update({
+            where: {
+              id: payment.id,
+            },
+
+            data: {
+              status: "failed",
+            },
+          });
+
+          return res.status(502).json({
+            error:
+              data?.message ||
+              data?.detail ||
+              data?.error ||
+              "Lipila payment could not be started.",
+
+            lipilaStatus:
+              response.status,
+          });
+        }
+
+        /*
+         * Save Lipila transaction ID
+         */
+        const externalId =
+          data?.transaction_id ||
+          data?.identifier ||
+          data?.id ||
+          null;
+
+        await prisma.payment.update({
+          where: {
+            id: payment.id,
+          },
+
+          data: {
+            externalId,
+          },
+        });
+
+        /*
+         * Return success to frontend
+         */
+        return res.json({
+          success: true,
+
+          paymentId:
+            payment.id,
+
+          transactionId,
+
+          referenceId,
+
+          externalId,
+
+          amount:
+            selectedPlan.amount,
+
+          plan:
+            plan.toUpperCase(),
+
+          provider:
+            input.provider,
+
+          lipilaProvider,
+
+          status: "pending",
+
+          instructions:
+            data?.message ||
+            "Payment request sent. Please approve the payment on your phone.",
+        });
+      } catch (lipilaError) {
+        console.error(
+          "❌ Lipila initiation error:",
+          lipilaError
+        );
+
+        await prisma.payment.update({
+          where: {
+            id: payment.id,
+          },
+
+          data: {
+            status: "failed",
+          },
+        });
+
+        return res.status(502).json({
+          error:
+            "Unable to connect to Lipila. Please try again.",
+        });
+      }
     } catch (error) {
+      /*
+       * Zod validation
+       */
+      if (
+        error instanceof
+        z.ZodError
+      ) {
+        console.error(
+          "❌ Validation error:",
+          error.errors
+        );
+
+        return res.status(400).json({
+          error:
+            "Please provide a valid plan, phone number and provider.",
+
+          details:
+            error.errors,
+        });
+      }
+
       console.error(
-        "❌ PAYMENT ERROR:",
+        "❌ Payment initiation error:",
         error
       );
 
-      setMessageType("error");
-
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to start payment."
-      );
-    } finally {
-      setLoading(false);
+      return res.status(500).json({
+        error:
+          error?.message ||
+          "Payment initiation failed.",
+      });
     }
   }
+);
 
-  return (
-    <div className="min-h-screen bg-cream p-8">
-      <div className="max-w-md mx-auto">
-        <h1 className="text-3xl font-bold text-primary text-center">
-          💳 Upgrade
-        </h1>
+/*
+ * ============================================================
+ * CHECK PAYMENT STATUS
+ * GET /api/payments/status/:transactionId
+ * ============================================================
+ */
 
-        <p className="text-gray-600 text-center mt-2">
-          Pay securely using Zambian mobile
-          money.
-        </p>
+router.get(
+  "/status/:transactionId",
+  authenticate,
+  async (req, res) => {
+    try {
+      const payment =
+        await prisma.payment.findUnique({
+          where: {
+            transactionId:
+              req.params
+                .transactionId,
+          },
+        });
 
-        <div className="bg-white rounded-xl shadow-md p-6 mt-6">
-          <h2 className="text-xl font-semibold mb-4">
-            Choose a plan
-          </h2>
+      if (!payment) {
+        return res.status(404).json({
+          error:
+            "Transaction not found.",
+        });
+      }
 
-          {/* PLANS */}
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() =>
-                setPlan("PRO")
-              }
-              disabled={loading}
-              className={`rounded-lg border p-4 text-left ${
-                plan === "PRO"
-                  ? "border-primary bg-primary/10"
-                  : "border-gray-300"
-              }`}
-            >
-              <div className="font-bold">
-                Pro
-              </div>
+      if (
+        payment.userId !==
+        req.userId
+      ) {
+        return res.status(403).json({
+          error:
+            "Unauthorized.",
+        });
+      }
 
-              <div className="text-lg">
-                ZMW 150
-              </div>
+      const user =
+        await prisma.user.findUnique({
+          where: {
+            id: req.userId,
+          },
 
-              <div className="text-sm text-gray-600">
-                Unlimited lesson plans
-              </div>
-            </button>
+          select: {
+            role: true,
+            subscriptionEndsAt: true,
+          },
+        });
 
-            <button
-              type="button"
-              onClick={() =>
-                setPlan("SCHOOL")
-              }
-              disabled={loading}
-              className={`rounded-lg border p-4 text-left ${
-                plan === "SCHOOL"
-                  ? "border-primary bg-primary/10"
-                  : "border-gray-300"
-              }`}
-            >
-              <div className="font-bold">
-                School
-              </div>
+      return res.json({
+        transactionId:
+          payment.transactionId,
 
-              <div className="text-lg">
-                ZMW 500
-              </div>
+        referenceId:
+          payment.referenceId,
 
-              <div className="text-sm text-gray-600">
-                School-wide access
-              </div>
-            </button>
-          </div>
+        externalId:
+          payment.externalId,
 
-          {/* PAYMENT FORM */}
-          <form
-            onSubmit={handlePayment}
-            className="mt-6 space-y-4"
-          >
-            {/* PHONE */}
-            <div>
-              <label
-                htmlFor="phoneNumber"
-                className="block text-sm font-medium mb-1"
-              >
-                Zambian phone number
-              </label>
+        status:
+          payment.status,
 
-              <input
-                id="phoneNumber"
-                type="tel"
-                value={phoneNumber}
-                onChange={(e) =>
-                  setPhoneNumber(
-                    e.target.value
-                  )
-                }
-                placeholder="0971234567"
-                required
-                disabled={loading}
-                className="w-full rounded-lg border border-gray-300 px-4 py-3"
-              />
+        amount:
+          payment.amount,
 
-              <p className="text-xs text-gray-500 mt-1">
-                Example: 0971234567 or
-                +260971234567
-              </p>
-            </div>
+        plan:
+          payment.plan,
 
-            {/* PROVIDER */}
-            <div>
-              <label
-                htmlFor="provider"
-                className="block text-sm font-medium mb-1"
-              >
-                Mobile money provider
-              </label>
+        createdAt:
+          payment.createdAt,
 
-              <select
-                id="provider"
-                value={provider}
-                onChange={(e) =>
-                  setProvider(
-                    e.target.value as Provider
-                  )
-                }
-                disabled={loading}
-                className="w-full rounded-lg border border-gray-300 px-4 py-3"
-              >
-                <option value="MTN">
-                  MTN Mobile Money
-                </option>
+        completedAt:
+          payment.completedAt ||
+          null,
 
-                <option value="AIRTEL">
-                  Airtel Money
-                </option>
+        userRole:
+          user?.role || null,
 
-                <option value="ZAMTEL">
-                  Zamtel Money
-                </option>
-              </select>
-            </div>
+        isUpgraded:
+          ["PRO", "SCHOOL"].includes(
+            user?.role
+          ),
 
-            {/* SUMMARY */}
-            <div className="rounded-lg bg-gray-100 p-4">
-              <div className="flex justify-between">
-                <span className="font-medium">
-                  Selected plan
-                </span>
+        subscriptionEndsAt:
+          user?.subscriptionEndsAt ||
+          null,
+      });
+    } catch (error) {
+      console.error(
+        "❌ Payment status error:",
+        error
+      );
 
-                <span className="font-bold">
-                  {selectedPlan.name}
-                </span>
-              </div>
+      return res.status(500).json({
+        error:
+          "Failed to get payment status.",
+      });
+    }
+  }
+);
 
-              <div className="flex justify-between mt-2">
-                <span>Provider</span>
+/*
+ * ============================================================
+ * PAYMENT HISTORY
+ * GET /api/payments/history
+ * ============================================================
+ */
 
-                <span className="font-bold">
-                  {provider}
-                </span>
-              </div>
+router.get(
+  "/history",
+  authenticate,
+  async (req, res) => {
+    try {
+      const payments =
+        await prisma.payment.findMany({
+          where: {
+            userId:
+              req.userId,
+          },
 
-              <div className="flex justify-between mt-2">
-                <span>Amount</span>
+          orderBy: {
+            createdAt:
+              "desc",
+          },
+        });
 
-                <span className="font-bold">
-                  ZMW {selectedPlan.amount}
-                </span>
-              </div>
-            </div>
+      return res.json({
+        payments,
+      });
+    } catch (error) {
+      console.error(
+        "❌ Payment history error:",
+        error
+      );
 
-            {/* PAY BUTTON */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-lg bg-primary text-white py-3 font-semibold disabled:opacity-50"
-            >
-              {loading
-                ? "Processing..."
-                : `Pay ZMW ${selectedPlan.amount}`}
-            </button>
-          </form>
+      return res.status(500).json({
+        error:
+          "Failed to get payment history.",
+      });
+    }
+  }
+);
 
-          {/* MESSAGE */}
-          {message && (
-            <div
-              className={`mt-4 rounded-lg p-4 text-sm ${
-                messageType === "success"
-                  ? "bg-green-100 text-green-800"
-                  : messageType === "error"
-                  ? "bg-red-100 text-red-800"
-                  : "bg-gray-100 text-gray-800"
-              }`}
-            >
-              {message}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+/*
+ * ============================================================
+ * LIPILA WEBHOOK
+ * POST /api/payments/webhook
+ * ============================================================
+ */
+
+router.post(
+  "/webhook",
+  async (req, res) => {
+    try {
+      const body =
+        req.body || {};
+
+      console.log(
+        "📥 Lipila webhook received:",
+        body
+      );
+
+      const event =
+        body.event;
+
+      const data =
+        body.data ||
+        body;
+
+      const referenceId =
+        data.reference ||
+        data.referenceId;
+
+      /*
+       * Always acknowledge unknown webhook
+       */
+      if (!referenceId) {
+        return res.status(200).json({
+          received: true,
+        });
+      }
+
+      const payment =
+        await prisma.payment.findUnique({
+          where: {
+            referenceId,
+          },
+        });
+
+      /*
+       * Payment not from our system
+       */
+      if (!payment) {
+        console.log(
+          "ℹ️ Unknown Lipila reference:",
+          referenceId
+        );
+
+        return res.status(200).json({
+          received: true,
+        });
+      }
+
+      /*
+       * Already completed
+       */
+      if (
+        payment.status ===
+        "completed"
+      ) {
+        return res.status(200).json({
+          received: true,
+        });
+      }
+
+      const status =
+        String(
+          data.status ||
+            event ||
+            ""
+        ).toLowerCase();
+
+      const completed =
+        status === "completed" ||
+        status === "success" ||
+        status === "paid" ||
+        event ===
+          "deposit.completed";
+
+      const failed =
+        status === "failed" ||
+        status ===
+          "cancelled" ||
+        status ===
+          "expired" ||
+        event ===
+          "deposit.failed";
+
+      /*
+       * ======================================================
+       * COMPLETED
+       * ======================================================
+       */
+
+      if (completed) {
+        await prisma.$transaction(
+          async (tx) => {
+            const updated =
+              await tx.payment.updateMany({
+                where: {
+                  id:
+                    payment.id,
+
+                  status:
+                    "pending",
+                },
+
+                data: {
+                  status:
+                    "completed",
+
+                  completedAt:
+                    new Date(),
+
+                  externalId:
+                    data.transaction_id ||
+                    data.id ||
+                    payment.externalId,
+                },
+              });
+
+            /*
+             * Only activate once.
+             */
+            if (
+              updated.count > 0
+            ) {
+              await activateSubscription(
+                tx,
+                payment
+              );
+
+              console.log(
+                "✅ Subscription activated for user:",
+                payment.userId
+              );
+            }
+          }
+        );
+      }
+
+      /*
+       * ======================================================
+       * FAILED
+       * ======================================================
+       */
+
+      else if (failed) {
+        await prisma.payment.update({
+          where: {
+            id:
+              payment.id,
+          },
+
+          data: {
+            status:
+              "failed",
+
+            externalId:
+              data.transaction_id ||
+              data.id ||
+              payment.externalId,
+          },
+        });
+
+        console.log(
+          "❌ Payment failed:",
+          payment.referenceId
+        );
+      }
+
+      /*
+       * Acknowledge Lipila
+       */
+      return res.status(200).json({
+        received: true,
+      });
+    } catch (error) {
+      console.error(
+        "❌ Lipila webhook error:",
+        error
+      );
+
+      return res.status(500).json({
+        error:
+          "Webhook processing failed.",
+      });
+    }
+  }
+);
+
+module.exports = router;
