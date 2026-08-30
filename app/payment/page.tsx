@@ -1,3 +1,4 @@
+```tsx
 "use client";
 
 import { useState } from "react";
@@ -20,7 +21,8 @@ const plans = {
 };
 
 export default function PaymentPage() {
-  const [plan, setPlan] = useState<Plan>("PRO");
+  const [plan, setPlan] =
+    useState<Plan>("PRO");
 
   const [phoneNumber, setPhoneNumber] =
     useState("");
@@ -35,49 +37,57 @@ export default function PaymentPage() {
     useState("");
 
   const [messageType, setMessageType] =
-    useState<"success" | "error" | "info">(
-      "info"
-    );
+    useState<
+      "success" | "error" | "info"
+    >("info");
 
-  const selectedPlan = plans[plan];
+  const selectedPlan =
+    plans[plan];
 
   async function handlePayment(
     e: React.FormEvent<HTMLFormElement>
   ) {
     e.preventDefault();
 
+    if (loading) {
+      return;
+    }
+
     setLoading(true);
     setMessage("");
     setMessageType("info");
 
     try {
-      /*
-       * Clean phone number
-       */
       const cleanedPhone =
         phoneNumber
           .trim()
           .replace(/\s+/g, "")
           .replace(/-/g, "");
 
+      if (!cleanedPhone) {
+        throw new Error(
+          "Please enter your mobile money phone number."
+        );
+      }
+
       /*
-       * IMPORTANT
+       * IMPORTANT:
        *
-       * We send the frontend provider:
-       *
-       * MTN
-       * AIRTEL
-       * ZAMTEL
-       *
-       * The backend converts this to the
-       * exact Lipila provider code.
+       * provider MUST be included.
        */
 
       const paymentRequest = {
-        plan: plan.toLowerCase(),
-        phoneNumber: cleanedPhone,
-        amount: selectedPlan.amount,
-        provider,
+        plan:
+          plan.toLowerCase(),
+
+        phoneNumber:
+          cleanedPhone,
+
+        amount:
+          selectedPlan.amount,
+
+        provider:
+          provider,
       };
 
       console.log(
@@ -85,29 +95,34 @@ export default function PaymentPage() {
         paymentRequest
       );
 
-      const response = await fetch(
-        "/api/payments/initiate",
-        {
-          method: "POST",
+      const response =
+        await fetch(
+          "/api/payments/initiate",
+          {
+            method: "POST",
 
-          headers: {
-            "Content-Type":
-              "application/json",
+            headers: {
+              "Content-Type":
+                "application/json",
 
-            Accept:
-              "application/json",
-          },
+              Accept:
+                "application/json",
+            },
 
-          body: JSON.stringify(
-            paymentRequest
-          ),
-        }
-      );
+            credentials:
+              "include",
+
+            body:
+              JSON.stringify(
+                paymentRequest
+              ),
+          }
+        );
 
       const data =
-        await response.json().catch(
-          () => ({})
-        );
+        await response
+          .json()
+          .catch(() => ({}));
 
       console.log(
         "📥 PAYMENT RESPONSE:",
@@ -122,12 +137,14 @@ export default function PaymentPage() {
         );
       }
 
-      setMessageType("success");
+      setMessageType(
+        "success"
+      );
 
       setMessage(
         data?.instructions ||
           data?.message ||
-          "Payment request sent. Please check your phone and approve the payment."
+          "Payment request sent. Please approve the payment on your phone."
       );
     } catch (error) {
       console.error(
@@ -135,7 +152,9 @@ export default function PaymentPage() {
         error
       );
 
-      setMessageType("error");
+      setMessageType(
+        "error"
+      );
 
       setMessage(
         error instanceof Error
@@ -151,8 +170,6 @@ export default function PaymentPage() {
     <div className="min-h-screen bg-cream p-8">
       <div className="max-w-md mx-auto">
 
-        {/* HEADER */}
-
         <h1 className="text-3xl font-bold text-primary text-center">
           💳 Upgrade
         </h1>
@@ -161,21 +178,15 @@ export default function PaymentPage() {
           Pay securely using Zambian mobile money.
         </p>
 
-        {/* CARD */}
-
         <div className="bg-white rounded-xl shadow-md p-6 mt-6">
 
           <h2 className="text-xl font-semibold mb-4">
             Choose a plan
           </h2>
 
-          {/* =========================
-              PLANS
-          ========================== */}
+          {/* PLANS */}
 
           <div className="grid grid-cols-2 gap-3">
-
-            {/* PRO */}
 
             <button
               type="button"
@@ -183,10 +194,10 @@ export default function PaymentPage() {
               onClick={() =>
                 setPlan("PRO")
               }
-              className={`rounded-lg border p-4 text-left transition ${
+              className={`rounded-lg border p-4 text-left ${
                 plan === "PRO"
                   ? "border-primary bg-primary/10"
-                  : "border-gray-300 hover:border-primary"
+                  : "border-gray-300"
               }`}
             >
               <div className="font-bold">
@@ -202,18 +213,16 @@ export default function PaymentPage() {
               </div>
             </button>
 
-            {/* SCHOOL */}
-
             <button
               type="button"
               disabled={loading}
               onClick={() =>
                 setPlan("SCHOOL")
               }
-              className={`rounded-lg border p-4 text-left transition ${
+              className={`rounded-lg border p-4 text-left ${
                 plan === "SCHOOL"
                   ? "border-primary bg-primary/10"
-                  : "border-gray-300 hover:border-primary"
+                  : "border-gray-300"
               }`}
             >
               <div className="font-bold">
@@ -231,19 +240,14 @@ export default function PaymentPage() {
 
           </div>
 
-          {/* =========================
-              PAYMENT FORM
-          ========================== */}
-
           <form
             onSubmit={handlePayment}
             className="mt-6 space-y-4"
           >
 
-            {/* PHONE NUMBER */}
+            {/* PHONE */}
 
             <div>
-
               <label
                 htmlFor="phoneNumber"
                 className="block text-sm font-medium mb-1"
@@ -263,20 +267,17 @@ export default function PaymentPage() {
                 placeholder="0976638676"
                 required
                 disabled={loading}
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-primary"
+                className="w-full rounded-lg border border-gray-300 px-4 py-3"
               />
 
               <p className="text-xs text-gray-500 mt-1">
-                Example: 0976638676, 260976638676
-                or +260976638676
+                Example: 0976638676, 260976638676 or +260976638676
               </p>
-
             </div>
 
             {/* PROVIDER */}
 
             <div>
-
               <label
                 htmlFor="provider"
                 className="block text-sm font-medium mb-1"
@@ -294,9 +295,8 @@ export default function PaymentPage() {
                 }
                 disabled={loading}
                 required
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 bg-white outline-none focus:border-primary"
+                className="w-full rounded-lg border border-gray-300 px-4 py-3 bg-white"
               >
-
                 <option value="MTN">
                   MTN Mobile Money
                 </option>
@@ -308,19 +308,15 @@ export default function PaymentPage() {
                 <option value="ZAMTEL">
                   Zamtel Money
                 </option>
-
               </select>
-
             </div>
 
-            {/* =========================
-                SUMMARY
-            ========================== */}
+            {/* SUMMARY */}
 
             <div className="rounded-lg bg-gray-100 p-4">
 
               <div className="flex justify-between">
-                <span className="font-medium">
+                <span>
                   Plan
                 </span>
 
@@ -351,9 +347,7 @@ export default function PaymentPage() {
 
             </div>
 
-            {/* =========================
-                PAY BUTTON
-            ========================== */}
+            {/* BUTTON */}
 
             <button
               type="submit"
@@ -361,7 +355,7 @@ export default function PaymentPage() {
                 loading ||
                 !phoneNumber.trim()
               }
-              className="w-full rounded-lg bg-primary text-white py-3 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full rounded-lg bg-primary text-white py-3 font-semibold disabled:opacity-50"
             >
               {loading
                 ? "Processing..."
@@ -370,9 +364,7 @@ export default function PaymentPage() {
 
           </form>
 
-          {/* =========================
-              MESSAGE
-          ========================== */}
+          {/* MESSAGE */}
 
           {message && (
             <div
@@ -388,8 +380,6 @@ export default function PaymentPage() {
             </div>
           )}
 
-          {/* SECURITY */}
-
           <div className="text-center text-xs text-gray-500 mt-5">
             🔒 Your payment is secure and processed by Lipila
           </div>
@@ -399,3 +389,4 @@ export default function PaymentPage() {
     </div>
   );
 }
+```
