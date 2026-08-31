@@ -23,78 +23,261 @@ const deepseek = new OpenAI({
 });
 
 // ============ LIPILA PAYMENT SERVICE ============
+
 class LipilaService {
   constructor() {
     this.apiKey = process.env.LIPILA_API_KEY;
     this.walletId = process.env.LIPILA_WALLET_ID;
-    this.baseURL = (process.env.LIPILA_BASE_URL || 'https://console.lipila.tech/api/v1').replace(/\/$/, '');
+
+    this.baseURL = (
+      process.env.LIPILA_BASE_URL ||
+      "https://console.lipila.tech/api/v1"
+    ).replace(/\/$/, "");
 
     this.client = axios.create({
       baseURL: this.baseURL,
+
       headers: {
-        'x-api-key': this.apiKey,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        "x-api-key": this.apiKey,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
       },
+
       timeout: 30000,
     });
   }
 
+  // =====================================================
+  // NORMALIZE LIPILA PROVIDER
+  // =====================================================
+
   normalizeProvider(provider) {
+    if (!provider) {
+      return null;
+    }
+
+    // Convert ANY format to uppercase first
+    const value = String(provider)
+      .trim()
+      .toUpperCase();
+
     const map = {
-      mtn: 'MTN_MOMO_ZMB',
-      airtel: 'AIRTEL_OAPI_ZMB',
-      zamtel: 'ZAMTEL_ZMB',
-      MTN_MOMO_ZMB: 'MTN_MOMO_ZMB',
-      AIRTEL_OAPI_ZMB: 'AIRTEL_OAPI_ZMB',
-      ZAMTEL_ZMB: 'ZAMTEL_ZMB',
+      // Frontend values
+      MTN: "MTN_MOMO_ZMB",
+      AIRTEL: "AIRTEL_OAPI_ZMB",
+      ZAMTEL: "ZAMTEL_ZMB",
+
+      // Lowercase compatibility
+      "mtn": "MTN_MOMO_ZMB",
+      "airtel": "AIRTEL_OAPI_ZMB",
+      "zamtel": "ZAMTEL_ZMB",
+
+      // Lipila codes
+      MTN_MOMO_ZMB: "MTN_MOMO_ZMB",
+      AIRTEL_OAPI_ZMB: "AIRTEL_OAPI_ZMB",
+      ZAMTEL_ZMB: "ZAMTEL_ZMB",
     };
-    return map[provider] || null;
+
+    return map[value] || null;
   }
 
-  async createMobileMoneyPayment({ reference, amount, payer, provider, payerEmail, payerMessage, metadata }) {
-    if (!this.apiKey) throw new Error('LIPILA_API_KEY is not configured');
-    if (!this.walletId) throw new Error('LIPILA_WALLET_ID is not configured');
+  // =====================================================
+  // CREATE MOBILE MONEY PAYMENT
+  // =====================================================
 
-    const normalizedProvider = this.normalizeProvider(provider);
-    if (!normalizedProvider) throw new Error('Unsupported mobile money provider');
+  async createMobileMoneyPayment({
+    reference,
+    amount,
+    payer,
+    provider,
+    payerEmail,
+    payerMessage,
+    metadata,
+  }) {
+    if (!this.apiKey) {
+      throw new Error(
+        "LIPILA_API_KEY is not configured"
+      );
+    }
+
+    if (!this.walletId) {
+      throw new Error(
+        "LIPILA_WALLET_ID is not configured"
+      );
+    }
+
+    const normalizedProvider =
+      this.normalizeProvider(provider);
+
+    console.log(
+      "📱 Lipila provider received:",
+      provider
+    );
+
+    console.log(
+      "📱 Lipila provider normalized:",
+      normalizedProvider
+    );
+
+    if (!normalizedProvider) {
+      throw new Error(
+        `Unsupported mobile money provider: ${provider}`
+      );
+    }
+
+    const payload = {
+      reference: reference,
+
+      amount: Number(amount).toFixed(2),
+
+      payer: payer,
+
+      provider: normalizedProvider,
+
+      ...(payerEmail
+        ? {
+            payer_email: payerEmail,
+          }
+        : {}),
+
+      ...(payerMessage
+        ? {
+            payer_message: payerMessage,
+          }
+        : {}),
+
+      ...(metadata
+        ? {
+            metadata: metadata,
+          }
+        : {}),
+    };
+
+    console.log(
+      "📤 Sending payment to Lipila:"
+    );
+
+    console.log(
+      JSON.stringify(
+        payload,
+        null,
+        2
+      )
+    );
 
     try {
-      const response = await this.client.post(`/payments/mobile-money/${encodeURIComponent(this.walletId)}/`, {
-        reference,
-        amount: Number(amount).toFixed(2),
-        payer,
-        provider: normalizedProvider,
-        ...(payerEmail ? { payer_email: payerEmail } : {}),
-        ...(payerMessage ? { payer_message: payerMessage } : {}),
-        ...(metadata ? { metadata } : {}),
-      });
+      const url =
+        `/payments/mobile-money/` +
+        `${encodeURIComponent(
+          this.walletId
+        )}/`;
+
+      console.log(
+        "🌐 Lipila endpoint:",
+        `${this.baseURL}${url}`
+      );
+
+      const response =
+        await this.client.post(
+          url,
+          payload
+        );
+
+      console.log(
+        "✅ Lipila response:",
+        response.status,
+        response.data
+      );
+
       return response.data;
     } catch (error) {
-      console.error('Lipila payment error:', error.response?.status, error.response?.data || error.message);
-      const detail = error.response?.data?.detail || error.response?.data?.message || error.response?.data?.error;
-      throw new Error(detail || `Lipila payment initiation failed (${error.response?.status || 'network error'})`);
+      console.error(
+        "❌ Lipila payment error:"
+      );
+
+      console.error(
+        "Status:",
+        error.response?.status
+      );
+
+      console.error(
+        "Response:",
+        error.response?.data
+      );
+
+      console.error(
+        "Message:",
+        error.message
+      );
+
+      const detail =
+        error.response?.data?.detail ||
+        error.response?.data?.message ||
+        error.response?.data?.error;
+
+      throw new Error(
+        detail ||
+          `Lipila payment initiation failed (${
+            error.response?.status ||
+            "network error"
+          })`
+      );
     }
   }
+
+  // =====================================================
+  // CHECK PAYMENT STATUS
+  // =====================================================
 
   async getPaymentStatus(reference) {
     try {
-      const response = await this.client.get(`/payments/${encodeURIComponent(reference)}/`);
+      const response =
+        await this.client.get(
+          `/payments/${encodeURIComponent(
+            reference
+          )}/`
+        );
+
       return response.data;
     } catch (error) {
-      console.error('Lipila status error:', error.response?.status, error.response?.data || error.message);
-      const detail = error.response?.data?.detail || error.response?.data?.message || error.response?.data?.error;
-      throw new Error(detail || `Failed to check Lipila transaction status (${error.response?.status || 'network error'})`);
+      console.error(
+        "❌ Lipila status error:",
+        error.response?.status,
+        error.response?.data ||
+          error.message
+      );
+
+      const detail =
+        error.response?.data?.detail ||
+        error.response?.data?.message ||
+        error.response?.data?.error;
+
+      throw new Error(
+        detail ||
+          `Failed to check Lipila transaction status (${
+            error.response?.status ||
+            "network error"
+          })`
+      );
     }
   }
 
+  // =====================================================
+  // HEALTH CHECK
+  // =====================================================
+
   async health() {
-    const response = await this.client.get('/status/');
+    const response =
+      await this.client.get(
+        "/status/"
+      );
+
     return response.data;
   }
 }
 
-const lipilaService = new LipilaService();
+const lipilaService =
+  new LipilaService();
 
 // ============ CORS CONFIGURATION ============
 const corsOptions = {
