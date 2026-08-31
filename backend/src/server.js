@@ -2659,147 +2659,515 @@ async function applySuccessfulPayment(payment) {
     }
   });
 }
+// =====================================================
+// PAYMENT ROUTES
+// =====================================================
 
-app.post('/api/payments/initiate', authenticate, async (req, res) => {
-  try {
-    console.log('📥 Payment request body:', req.body);
-    const { phoneNumber, plan, provider, payerEmail } = req.body;
-    const normalizedPlan = normalizePlan(plan);
-    const config = PLAN_CONFIG[normalizedPlan];
-    const cleanNumber = normalizeZambianPhone(phoneNumber);
+const PLAN_CONFIG = {
+  PRO: {
+    amount: 150,
+    role: "PRO",
+    schemesLimit: 100,
+    lessonsLimit: 1000,
+  },
 
-    if (!provider) return res.status(400).json({ error: 'Mobile money provider is required' });
-    if (!lipilaService.normalizeProvider(provider)) return res.status(400).json({ error: 'Unsupported mobile money provider' });
+  SCHOOL: {
+    amount: 500,
+    role: "SCHOOL",
+    schemesLimit: 1000,
+    lessonsLimit: 10000,
+  },
+};
 
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const referenceId = `MT-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-    const payment = await lipilaService.createMobileMoneyPayment({
-      reference: referenceId,
-      amount: config.amount,
-      payer: cleanNumber,
-      provider,
-      payerEmail: payerEmail || user.email,
-      payerMessage: `MyToolbox ${normalizedPlan} plan`,
-      metadata: { userId: req.userId, plan: normalizedPlan },
-    });
+// =====================================================
+// NORMALIZE PLAN
+// =====================================================
 
-    const providerTransactionId = payment.transaction_id || payment.transactionId || payment.id || referenceId;
-    const paymentRecord = await prisma.payment.create({
-      data: {
-        userId: req.userId,
-        referenceId,
-        transactionId: providerTransactionId,
-        amount: config.amount,
-        currency: 'ZMW',
-        provider: 'lipila',
-        phoneNumber: cleanNumber,
-        status: providerStatusIs(payment.status) === 'completed' ? 'completed' : 'pending',
-        externalId: payment.id || payment.transaction_id || null,
-        plan: normalizedPlan,
-        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
-        completedAt: providerStatusIs(payment.status) === 'completed' ? new Date() : null,
+function normalizePlan(plan) {
+  const value = String(
+    plan || ""
+  )
+    .trim()
+    .toUpperCase();
+
+  if (value === "PRO") {
+    return "PRO";
+  }
+
+  if (value === "SCHOOL") {
+    return "SCHOOL";
+  }
+
+  return null;
+}
+
+
+// =====================================================
+// NORMALIZE ZAMBIAN PHONE
+// =====================================================
+
+function normalizeZambianPhone(phone) {
+  const digits = String(
+    phone || ""
+  ).replace(/\D/g, "");
+
+  // 260976638676
+  if (/^260\d{9}$/.test(digits)) {
+    return digits;
+  }
+
+  // 0976638676
+  if (/^0\d{9}$/.test(digits)) {
+    return `260${digits.slice(1)}`;
+  }
+
+  throw new Error(
+    "Invalid Zambian phone number. Use 097XXXXXXXX, 260XXXXXXXXX or +260XXXXXXXXX."
+  );
+}
+
+
+// =====================================================
+// PAYMENT STATUS NORMALIZER
+// =====================================================
+
+function providerStatusIs(status) {
+  return String(
+    status || ""
+  )
+    .trim()
+    .toLowerCase();
+}
+
+
+// =====================================================
+// ACTIVATE SUCCESSFUL PAYMENT
+// =====================================================
+
+async function applySuccessfulPayment(
+  payment
+) {
+  const config =
+    PLAN_CONFIG[
+      String(payment.plan)
+        .toUpperCase()
+    ];
+
+  if (!config) {
+    throw new Error(
+      `Unknown payment plan: ${payment.plan}`
+    );
+  }
+
+  await prisma.payment.update({
+    where: {
+      referenceId:
+        payment.referenceId,
+    },
+
+    data: {
+      status: "completed",
+
+      completedAt:
+        new Date(),
+    },
+  });
+
+  await prisma.user.update({
+    where: {
+      id: payment.userId,
+    },
+
+    data: {
+      role: config.role,
+
+      schemesLimit:
+        config.schemesLimit,
+
+      lessonsLimit:
+        config.lessonsLimit,
+
+      subscriptionEndsAt:
+        new Date(
+          Date.now() +
+            30 *
+              24 *
+              60 *
+              60 *
+              1000
+        ),
+    },
+  });
+
+  console.log(
+    "✅ Subscription activated for user:",
+    payment.userId
+  );
+}
+
+
+// =====================================================
+// INITIATE PAYMENT
+// =====================================================
+
+app.post(
+  "/api/payments/initiate",
+  authenticate,
+  async (req, res) => {
+    try {
+      console.log(
+        "📥 Payment request body:",
+        req.body
+      );
+
+      const {
+        phoneNumber,
+        plan,
+        provider,
+        payerEmail,
+      } = req.body;
+
+
+      // -------------------------------------------------
+      // PLAN
+      // -------------------------------------------------
+
+      const normalizedPlan =
+        normalizePlan(plan);
+
+      if (!normalizedPlan) {
+        return res.status(400).json({
+          error:
+            "Invalid payment plan. Choose PRO or SCHOOL.",
+        });
       }
-    });
 
-    if (paymentRecord.status === 'completed') await applySuccessfulPayment(paymentRecord);
+      const config =
+        PLAN_CONFIG[
+          normalizedPlan
+        ];
 
-    return res.status(201).json({
-      success: true,
-      payment: paymentRecord,
-      provider: payment,
-      message: paymentRecord.status === 'completed'
-        ? 'Payment completed successfully.'
-        : 'Payment initiated. Please approve the mobile money request on your phone.',
-    });
-  } catch (error) {
-    console.error('❌ Payment initiation error:', error);
-    return res.status(400).json({ error: error.message || 'Failed to initiate payment' });
-  }
-});
+      if (!config) {
+        return res.status(400).json({
+          error:
+            "Payment plan is not configured.",
+        });
+      }
 
-app.post('/api/payments/webhook', async (req, res) => {
-  try {
-    const body = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : req.body;
-    const payload = typeof body === 'string' ? JSON.parse(body || '{}') : (body || {});
-    const data = payload.data || payload;
-    const referenceId = data.reference || data.referenceId || payload.reference || payload.referenceId;
-    const status = providerStatusIs(data.status || payload.status);
-    const transactionId = data.transaction_id || data.transactionId || data.id || payload.transaction_id || payload.transactionId;
 
-    console.log('📥 Lipila webhook:', { event: payload.event, referenceId, status });
-    if (!referenceId) return res.status(400).json({ error: 'Missing payment reference' });
+      // -------------------------------------------------
+      // PHONE
+      // -------------------------------------------------
 
-    const payment = await prisma.payment.findUnique({ where: { referenceId }, include: { user: true } });
-    if (!payment) return res.status(404).json({ error: 'Payment not found' });
+      let cleanNumber;
 
-    if (['completed', 'successful', 'success'].includes(status)) {
-      await prisma.payment.update({
-        where: { referenceId },
-        data: { externalId: transactionId || payment.externalId }
+      try {
+        cleanNumber =
+          normalizeZambianPhone(
+            phoneNumber
+          );
+      } catch (error) {
+        return res.status(400).json({
+          error:
+            error.message ||
+            "Invalid Zambian phone number.",
+        });
+      }
+
+
+      // -------------------------------------------------
+      // PROVIDER
+      // -------------------------------------------------
+
+      if (!provider) {
+        return res.status(400).json({
+          error:
+            "Mobile money provider is required.",
+        });
+      }
+
+      const lipilaProvider =
+        lipilaService.normalizeProvider(
+          provider
+        );
+
+      console.log(
+        "🔎 Provider received:",
+        provider
+      );
+
+      console.log(
+        "🔎 Lipila provider:",
+        lipilaProvider
+      );
+
+      if (!lipilaProvider) {
+        return res.status(400).json({
+          error:
+            "Unsupported mobile money provider.",
+
+          providerReceived:
+            provider,
+
+          supportedProviders: [
+            "MTN",
+            "AIRTEL",
+            "ZAMTEL",
+          ],
+        });
+      }
+
+
+      // -------------------------------------------------
+      // USER
+      // -------------------------------------------------
+
+      const user =
+        await prisma.user.findUnique({
+          where: {
+            id: req.userId,
+          },
+        });
+
+      if (!user) {
+        return res.status(404).json({
+          error:
+            "User not found.",
+        });
+      }
+
+
+      // -------------------------------------------------
+      // INTERNAL REFERENCE
+      // -------------------------------------------------
+
+      const referenceId =
+        `MT-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 8)
+          .toUpperCase()}`;
+
+
+      // -------------------------------------------------
+      // SEND TO LIPILA
+      // -------------------------------------------------
+
+      const lipilaPayment =
+        await lipilaService.createMobileMoneyPayment(
+          {
+            reference:
+              referenceId,
+
+            amount:
+              config.amount,
+
+            payer:
+              cleanNumber,
+
+            provider:
+              lipilaProvider,
+
+            payerEmail:
+              payerEmail ||
+              user.email,
+
+            payerMessage:
+              `MyToolbox ${normalizedPlan} Plan`,
+
+            metadata: {
+              userId:
+                req.userId,
+
+              plan:
+                normalizedPlan,
+
+              referenceId:
+                referenceId,
+            },
+          }
+        );
+
+
+      // -------------------------------------------------
+      // LIPILA TRANSACTION ID
+      // -------------------------------------------------
+
+      const providerTransactionId =
+        lipilaPayment?.transaction_id ||
+        lipilaPayment?.transactionId ||
+        lipilaPayment?.identifier ||
+        lipilaPayment?.id ||
+        referenceId;
+
+
+      const externalId =
+        lipilaPayment?.transaction_id ||
+        lipilaPayment?.id ||
+        lipilaPayment?.identifier ||
+        null;
+
+
+      // -------------------------------------------------
+      // DETERMINE INITIAL STATUS
+      // -------------------------------------------------
+
+      const initialStatus =
+        providerStatusIs(
+          lipilaPayment?.status
+        );
+
+
+      const completedImmediately =
+        [
+          "completed",
+          "successful",
+          "success",
+          "paid",
+        ].includes(
+          initialStatus
+        );
+
+
+      // -------------------------------------------------
+      // CREATE DATABASE PAYMENT
+      // -------------------------------------------------
+
+      const payment =
+        await prisma.payment.create({
+          data: {
+            userId:
+              req.userId,
+
+            referenceId:
+              referenceId,
+
+            transactionId:
+              providerTransactionId,
+
+            amount:
+              config.amount,
+
+            currency:
+              "ZMW",
+
+            provider:
+              "lipila",
+
+            phoneNumber:
+              cleanNumber,
+
+            status:
+              completedImmediately
+                ? "completed"
+                : "pending",
+
+            externalId:
+              externalId,
+
+            plan:
+              normalizedPlan,
+
+            expiresAt:
+              new Date(
+                Date.now() +
+                  30 *
+                    60 *
+                    1000
+              ),
+
+            completedAt:
+              completedImmediately
+                ? new Date()
+                : null,
+          },
+        });
+
+
+      // -------------------------------------------------
+      // IF LIPILA COMPLETED IMMEDIATELY
+      // -------------------------------------------------
+
+      if (
+        completedImmediately
+      ) {
+        await applySuccessfulPayment(
+          payment
+        );
+      }
+
+
+      // -------------------------------------------------
+      // RESPONSE
+      // -------------------------------------------------
+
+      console.log(
+        "✅ Payment initiated:",
+        {
+          referenceId,
+          provider,
+          lipilaProvider,
+          amount:
+            config.amount,
+        }
+      );
+
+      return res.status(201).json({
+        success: true,
+
+        paymentId:
+          payment.id,
+
+        transactionId:
+          providerTransactionId,
+
+        referenceId:
+          referenceId,
+
+        externalId:
+          externalId,
+
+        amount:
+          config.amount,
+
+        plan:
+          normalizedPlan,
+
+        provider:
+          provider,
+
+        lipilaProvider:
+          lipilaProvider,
+
+        status:
+          completedImmediately
+            ? "completed"
+            : "pending",
+
+        message:
+          completedImmediately
+            ? "Payment completed successfully."
+            : "Payment initiated. Please approve the mobile money request on your phone.",
+
+        instructions:
+          lipilaPayment?.message ||
+          "Please check your phone and approve the mobile money payment.",
       });
-      await applySuccessfulPayment(payment);
-    } else if (['failed', 'cancelled', 'canceled', 'rejected', 'expired'].includes(status)) {
-      await prisma.payment.update({
-        where: { referenceId },
-        data: { status: 'failed', externalId: transactionId || payment.externalId }
+
+    } catch (error) {
+      console.error(
+        "❌ Payment initiation error:",
+        error
+      );
+
+      return res.status(400).json({
+        error:
+          error?.message ||
+          "Failed to initiate payment.",
       });
     }
-
-    return res.status(200).json({ received: true });
-  } catch (error) {
-    console.error('❌ Lipila webhook error:', error);
-    return res.status(400).json({ error: 'Webhook processing failed' });
   }
-});
-
-app.get('/api/payments/:referenceId/status', authenticate, async (req, res) => {
-  try {
-    const { referenceId } = req.params;
-    const payment = await prisma.payment.findUnique({ where: { referenceId } });
-    if (!payment) return res.status(404).json({ error: 'Payment not found' });
-    if (payment.userId !== req.userId) return res.status(403).json({ error: 'Unauthorized' });
-
-    const providerStatus = await lipilaService.getPaymentStatus(referenceId);
-    const rawStatus = providerStatusIs(providerStatus.status || providerStatus.data?.status);
-
-    if (['completed', 'successful', 'success'].includes(rawStatus) && payment.status !== 'completed') {
-      await applySuccessfulPayment(payment);
-    } else if (['failed', 'cancelled', 'canceled', 'rejected', 'expired'].includes(rawStatus) && payment.status !== 'failed') {
-      await prisma.payment.update({ where: { referenceId }, data: { status: 'failed' } });
-    }
-
-    const freshPayment = await prisma.payment.findUnique({ where: { referenceId } });
-    return res.json({ payment: freshPayment, providerStatus });
-  } catch (error) {
-    console.error('❌ Status check error:', error);
-    return res.status(502).json({ error: error.message || 'Failed to check payment status' });
-  }
-});
-
-app.get('/api/payments/lipila/health', authenticate, async (req, res) => {
-  try {
-    const result = await lipilaService.health();
-    return res.json({ configured: true, lipila: result });
-  } catch (error) {
-    return res.status(502).json({ configured: Boolean(process.env.LIPILA_API_KEY && process.env.LIPILA_WALLET_ID), error: error.message });
-  }
-});
-
-app.get('/api/payments/history', authenticate, async (req, res) => {
-  try {
-    const payments = await prisma.payment.findMany({
-      where: { userId: req.userId },
-      orderBy: { createdAt: 'desc' },
-      take: 20
-    });
-    res.json(payments);
-  } catch (error) {
-    console.error('Error fetching payment history:', error);
-    res.status(500).json({ error: 'Failed to fetch payment history' });
-  }
-});
+);
 
 // ============ ADMIN ROUTES (FIXED) ============
 
