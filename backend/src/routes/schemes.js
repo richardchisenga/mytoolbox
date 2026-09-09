@@ -41,7 +41,7 @@ router.post('/generate', authenticate, async (req, res) => {
       select: { school: true }
     });
 
-    const schoolName = user?.school || 'KASHINAKAZHI SECONDARY SCHOOL';
+    const schoolName = user?.school || '';
     const totalWeeks = Number(weeks) || 13;
     const assessmentWeekNumbers = Array.isArray(assessmentWeeks) ? assessmentWeeks : [6, 13];
     const testTopicMap = testTopics || {};
@@ -51,7 +51,7 @@ router.post('/generate', authenticate, async (req, res) => {
     const generatedWeeks = [];
 
     const cbcReferences = [
-      '2024 New Biology Syllabus',
+      'Teacher-provided curriculum materials',
       'Biological Science',
       'Basic Biology'
     ];
