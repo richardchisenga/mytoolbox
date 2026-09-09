@@ -1,0 +1,26 @@
+{
+  "curriculum": "cbc",
+  "subject": "",
+  "grade": "",
+  "gradeAliases": [],
+  "term": "",
+  "sourceType": "official_syllabus_or_teaching_module",
+  "sourceBasis": "",
+  "officialSource": "",
+  "rows": [
+    {
+      "week": 1,
+      "topic": "",
+      "subTopic": "",
+      "specificCompetence": "",
+      "learningActivities": [],
+      "expectedStandard": "",
+      "resources": [],
+      "strategies": [],
+      "reference": "",
+      "knowledge": "",
+      "skills": [],
+      "values": []
+    }
+  ]
+}
