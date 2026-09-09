@@ -16,6 +16,7 @@ export default function SchemesPage() {
   const [assessmentWeeks, setAssessmentWeeks] = useState<number[]>([6, 13]);
   const [testTopics, setTestTopics] = useState<{ [key: number]: string }>({});
   const [weekTopics, setWeekTopics] = useState<{ [key: number]: string }>({});
+  const [weekSubtopics, setWeekSubtopics] = useState<{ [key: number]: string }>({});
   const [newAssessmentWeek, setNewAssessmentWeek] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedScheme, setGeneratedScheme] = useState<any>(null);
@@ -81,6 +82,10 @@ export default function SchemesPage() {
     setWeekTopics({ ...weekTopics, [week]: topic });
   };
 
+  const updateWeekSubtopic = (week: number, value: string) => {
+    setWeekSubtopics({ ...weekSubtopics, [week]: value });
+  };
+
   const generateScheme = async () => {
     setError("");
     if (!grade || !subject) {
@@ -135,6 +140,7 @@ export default function SchemesPage() {
             assessmentWeeks,
             testTopics: testTopicMap,
             weekTopics,
+            weekSubtopics,
           }),
         }
       );
@@ -195,6 +201,47 @@ export default function SchemesPage() {
       return <p className="text-gray-500 text-center py-8">No weeks data available</p>;
     }
 
+    // CBC follows the Ministry-style format in the supplied reference:
+    // Week | Topic | Sub-topic | Specific competences | Learning activities |
+    // Expected standards | T/L Resources | Strategies/Techniques | Reference
+    if (scheme.curriculum === "cbc") {
+      const display = (value: any) => Array.isArray(value) ? value.join("\n") : (value ?? "-");
+      return (
+        <div className="bg-white border border-gray-300 overflow-x-auto shadow-sm">
+          <table className="w-full text-xs border-collapse min-w-[1500px]">
+            <thead>
+              <tr className="bg-gray-100">
+                {[
+                  "week", "Topic", "Sub- topic", "Specific competences", "Learning activities",
+                  "Expected standards", "T/L RESOURCES", "STRATEGIES / TECHNIQUES", "REFERENCE"
+                ].map((heading, i) => (
+                  <th key={heading} className={`p-2 border border-gray-400 text-center font-bold text-gray-800 ${i === 0 ? "w-14" : ""}`}>
+                    {heading}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {scheme.weeks.map((week: any, idx: number) => (
+                <tr key={idx} className="align-top">
+                  <td className="p-2 border border-gray-400 text-center font-bold">{week.week}</td>
+                  <td className="p-2 border border-gray-400 font-semibold">{week.topic || "-"}</td>
+                  <td className="p-2 border border-gray-400">{week.subTopic || week.subtopic || scheme.subtopic || "-"}</td>
+                  <td className="p-2 border border-gray-400 whitespace-pre-line">{display(week.specificCompetences || week.competencies || week.specificOutcome)}</td>
+                  <td className="p-2 border border-gray-400 whitespace-pre-line">{display(week.learningActivities || week.activities)}</td>
+                  <td className="p-2 border border-gray-400">{week.expectedStandards || week.specificOutcome || "-"}</td>
+                  <td className="p-2 border border-gray-400 whitespace-pre-line">{display(week.resources || week.aids)}</td>
+                  <td className="p-2 border border-gray-400 whitespace-pre-line">{display(week.strategies || week.methods)}</td>
+                  <td className="p-2 border border-gray-400 whitespace-pre-line">{display(week.reference || week.references || "2024 New Biology Syllabus")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    // OBC display remains unchanged for backward compatibility.
     return (
       <div className="bg-white border border-gray-300 rounded-lg overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
@@ -202,82 +249,34 @@ export default function SchemesPage() {
             <tr className="bg-gray-100 border-b-2 border-gray-300">
               <th className="p-2 border-r border-gray-300 text-center font-bold text-gray-800">WEEK</th>
               <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">TOPIC</th>
-              {scheme.curriculum === 'obc' ? (
-                <>
-                  <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">OBJECTIVES / OUTCOMES</th>
-                  <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">TEACHING & LEARNING METHODS</th>
-                  <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">TEACHING & LEARNING AIDS</th>
-                  <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">REFERENCE BOOKS</th>
-                  <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">KNOWLEDGE</th>
-                  <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">SKILLS</th>
-                  <th className="p-2 border-l border-gray-300 text-left font-bold text-gray-800">VALUES</th>
-                </>
-              ) : (
-                <>
-                  <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">SPECIFIC OUTCOMES</th>
-                  <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">COMPETENCIES</th>
-                  <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">TEACHING & LEARNING METHODS</th>
-                  <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">TEACHING & LEARNING AIDS</th>
-                  <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">KNOWLEDGE</th>
-                  <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">SKILLS</th>
-                  <th className="p-2 border-l border-gray-300 text-left font-bold text-gray-800">VALUES</th>
-                </>
-              )}
+              <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">OBJECTIVES / OUTCOMES</th>
+              <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">TEACHING & LEARNING METHODS</th>
+              <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">TEACHING & LEARNING AIDS</th>
+              <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">REFERENCE BOOKS</th>
+              <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">KNOWLEDGE</th>
+              <th className="p-2 border-r border-gray-300 text-left font-bold text-gray-800">SKILLS</th>
+              <th className="p-2 border-l border-gray-300 text-left font-bold text-gray-800">VALUES</th>
             </tr>
           </thead>
           <tbody>
             {scheme.weeks.map((week: any, idx: number) => {
-              const isAssessment = scheme.assessmentWeeks?.includes(week.week) || week.isAssessment || false;
-              const topicRows = Array.isArray(week.topics) && week.topics.length > 0
-                ? week.topics
-                : [{
-                    topic: week.topic,
-                    specificOutcome: week.specificOutcome,
-                    methods: week.methods,
-                    aids: week.aids,
-                    references: week.references,
-                    objectives: week.objectives,
-                    competencies: week.competencies,
-                    knowledge: week.knowledge,
-                    skills: week.skills,
-                    values: week.values
-                  }];
+              const topicRows = Array.isArray(week.topics) && week.topics.length > 0 ? week.topics : [{
+                topic: week.topic, specificOutcome: week.specificOutcome, methods: week.methods,
+                aids: week.aids, references: week.references, objectives: week.objectives,
+                knowledge: week.knowledge, skills: week.skills, values: week.values
+              }];
               const displayList = (value: any) => Array.isArray(value) ? value.join(', ') : (value ?? '-');
               return (
                 <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                   <td className="p-2 border border-gray-300 text-center font-bold">{week.week}</td>
-                  <td className="p-2 border border-gray-300">
-                    {topicRows.map((t: any, i: number) => (
-                      <div key={i}>
-                        <strong>{t.topic || '-'}</strong>
-                        {i < topicRows.length - 1 && <hr className="my-1 border-gray-200" />}
-                      </div>
-                    ))}
-                  </td>
-                  <td className="p-2 border border-gray-300 text-xs">
-                    {topicRows.map((t: any, i: number) => (
-                      <div key={i}>{scheme.curriculum === 'obc' ? (displayList(t.objectives) || t.specificOutcome || '-') : (t.specificOutcome || '-')}</div>
-                    ))}
-                  </td>
-                  {scheme.curriculum === 'obc' ? (
-                    <>
-                      <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{displayList(t.methods)}</div>)}</td>
-                      <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{displayList(t.aids)}</div>)}</td>
-                      <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{displayList(t.references)}</div>)}</td>
-                      <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{t.knowledge || '-'}</div>)}</td>
-                      <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{t.skills || '-'}</div>)}</td>
-                      <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{t.values || '-'}</div>)}</td>
-                    </>
-                  ) : (
-                    <>
-                      <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{displayList(t.competencies)}</div>)}</td>
-                      <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{displayList(t.methods)}</div>)}</td>
-                      <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{displayList(t.aids)}</div>)}</td>
-                      <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{t.knowledge || '-'}</div>)}</td>
-                      <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{t.skills || '-'}</div>)}</td>
-                      <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{t.values || '-'}</div>)}</td>
-                    </>
-                  )}
+                  <td className="p-2 border border-gray-300">{topicRows.map((t: any, i: number) => <div key={i}><strong>{t.topic || '-'}</strong>{i < topicRows.length - 1 && <hr className="my-1 border-gray-200" />}</div>)}</td>
+                  <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{displayList(t.objectives) || t.specificOutcome || '-'}</div>)}</td>
+                  <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{displayList(t.methods)}</div>)}</td>
+                  <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{displayList(t.aids)}</div>)}</td>
+                  <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{displayList(t.references)}</div>)}</td>
+                  <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{t.knowledge || '-'}</div>)}</td>
+                  <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{t.skills || '-'}</div>)}</td>
+                  <td className="p-2 border border-gray-300 text-xs">{topicRows.map((t: any, i: number) => <div key={i}>{t.values || '-'}</div>)}</td>
                 </tr>
               );
             })}
@@ -419,11 +418,11 @@ export default function SchemesPage() {
             {renderSchemeTable(generatedScheme)}
 
             <div className="mt-6 bg-gray-50 border border-gray-300 rounded-lg p-4 flex flex-wrap items-center gap-3">
-              <span className="text-gray-700 font-semibold">✓ CDC Mapped</span>
+              <span className="text-gray-700 font-semibold">✓ CBC Mapped</span>
               <span className="text-sm text-gray-500">|</span>
               <span className="text-sm text-gray-500">{generatedScheme.totalWeeks} weeks · Full term coverage</span>
               <span className="text-sm text-gray-500">|</span>
-              <span className="text-sm text-gray-700 font-semibold">100% aligned to syllabus</span>
+              <span className="text-sm text-gray-700 font-semibold">Aligned to CBC scheme format</span>
               <span className="text-sm text-gray-500">|</span>
               <span className="text-sm text-gray-600 font-semibold">📝 {generatedScheme.assessmentWeeks?.length || 0} assessment weeks</span>
             </div>
@@ -548,13 +547,24 @@ export default function SchemesPage() {
                           className="mt-1 w-full px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400 text-sm"
                         />
                       ) : (
-                        <input
-                          type="text"
-                          value={weekTopics[week] || ""}
-                          onChange={(e) => updateWeekTopic(week, e.target.value)}
-                          placeholder={`Enter topic for Week ${week}`}
-                          className="mt-1 w-full px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400 text-sm"
-                        />
+                        <>
+                          <input
+                            type="text"
+                            value={weekTopics[week] || ""}
+                            onChange={(e) => updateWeekTopic(week, e.target.value)}
+                            placeholder={`Enter topic for Week ${week}`}
+                            className="mt-1 w-full px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400 text-sm"
+                          />
+                          {curriculum === "cbc" && (
+                            <input
+                              type="text"
+                              value={weekSubtopics[week] || ""}
+                              onChange={(e) => updateWeekSubtopic(week, e.target.value)}
+                              placeholder="Enter sub-topic"
+                              className="mt-1 w-full px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400 text-sm"
+                            />
+                          )}
+                        </>
                       )}
                     </div>
                   );
