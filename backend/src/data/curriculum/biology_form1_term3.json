@@ -1,0 +1,308 @@
+{
+  "curriculum": "cbc",
+  "subject": "Biology",
+  "grade": "Form 1",
+  "term": "3",
+  "sourceType": "local_scheme_index",
+  "sourceBasis": "Teacher scheme index supplied for MyToolbox; references the Zambia 2024 New Biology Syllabus.",
+  "officialSource": "https://www.edu.gov.zm/wp-content/uploads/2025/02/CAMERA-READY-O-LEVEL-BIOLOGY-SYLABUS-5-02-2024-FINAL-CORRECTED-FOR-PRINTING.pdf",
+  "rows": [
+    {
+      "week": 1,
+      "topic": "1.1.0 Concepts and Methods in Biology",
+      "subTopic": "1.1.1 Nature of Science inquiry",
+      "specificCompetence": "Apply scientific inquiry in carrying out scientific investigations",
+      "methods": [
+        "Group work",
+        "Experiments",
+        "Field work"
+      ],
+      "resources": [
+        "Apparatus",
+        "Books",
+        "Beakers"
+      ],
+      "reference": "2024 New Syllabus pages 1-10",
+      "knowledge": "Understanding of scientific methods and processes",
+      "skills": [
+        "Observation",
+        "questioning",
+        "experimentation"
+      ]
+    },
+    {
+      "week": 2,
+      "topic": "1.1.0 Concepts and Methods in Biology",
+      "subTopic": "1.1.2 Scientific measurements and units",
+      "specificCompetence": "Use appropriate instruments and units to measure biological quantities",
+      "methods": [
+        "Practical work",
+        "Demonstration",
+        "Discussion"
+      ],
+      "resources": [
+        "Rulers",
+        "balances",
+        "thermometers",
+        "measuring cylinders"
+      ],
+      "reference": "2024 New Syllabus pages 11-20",
+      "knowledge": "Knowledge of SI units and measurement techniques",
+      "skills": [
+        "Measuring",
+        "recording",
+        "calculating"
+      ]
+    },
+    {
+      "week": 3,
+      "topic": "1.1.0 Concepts and Methods in Biology",
+      "subTopic": "1.1.3 Laboratory safety and apparatus",
+      "specificCompetence": "Demonstrate safe handling of laboratory apparatus and chemicals",
+      "methods": [
+        "Demonstration",
+        "Role play",
+        "Discussion"
+      ],
+      "resources": [
+        "Safety goggles",
+        "gloves",
+        "lab apparatus",
+        "charts"
+      ],
+      "reference": "2024 New Syllabus pages 21-30",
+      "knowledge": "Understanding of safety rules and hazard symbols",
+      "skills": [
+        "Safe handling",
+        "first aid",
+        "waste disposal"
+      ]
+    },
+    {
+      "week": 4,
+      "topic": "Assessment",
+      "subTopic": "Mid-term test",
+      "specificCompetence": "Demonstrate understanding of concepts and methods in biology",
+      "methods": [
+        "Written test"
+      ],
+      "resources": [
+        "Test papers",
+        "pens"
+      ],
+      "reference": "All covered topics",
+      "knowledge": "Recall and application of learned concepts",
+      "skills": [
+        "Critical thinking",
+        "problem solving"
+      ]
+    },
+    {
+      "week": 5,
+      "topic": "2.1.0 Principles of Cellular Life",
+      "subTopic": "2.1.1 Cell structure and function",
+      "specificCompetence": "Describe the structure and function of cell organelles",
+      "methods": [
+        "Microscopy",
+        "Group discussion",
+        "Drawing"
+      ],
+      "resources": [
+        "Microscopes",
+        "prepared slides",
+        "charts",
+        "models"
+      ],
+      "reference": "2024 New Syllabus pages 31-40",
+      "knowledge": "Knowledge of cell organelles and their functions",
+      "skills": [
+        "Microscopy",
+        "observation",
+        "drawing"
+      ]
+    },
+    {
+      "week": 6,
+      "topic": "2.1.0 Principles of Cellular Life",
+      "subTopic": "2.1.2 Cell specialization and organization",
+      "specificCompetence": "Explain how cells are organized into tissues, organs, and systems",
+      "methods": [
+        "Discussion",
+        "Use of charts",
+        "Group work"
+      ],
+      "resources": [
+        "Charts",
+        "models",
+        "textbooks"
+      ],
+      "reference": "2024 New Syllabus pages 41-50",
+      "knowledge": "Understanding of levels of organization in living organisms",
+      "skills": [
+        "Analysis",
+        "classification",
+        "communication"
+      ]
+    },
+    {
+      "week": 7,
+      "topic": "2.1.0 Principles of Cellular Life",
+      "subTopic": "2.1.3 Cell division (mitosis and meiosis)",
+      "specificCompetence": "Compare mitosis and meiosis and their significance",
+      "methods": [
+        "Microscopy",
+        "Diagrammatic representation",
+        "Discussion"
+      ],
+      "resources": [
+        "Microscope slides",
+        "diagrams",
+        "videos"
+      ],
+      "reference": "2024 New Syllabus pages 51-60",
+      "knowledge": "Knowledge of stages of cell division and their importance",
+      "skills": [
+        "Observation",
+        "comparison",
+        "drawing"
+      ]
+    },
+    {
+      "week": 8,
+      "topic": "Assessment",
+      "subTopic": "Mid-term test",
+      "specificCompetence": "Demonstrate understanding of principles of cellular life",
+      "methods": [
+        "Written test"
+      ],
+      "resources": [
+        "Test papers",
+        "pens"
+      ],
+      "reference": "All covered topics",
+      "knowledge": "Recall and application of learned concepts",
+      "skills": [
+        "Critical thinking",
+        "problem solving"
+      ]
+    },
+    {
+      "week": 9,
+      "topic": "2.1.0 Principles of Cellular Life",
+      "subTopic": "2.1.4 Transport across cell membranes",
+      "specificCompetence": "Explain the processes of diffusion, osmosis, and active transport",
+      "methods": [
+        "Experiments",
+        "Demonstration",
+        "Discussion"
+      ],
+      "resources": [
+        "Visking tubing",
+        "beakers",
+        "salt solutions",
+        "potato strips"
+      ],
+      "reference": "2024 New Syllabus pages 61-70",
+      "knowledge": "Understanding of passive and active transport mechanisms",
+      "skills": [
+        "Experimental design",
+        "observation",
+        "analysis"
+      ]
+    },
+    {
+      "week": 10,
+      "topic": "3.1.0 Maintenance of the Organism",
+      "subTopic": "3.1.1 Nutrition in plants (photosynthesis)",
+      "specificCompetence": "Describe the process of photosynthesis and its importance",
+      "methods": [
+        "Experiments",
+        "Field work",
+        "Discussion"
+      ],
+      "resources": [
+        "Plants",
+        "light sources",
+        "iodine solution",
+        "charts"
+      ],
+      "reference": "2024 New Syllabus pages 71-80",
+      "knowledge": "Knowledge of photosynthesis equation and factors affecting it",
+      "skills": [
+        "Experimental skills",
+        "observation",
+        "analysis"
+      ]
+    },
+    {
+      "week": 11,
+      "topic": "3.1.0 Maintenance of the Organism",
+      "subTopic": "3.1.2 Nutrition in animals (human digestive system)",
+      "specificCompetence": "Explain the structure and function of the human digestive system",
+      "methods": [
+        "Models",
+        "Charts",
+        "Discussion",
+        "Group work"
+      ],
+      "resources": [
+        "Models",
+        "charts",
+        "textbooks"
+      ],
+      "reference": "2024 New Syllabus pages 81-90",
+      "knowledge": "Understanding of digestion, absorption, and assimilation",
+      "skills": [
+        "Identification",
+        "explanation",
+        "teamwork"
+      ]
+    },
+    {
+      "week": 12,
+      "topic": "3.1.0 Maintenance of the Organism",
+      "subTopic": "3.1.3 Transport in plants and animals",
+      "specificCompetence": "Describe the transport systems in plants and animals",
+      "methods": [
+        "Microscopy",
+        "Dissection",
+        "Discussion"
+      ],
+      "resources": [
+        "Microscopes",
+        "specimens",
+        "charts"
+      ],
+      "reference": "2024 New Syllabus pages 91-100",
+      "knowledge": "Knowledge of xylem, phloem, blood, and circulatory system",
+      "skills": [
+        "Observation",
+        "dissection",
+        "comparison"
+      ]
+    },
+    {
+      "week": 13,
+      "topic": "Assessment",
+      "subTopic": "End of term test",
+      "specificCompetence": "Demonstrate understanding of all topics covered in term 3",
+      "methods": [
+        "Written test"
+      ],
+      "resources": [
+        "Test papers",
+        "pens"
+      ],
+      "reference": "All topics covered in term 3",
+      "knowledge": "Recall and application of all learned concepts",
+      "skills": [
+        "Critical thinking",
+        "problem solving",
+        "synthesis"
+      ]
+    }
+  ],
+  "gradeAliases": [
+    "Grade 8"
+  ]
+}
