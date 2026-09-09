@@ -1,4 +1,4 @@
-// src/server.js - Complete application with DeepSeek AI integration, Lipila payments, Notes, Assessments, Admin routes, and Export routes
+// src/server.js - Complete application with DeepSeek AI integration, manual payments, Notes, Assessments, Admin routes, and Export routes
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -7,9 +7,9 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 const OpenAI = require('openai');
-const axios = require('axios');
 const { Document, Packer, Paragraph, Table, TableRow, TableCell, HeadingLevel, AlignmentType, WidthType } = require('docx');
 const PDFDocument = require('pdfkit');
+const { getCurriculumContext, formatContext, listCurriculumSources, listCurriculumRows, catalogSubjects } = require('./utils/curriculumContext');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,262 +21,6 @@ const deepseek = new OpenAI({
   apiKey: process.env.DEEPSEEK_API_KEY,
   baseURL: "https://api.deepseek.com"
 });
-
-// ============ LIPILA PAYMENT SERVICE ============
-
-class LipilaService {
-  constructor() {
-    this.apiKey = process.env.LIPILA_API_KEY;
-    this.walletId = process.env.LIPILA_WALLET_ID;
-
-      process.env.LIPILA_BASE_URL ||
-      "https://console.lipila.tech/api/v1"
-    ).replace(/\/$/, "");
-
-    this.client = axios.create({
-      baseURL: this.baseURL,
-
-      headers: {
-        "x-api-key": this.apiKey,
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-      },
-
-      timeout: 30000,
-    });
-  }
-
-  // =====================================================
-  // NORMALIZE LIPILA PROVIDER
-  // =====================================================
-
-  normalizeProvider(provider) {
-    if (!provider) {
-      return null;
-    }
-
-    // Convert ANY format to uppercase first
-    const value = String(provider)
-      .trim()
-      .toUpperCase();
-
-    const map = {
-      // Frontend values
-      MTN: "MTN_MOMO_ZMB",
-      AIRTEL: "AIRTEL_OAPI_ZMB",
-      ZAMTEL: "ZAMTEL_ZMB",
-
-      // Lowercase compatibility
-      "mtn": "MTN_MOMO_ZMB",
-      "airtel": "AIRTEL_OAPI_ZMB",
-      "zamtel": "ZAMTEL_ZMB",
-
-      // Lipila codes
-      MTN_MOMO_ZMB: "MTN_MOMO_ZMB",
-      AIRTEL_OAPI_ZMB: "AIRTEL_OAPI_ZMB",
-      ZAMTEL_ZMB: "ZAMTEL_ZMB",
-    };
-
-    return map[value] || null;
-  }
-
-  // =====================================================
-  // CREATE MOBILE MONEY PAYMENT
-  // =====================================================
-
-  async createMobileMoneyPayment({
-    reference,
-    amount,
-    payer,
-    provider,
-    payerEmail,
-    payerMessage,
-    metadata,
-  }) {
-    if (!this.apiKey) {
-      throw new Error(
-        "LIPILA_API_KEY is not configured"
-      );
-    }
-
-    if (!this.walletId) {
-      throw new Error(
-        "LIPILA_WALLET_ID is not configured"
-      );
-    }
-
-    const normalizedProvider =
-      this.normalizeProvider(provider);
-
-    console.log(
-      "📱 Lipila provider received:",
-      provider
-    );
-
-    console.log(
-      "📱 Lipila provider normalized:",
-      normalizedProvider
-    );
-
-    if (!normalizedProvider) {
-      throw new Error(
-        `Unsupported mobile money provider: ${provider}`
-      );
-    }
-
-    const payload = {
-      reference: reference,
-
-      amount: Number(amount).toFixed(2),
-
-      payer: payer,
-
-      provider: normalizedProvider,
-
-      ...(payerEmail
-        ? {
-            payer_email: payerEmail,
-          }
-        : {}),
-
-      ...(payerMessage
-        ? {
-            payer_message: payerMessage,
-          }
-        : {}),
-
-      ...(metadata
-        ? {
-            metadata: metadata,
-          }
-        : {}),
-    };
-
-    console.log(
-      "📤 Sending payment to Lipila:"
-    );
-
-    console.log(
-      JSON.stringify(
-        payload,
-        null,
-        2
-      )
-    );
-
-    try {
-      const url =
-        `/payments/mobile-money/` +
-        `${encodeURIComponent(
-          this.walletId
-        )}/`;
-
-      console.log(
-        "🌐 Lipila endpoint:",
-        `${this.baseURL}${url}`
-      );
-
-      const response =
-        await this.client.post(
-          url,
-          payload
-        );
-
-      console.log(
-        "✅ Lipila response:",
-        response.status,
-        response.data
-      );
-
-      return response.data;
-    } catch (error) {
-      console.error(
-        "❌ Lipila payment error:"
-      );
-
-      console.error(
-        "Status:",
-        error.response?.status
-      );
-
-      console.error(
-        "Response:",
-        error.response?.data
-      );
-
-      console.error(
-        "Message:",
-        error.message
-      );
-
-      const detail =
-        error.response?.data?.detail ||
-        error.response?.data?.message ||
-        error.response?.data?.error;
-
-      throw new Error(
-        detail ||
-          `Lipila payment initiation failed (${
-            error.response?.status ||
-            "network error"
-          })`
-      );
-    }
-  }
-
-  // =====================================================
-  // CHECK PAYMENT STATUS
-  // =====================================================
-
-  async getPaymentStatus(reference) {
-    try {
-      const response =
-        await this.client.get(
-          `/payments/${encodeURIComponent(
-            reference
-          )}/`
-        );
-
-      return response.data;
-    } catch (error) {
-      console.error(
-        "❌ Lipila status error:",
-        error.response?.status,
-        error.response?.data ||
-          error.message
-      );
-
-      const detail =
-        error.response?.data?.detail ||
-        error.response?.data?.message ||
-        error.response?.data?.error;
-
-      throw new Error(
-        detail ||
-          `Failed to check Lipila transaction status (${
-            error.response?.status ||
-            "network error"
-          })`
-      );
-    }
-  }
-
-  // =====================================================
-  // HEALTH CHECK
-  // =====================================================
-
-  async health() {
-    const response =
-      await this.client.get(
-        "/status/"
-      );
-
-    return response.data;
-  }
-}
-
-const lipilaService =
-  new LipilaService();
 
 // ============ CORS CONFIGURATION ============
 const corsOptions = {
@@ -903,7 +647,7 @@ function generateLessonContent(topic, subject, grade) {
 }
 
 // ============ CBC LESSON PROMPT ============
-function generateCBCPrompt(topic, grade, subject, classSize, user, subtopic) {
+function generateCBCPrompt(topic, grade, subject, classSize, user, subtopic, term = '', curriculumContext = null) {
   const size = parseInt(classSize) || 40;
   const boys = Math.floor(size / 2) || 18;
   const girls = Math.ceil(size / 2) || 22;
@@ -913,6 +657,10 @@ function generateCBCPrompt(topic, grade, subject, classSize, user, subtopic) {
   
   return `
 You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
+Term: ${term || 'not supplied'}.
+
+CURRICULUM SOURCE CONTROL:
+${formatContext(curriculumContext)}
 
 ⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this CBC lesson structure. The lessonProgression array MUST have content with all required fields.
 
@@ -922,7 +670,7 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
   "subject": "${subject}",
   "subtopic": "${subtopic || ''}",
   "teacherName": "${user.fullName || 'MR/MRS'}",
-  "school": "${user.school || 'KASHINAKAZHI SECONDARY SCHOOL'}",
+  "school": "${user.school || ''}",
   "date": "${new Date().toISOString().split('T')[0]}",
   "time": "10:20-11:00",
   "duration": "80 MINUTES",
@@ -940,9 +688,7 @@ You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) l
   "rationale": "Understanding ${topic} is essential for learners to develop critical thinking skills and solve real-world problems in ${subject}.",
   "priorKnowledge": "Learners have basic knowledge of the topic from previous lessons",
   "references": [
-    "2026 Teaching Module",
-    "Curriculum Guide",
-    "${subject} Grade ${grade} Textbook"
+    "Use the verified curriculum source shown below when available"
   ],
   "learningEnvironment": "Classroom with adequate resources",
   "materials": [
@@ -995,7 +741,7 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
   "subject": "${subject}",
   "subtopic": "${subtopic || ''}",
   "teacherName": "${user.fullName || 'MR/MRS'}",
-  "school": "${user.school || 'KASHINAKAZHI SECONDARY SCHOOL'}",
+  "school": "${user.school || ''}",
   "date": "${new Date().toISOString().split('T')[0]}",
   "duration": "80 MINUTES",
   "classSize": ${size},
@@ -1003,7 +749,7 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
   "girls": ${girls},
   "references": [
     "Progress in ${subject} Grade ${grade} pg 78",
-    "${subject} Grade ${grade} Textbook",
+    "Teacher-provided curriculum materials",
     "Teacher's Guide"
   ],
   "teachingAids": [
@@ -1045,7 +791,7 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
 
 // ============ ENHANCED FALLBACK LESSON GENERATOR ============
 
-function generateFallbackCBC(topic, grade, subject, classSize, user) {
+function generateFallbackCBC(topic, grade, subject, classSize, user, curriculumContext = null) {
   const size = parseInt(classSize) || 40;
   const boys = Math.floor(size / 2) || 18;
   const girls = Math.ceil(size / 2) || 22;
@@ -1055,9 +801,9 @@ function generateFallbackCBC(topic, grade, subject, classSize, user) {
     grade: grade,
     subject: subject,
     teacherName: user?.fullName || 'MR/MRS',
-    school: user?.school || 'KASHINAKAZHI SECONDARY SCHOOL',
-    province: user?.province || 'Southern',
-    district: user?.district || 'Itezhi-Tezhi',
+    school: user?.school || '',
+    province: user?.province || '',
+    district: user?.district || '',
     date: new Date().toISOString().split('T')[0],
     time: "08:00-08:40",
     duration: "80 MINUTES",
@@ -1075,7 +821,7 @@ function generateFallbackCBC(topic, grade, subject, classSize, user) {
     lessonGoal: `By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}`,
     rationale: `Understanding ${topic} is essential for learners to develop critical thinking skills and make informed decisions.`,
     priorKnowledge: "Learners have basic knowledge of the topic from previous lessons",
-    references: ["2026 Teaching Module", "Curriculum Guide", `${subject} Grade ${grade} Textbook`],
+    references: curriculumContext?.matched && curriculumContext.match?.reference ? [curriculumContext.match.reference] : ["Teacher-provided curriculum materials"],
     learningEnvironment: "Classroom with adequate resources",
     materials: ["Manila paper", "Markers", "Charts", "Worksheet", "Real objects"],
     expectedStandard: "Topic concepts explained correctly",
@@ -1101,7 +847,7 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
     grade: grade,
     subject: subject,
     teacherName: user?.fullName || 'MR/MRS',
-    school: user?.school || 'KASHINAKAZHI SECONDARY SCHOOL',
+    school: user?.school || '',
     date: new Date().toISOString().split('T')[0],
     duration: '80 MINUTES',
     classSize: size,
@@ -1110,7 +856,7 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
     subtopic: '',
     references: [
       `Progress in ${subject} Grade ${grade} pg 78`,
-      `${subject} Grade ${grade} Textbook`,
+      "Teacher-provided curriculum materials",
       "Teacher's Guide"
     ],
     teachingAids: ["Learners book", "Chalk board", "Chart", "Diagrams"],
@@ -1393,7 +1139,7 @@ function generateCBCScheme(grade, subject, term, user, customTopics = {}) {
         specificCompetence: defaultTopic.specificCompetence || `By the end of this lesson, learners will be able to understand and apply knowledge of ${customTopic}`,
         methods: methodOptions[i % methodOptions.length],
         aids: aidsOptions[i % aidsOptions.length],
-        references: `${subject} Grade ${grade} Textbook, Teacher's Guide, Syllabus`,
+        references: "Teacher-provided curriculum materials",
         knowledge: `Comprehensive knowledge of ${customTopic}`,
         skills: skillsOptions[i % skillsOptions.length],
         values: valuesOptions[i % valuesOptions.length]
@@ -1408,7 +1154,7 @@ function generateCBCScheme(grade, subject, term, user, customTopics = {}) {
         specificCompetence: topicData.specificCompetence || `By the end of this lesson, learners will be able to understand and explain the concepts`,
         methods: methodOptions[i % methodOptions.length],
         aids: aidsOptions[i % aidsOptions.length],
-        references: `${subject} Grade ${grade} Textbook, Teacher's Guide`,
+        references: "Teacher-provided curriculum materials",
         knowledge: `Comprehensive knowledge of ${topicData.topic}`,
         skills: skillsOptions[i % skillsOptions.length],
         values: valuesOptions[i % valuesOptions.length]
@@ -1553,7 +1299,7 @@ function generateOBCScheme(grade, subject, term, user, customTopics = {}) {
         specificOutcome: `By the end of this lesson, learners will be able to understand and apply knowledge of ${customTopic}`,
         methods: "Lecture, discussion, group work, question and answer",
         aids: "Whiteboard, charts, textbooks, diagrams",
-        references: "Textbook, Teacher's Guide",
+        references: "Teacher-provided curriculum materials",
         knowledge: `Comprehensive knowledge of ${customTopic}`,
         skills: "Critical thinking, analysis, collaboration",
         values: "Responsibility, teamwork, curiosity"
@@ -1572,7 +1318,7 @@ function generateOBCScheme(grade, subject, term, user, customTopics = {}) {
         specificOutcome: `By the end of this lesson, learners will be able to understand and explain ${topicName}`,
         methods: methodOptions[methodIndex],
         aids: aidsOptions[aidsIndex],
-        references: `${subject} Grade ${grade} Textbook, Teacher's Guide`,
+        references: "Teacher-provided curriculum materials",
         knowledge: `Comprehensive knowledge of ${topicName}`,
         skills: skillsOptions[skillsIndex],
         values: valuesOptions[valuesIndex]
@@ -1691,7 +1437,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
-    const { topic, grade, subject, classSize, curriculum, subtopic } = req.body;
+    const { topic, grade, subject, classSize, curriculum, subtopic, term } = req.body;
 
     if (!topic || !grade || !subject) {
       return res.status(400).json({ error: 'Missing required fields: topic, grade, subject' });
@@ -1712,18 +1458,66 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
     }
 
     const curriculumType = curriculum || 'cbc';
+
+    // Keep lesson-plan grade/form selection consistent with the curriculum mode.
+    // CBC uses Grades 1–6 and Secondary Forms 1–4; OBC/legacy permits Grades 1–12 and Forms 1–6.
+    const normalizedGrade = String(grade).trim().replace(/\s+/g, ' ');
+    const gradeMatch = normalizedGrade.match(/^Grade\s+(\d+)$/i);
+    const formMatch = normalizedGrade.match(/^Form\s+(\d+)$/i);
+    const gradeNumber = gradeMatch ? Number(gradeMatch[1]) : null;
+    const formNumber = formMatch ? Number(formMatch[1]) : null;
+
+    // Keep the API rules identical to the Lesson Plan selector.
+    // Secondary 2024 CBC subjects are taught at Forms 1–4; primary CBC uses Grades 1–6.
+    const secondaryCBCSubjects = new Set([
+      'Agricultural Science', 'Art and Design', 'Biology', 'Chemistry',
+      'Civic Education', 'Commerce', 'Computer Science', 'Design and Technology Studies',
+      'English', 'Fashion and Fabrics', 'Food and Nutrition', 'French', 'Geography',
+      'History', 'Hospitality Management', 'ICT', 'Literature in English',
+      'Mathematics I', 'Mathematics II', 'Musical Arts Education',
+      'Physical Education and Sport', 'Physics', 'Religious Education',
+      'Travel and Tourism', 'Zambian Languages', 'Principles of Accounts'
+    ]);
+    const normalizedSubject = String(subject).trim().toLowerCase();
+    const isSecondaryCBCSubject = Array.from(secondaryCBCSubjects)
+      .some((name) => name.toLowerCase() === normalizedSubject);
+
+    if (curriculumType === 'cbc') {
+      const validCBCLevel = isSecondaryCBCSubject
+        ? (formNumber !== null && formNumber >= 1 && formNumber <= 4)
+        : ((gradeNumber !== null && gradeNumber >= 1 && gradeNumber <= 6) ||
+           (formNumber !== null && formNumber >= 1 && formNumber <= 4));
+      if (!validCBCLevel) {
+        return res.status(400).json({
+          error: isSecondaryCBCSubject
+            ? `Invalid CBC level for ${subject}. Use Form 1–4 for 2024 CBC secondary subjects.`
+            : 'Invalid CBC grade/form. Use Grade 1–6 or Form 1–4 for the 2024 Competence-Based Curriculum.'
+        });
+      }
+    } else {
+      const validOBCLevel = (gradeNumber !== null && gradeNumber >= 1 && gradeNumber <= 12) ||
+        (formNumber !== null && formNumber >= 1 && formNumber <= 6);
+      if (!validOBCLevel) {
+        return res.status(400).json({
+          error: 'Invalid OBC grade/form. Use Grade 1–12 or Form 1–6.'
+        });
+      }
+    }
+
     const size = parseInt(classSize) || 40;
     const boys = Math.floor(size / 2) || 18;
     const girls = Math.ceil(size / 2) || 22;
     
     let aiContent = null;
     let useFallback = false;
+    let curriculumContext = null;
 
     try {
       let prompt;
       
       if (curriculumType === 'cbc') {
-        prompt = generateCBCPrompt(topic, grade, subject, classSize, user, subtopic);
+        curriculumContext = getCurriculumContext({ curriculum: curriculumType, grade, subject, term, topic, subtopic });
+        prompt = generateCBCPrompt(topic, grade, subject, classSize, user, subtopic, term, curriculumContext);
       } else {
         prompt = generateOBCPrompt(topic, grade, subject, classSize, user, subtopic);
       }
@@ -1789,7 +1583,7 @@ Return ONLY the JSON object, no other text.
     if (useFallback || !aiContent) {
       console.log(`📝 Using ${curriculumType.toUpperCase()} fallback`);
       if (curriculumType === 'cbc') {
-        aiContent = generateFallbackCBC(topic, grade, subject, classSize, user);
+        aiContent = generateFallbackCBC(topic, grade, subject, classSize, user, curriculumContext);
       } else {
         aiContent = generateFallbackOBC(topic, grade, subject, classSize, user);
       }
@@ -1806,9 +1600,22 @@ Return ONLY the JSON object, no other text.
       aiContent.lessonDevelopment = generateLessonContent(topic, subject, grade);
     }
 
-    const referencesArray = Array.isArray(aiContent.references) 
-      ? aiContent.references 
-      : (aiContent.references ? [aiContent.references] : ["Textbook", "Teacher's Guide"]);
+    if (curriculumType === 'cbc' && curriculumContext?.matched && curriculumContext.match) {
+      aiContent.specificCompetence = curriculumContext.match.specificCompetence || aiContent.specificCompetence;
+      aiContent.expectedStandard = curriculumContext.match.expectedStandard || aiContent.expectedStandard;
+      aiContent.materials = curriculumContext.match.resources || aiContent.materials;
+      aiContent.subtopic = curriculumContext.match.subTopic || aiContent.subtopic;
+    }
+
+    let referencesArray = Array.isArray(aiContent.references)
+      ? aiContent.references
+      : (aiContent.references ? [aiContent.references] : ["Teacher-provided curriculum materials"]);
+
+    // Never fabricate an official reference. A verified local match may replace
+    // the AI reference with the source-pack reference.
+    if (curriculumType === 'cbc' && curriculumContext?.matched && curriculumContext.match?.reference) {
+      referencesArray = [curriculumContext.match.reference];
+    }
 
     const materialsArray = Array.isArray(aiContent.materials) 
       ? aiContent.materials 
@@ -1869,7 +1676,7 @@ Return ONLY the JSON object, no other text.
         development: lessonDevelopmentArray.map(d => d.learningPoints || d.content) || [],
         activities: lessonDevelopmentArray.map(d => d.pupilActivity || d.pupilActivities) || [],
         assessment: learnersEvaluationArray.join(', ') || '',
-        curriculumCodes: [`${subject}-${grade}-${topic.substring(0, 3)}`],
+        curriculumCodes: curriculumContext?.matched && curriculumContext.match?.topic ? [curriculumContext.match.topic] : [],
         provinceContext: user.province || '',
         lessonDevelopment: lessonDevelopmentArray,
         lessonProgression: lessonProgressionArray,
@@ -1921,8 +1728,12 @@ Return ONLY the JSON object, no other text.
 
     if (curriculumType === 'cbc') {
       responseData.lessonProgression = lessonProgressionArray;
+      responseData.curriculumSourceStatus = curriculumContext?.sourceStatus || 'SOURCE_NOT_FOUND';
+      responseData.curriculumSource = curriculumContext?.source || null;
+      responseData.curriculumMatch = curriculumContext?.match || null;
     } else {
       responseData.lessonDevelopment = lessonDevelopmentArray;
+      responseData.curriculumSourceStatus = 'OBC_MODE';
     }
 
     res.status(201).json(responseData);
@@ -1943,7 +1754,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
     const { 
       grade, subject, term, year, school, 
       weeks: totalWeeks, assessmentWeeks, testTopics, 
-      weekTopics, subtopic, curriculum 
+      weekTopics, weekSubtopics, subtopic, curriculum 
     } = req.body;
 
     if (!grade || !subject) {
@@ -1964,11 +1775,57 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       });
     }
 
-    const curriculumType = curriculum || 'cbc';
-    console.log(`📝 Generating ${curriculumType.toUpperCase()} scheme with DeepSeek...`);
+    const curriculumType = String(curriculum || 'cbc').toLowerCase();
+
+    // The official 2024 secondary syllabus is organised as Forms, not the
+    // old Grade 8-12 labels. For registered secondary subjects, the
+    // ordinary-level DCD syllabus currently indexed by MyToolbox is Form 1-4.
+    // Do not let a Grade 11/12 selection silently generate a fake 2024 CBC
+    // scheme by mixing legacy content with the new syllabus.
+    if (curriculumType === 'cbc') {
+      const registeredSubject = getRegisteredOfficialSource(subject);
+      const secondaryGrade = /^grade\s*(?:[8-9]|1[0-2])$/i.test(String(grade || '').trim());
+      const unsupportedForm = /^form\s*(?:5|6)$/i.test(String(grade || '').trim());
+      if (registeredSubject && (secondaryGrade || unsupportedForm)) {
+        return res.status(400).json({
+          error: `For the 2024 CBC ${subject} syllabus, select Form 1, Form 2, Form 3 or Form 4. ${grade} is an old/legacy grade label and must be generated under OBC.`,
+          code: 'CBC_SECONDARY_REQUIRES_FORM_1_4',
+          curriculum: 'cbc',
+          subject,
+          allowedGrades: ['Form 1', 'Form 2', 'Form 3', 'Form 4']
+        });
+      }
+    }
+
+    // MyToolbox syllabus mode: CBC uses the current 2024 Competence-Based
+    // Curriculum; OBC uses the legacy/old syllabus structure.  This is kept
+    // separate from the output format so DeepSeek knows which syllabus family
+    // to follow when generating content.
+    const syllabusVersion = curriculumType === 'cbc'
+      ? 'NEW_2024_CBC'
+      : 'OLD_LEGACY_OBC';
+    const sourcePacks = listCurriculumSources({ curriculum: curriculumType, grade, subject, term });
+    const sourceRowsDetailed = listCurriculumRows({ curriculum: curriculumType, grade, subject, term });
+    const sourceRows = sourceRowsDetailed.map((row) => ({
+      week: row.week,
+      topic: row.topic,
+      subTopic: row.subTopic || row.subtopic || '',
+      specificCompetence: row.specificCompetence || row.specificCompetences || '',
+      expectedStandard: row.expectedStandard || row.expectedStandards || '',
+      methods: row.methods || row.strategies || '',
+      resources: row.resources || row.aids || '',
+      knowledge: row.knowledge || '',
+      skills: row.skills || '',
+      values: row.values || '',
+      reference: row.reference || row.references || '',
+      source: row._source
+    }));
+    console.log(`📚 Curriculum source packs found: ${sourcePacks.length}`);
+    console.log(`📝 Generating ${curriculumType.toUpperCase()} scheme with DeepSeek (${syllabusVersion})...`);
     
     const assessmentWeeksList = assessmentWeeks || [3, 6, 9, 12];
     const customTopics = weekTopics || {};
+    const customSubtopics = weekSubtopics || {};
     const totalWeeksCount = totalWeeks || 13;
     const subtopicsList = subtopic ? subtopic.split(',').map(s => s.trim()) : [];
     
@@ -1980,19 +1837,43 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       
       if (curriculumType === 'cbc') {
         let customTopicsString = '';
+        let matchedSourceDetails = '';
         Object.keys(customTopics).forEach(week => {
           if (customTopics[week]) {
             customTopicsString += `Week ${week}: ${customTopics[week]}\n`;
+            const ctx = getCurriculumContext({ curriculum: curriculumType, grade, subject, term, topic: customTopics[week], subtopic: customSubtopics[week] });
+            if (ctx.matched) matchedSourceDetails += `Week ${week}: ${formatContext(ctx)}\n`;
           }
         });
 
         prompt = `
-Grade: "${grade}"
+You are generating a Zambian school scheme of work.
+SYLLABUS VERSION: NEW 2024 COMPETENCE-BASED CURRICULUM (CBC)
+Grade/Form: "${grade}"
 Subject: "${subject}"
 Term: "${term || 'Term 1'}"
-Curriculum: CBC (Competency-Based Curriculum)
-${customTopicsString ? `User topics:\n${customTopicsString}` : 'Generate appropriate topics for all weeks following CBC syllabus.'}
+
+IMPORTANT SYLLABUS RULES:
+- Follow the current Zambia Ministry of Education 2024 syllabus for the selected subject, grade/form and term.
+- Do NOT use the old/legacy syllabus when CBC is selected.
+- Use official syllabus topic/sub-topic terminology and numbering where known.
+- Do not invent unrelated topics merely to fill weeks.
+- If the user supplies topics/subtopics, preserve them and build the CBC competences, activities and standards around them.
+- If an official topic cannot be confidently identified, use the closest syllabus-aligned topic and keep the wording conservative rather than fabricating syllabus codes.
+- The output must remain suitable for a Zambian Ministry of Education CBC scheme of work.
+${customTopicsString ? `User topics (respect these):\n${customTopicsString}` : 'Generate appropriate topics for all weeks from the selected 2024 CBC syllabus.'}
 Assessment weeks: ${assessmentWeeksList.join(', ')}
+
+LOCAL CURRICULUM SOURCE CONTROL:
+${sourceRows.length ? JSON.stringify(sourceRows, null, 2) : 'NO VERIFIED LOCAL SOURCE PACK IS AVAILABLE FOR THIS SUBJECT/GRADE/TERM. Do not invent official syllabus codes, page numbers or CDC claims.'}
+- When a local source pack is available, its rows are the authoritative local sequence for this generation. Preserve the supplied topic/subtopic/competence wording rather than replacing it with a generic DeepSeek sequence.
+- Never use a subject-specific default such as Biology when the selected subject is different.
+- References must come from the matched source row when one exists; otherwise use the neutral phrase "Teacher-provided curriculum materials" rather than inventing a textbook or page.
+${matchedSourceDetails ? `VERIFIED DETAILS FOR USER-SUPPLIED TOPICS:
+${matchedSourceDetails}` : ''}
+- If a verified local source row matches a supplied topic, preserve its official wording, competence, resources and reference.
+- If a verified source pack exists but the user leaves a week topic blank, use the source pack sequence rather than inventing a different topic.
+- If no verified source exists, generate a useful scheme but do not label invented topic codes/references as official CDC content.
 
 Return ONLY valid JSON with this CBC scheme structure:
 {
@@ -2030,11 +1911,20 @@ Return ONLY valid JSON with this CBC scheme structure:
         });
 
         prompt = `
-Grade: "${grade}"
+You are generating a Zambian school scheme of work.
+SYLLABUS VERSION: OLD / LEGACY ZAMBIAN O-LEVEL SYLLABUS
+Grade/Form: "${grade}"
 Subject: "${subject}"
 Term: "${term || 'Term 1'}"
-Curriculum: OBC (Objective-Based Curriculum)
-${customTopicsString ? `User topics:\n${customTopicsString}` : 'Generate appropriate topics for all weeks.'}
+
+IMPORTANT SYLLABUS RULES:
+- Follow the older/legacy Zambia syllabus structure for the selected subject, grade/form and term.
+- Do NOT replace the old syllabus topics with the 2024 CBC topic sequence when OBC is selected.
+- Preserve established old-syllabus topic/sub-topic names and numbering where known.
+- If the user supplies topics/subtopics, preserve them.
+- Do not invent unrelated content just to fill weeks.
+- Keep objectives, methods, aids, knowledge, skills and values appropriate to the old Objective-Based Curriculum format.
+${customTopicsString ? `User topics (respect these):\n${customTopicsString}` : 'Generate appropriate topics for all weeks following the legacy syllabus sequence.'}
 Assessment weeks: ${assessmentWeeksList.join(', ')}
 
 Return ONLY valid JSON with this OBC scheme structure:
@@ -2072,7 +1962,10 @@ You are an expert curriculum planner for Zambian schools creating ${curriculumTy
 The user will provide grade, subject, and term information.
 Parse the information and output it in valid JSON format.
 
-For CBC: Include topic code, subtopic, specificCompetence, methods, aids, references, knowledge, skills, and values.
+Syllabus selection is mandatory:
+- NEW_2024_CBC: use the current 2024 Zambia Ministry of Education Competence-Based syllabus and CBC terminology.
+- OLD_LEGACY_OBC: use the older/legacy Zambian syllabus and Objective-Based terminology; do not silently substitute the 2024 CBC sequence.
+For CBC: Include topic, subtopic, specificCompetences, learningActivities, expectedStandards, resources, strategies, and reference.
 For OBC: Include topic, specificOutcome, methods, aids, references, knowledge, skills, and values.
 
 Return ONLY the JSON object, no other text.
@@ -2098,43 +1991,125 @@ Return ONLY the JSON object, no other text.
     
     if (!aiContent || useFallback) {
       console.log(`📝 Using ${curriculumType.toUpperCase()} fallback scheme generator`);
-      if (curriculumType === 'cbc') {
+      if (curriculumType === 'cbc' && sourceRowsDetailed.length) {
+        aiContent = {
+          weeks: sourceRowsDetailed.map((row, index) => ({
+            week: Number(row.week || index + 1),
+            topics: [{
+              topic: row.topic || '',
+              subtopic: row.subTopic || row.subtopic || '',
+              specificCompetence: row.specificCompetence || row.specificCompetences || '',
+              methods: row.methods || row.strategies || '',
+              aids: row.resources || row.aids || '',
+              references: row.reference || row.references || 'Teacher-provided curriculum materials',
+              knowledge: row.knowledge || '',
+              skills: row.skills || '',
+              values: row.values || ''
+            }],
+            isRevision: false,
+            isAssessment: false
+          })),
+          assessmentWeeks: assessmentWeeksList,
+          testTopics: testTopics || []
+        };
+      } else if (curriculumType === 'cbc') {
         aiContent = generateCBCScheme(grade, subject, term, user, customTopics);
       } else {
         aiContent = generateOBCScheme(grade, subject, term, user, customTopics);
       }
     }
     
-    const weeks = aiContent.weeks.map(week => ({
-      week: week.week,
-      topics: week.topics.map(topic => ({
-        topic: topic.topic || '',
-        subtopic: topic.subtopic || '',
-        specificCompetence: topic.specificCompetence || topic.specificOutcome || '',
-        specificOutcome: topic.specificOutcome || '',
-        methods: topic.methods || '',
-        aids: topic.aids || '',
-        references: topic.references || '',
-        knowledge: topic.knowledge || '',
-        skills: topic.skills || '',
-        values: topic.values || ''
-      })),
-      assessment: week.assessment || null,
-      isRevision: week.isRevision || false,
-      isAssessment: week.isAssessment || false
-    }));
+    const weeks = (aiContent?.weeks || []).map(week => {
+      if (curriculumType === 'cbc') {
+        const topic = Array.isArray(week.topics) && week.topics.length > 0
+          ? week.topics[0]
+          : week;
 
+        const weekNumber = Number(week.week);
+        const forcedSubtopic = customSubtopics[weekNumber] || customSubtopics[String(weekNumber)] || '';
+        const topicName = topic.topic || '';
+        const competence = topic.specificCompetences ?? topic.specificCompetence ?? topic.competencies ?? '';
+        const activities = topic.learningActivities ?? topic.activities ?? '';
+        const standards = topic.expectedStandards ?? topic.expectedStandard ??
+          (competence ? `Learners demonstrate the competence: ${Array.isArray(competence) ? competence.join('; ') : competence}.` : '');
+        const resources = topic.resources ?? topic.aids ?? '';
+        const strategies = topic.strategies ?? topic.methods ?? '';
+        const reference = topic.reference ?? topic.references ?? 'Teacher-provided curriculum materials';
+        const sourceMatch = sourceRowsDetailed.find((row) =>
+          Number(row.week) === weekNumber ||
+          (String(row.topic || '').trim().toLowerCase() && String(row.topic || '').trim().toLowerCase() === String(topicName || '').trim().toLowerCase())
+        );
+        const finalTopic = sourceMatch?.topic || topicName;
+        const finalSubTopic = forcedSubtopic || sourceMatch?.subTopic || sourceMatch?.subtopic || topic.subTopic || topic.subtopic || '';
+        const finalCompetence = sourceMatch?.specificCompetence || sourceMatch?.specificCompetences || competence;
+        const finalActivities = sourceMatch?.learningActivities || activities;
+        const finalStandards = sourceMatch?.expectedStandard || sourceMatch?.expectedStandards || standards;
+        const finalResources = sourceMatch?.resources || sourceMatch?.aids || resources;
+        const finalStrategies = sourceMatch?.strategies || sourceMatch?.methods || strategies;
+        const finalReference = sourceMatch?.reference || sourceMatch?.references || reference;
+
+        return {
+          week: weekNumber,
+          topic: finalTopic,
+          subTopic: finalSubTopic,
+          specificCompetences: finalCompetence,
+          learningActivities: finalActivities || (finalTopic ? [`Introduction and discussion of ${finalTopic}`, `Group/individual activities on ${finalTopic}`] : ''),
+          expectedStandards: finalStandards,
+          resources: finalResources,
+          strategies: finalStrategies,
+          reference: finalReference,
+          isRevision: week.isRevision || false,
+          isAssessment: week.isAssessment || false,
+          // Keep nested data for compatibility with older saved scheme viewers.
+          topics: Array.isArray(week.topics) ? week.topics : [topic]
+        };
+      }
+
+      return {
+        week: week.week,
+        topics: (week.topics || []).map(topic => ({
+          topic: topic.topic || '',
+          subtopic: topic.subtopic || '',
+          specificCompetence: topic.specificCompetence || topic.specificOutcome || '',
+          specificOutcome: topic.specificOutcome || '',
+          methods: topic.methods || '',
+          aids: topic.aids || '',
+          references: topic.references || '',
+          knowledge: topic.knowledge || '',
+          skills: topic.skills || '',
+          values: topic.values || ''
+        })),
+        assessment: week.assessment || null,
+        isRevision: week.isRevision || false,
+        isAssessment: week.isAssessment || false
+      };
+    });
     if (subtopicsList.length > 0) {
       let weekIndex = 0;
       for (let i = 0; i < weeks.length; i++) {
         if (!assessmentWeeksList.includes(weeks[i].week) && !weeks[i].isRevision && !weeks[i].isAssessment) {
-          if (weekIndex < subtopicsList.length) {
-            weeks[i].topics[0].topic = subtopicsList[weekIndex];
+          if (weekIndex < subtopicsList.length && weeks[i].topics?.[0]) {
+            const manualSubtopic = subtopicsList[weekIndex];
+            // A user-entered subtopic must never replace the official topic.
+            // It belongs in the Sub-topic column, while the verified topic,
+            // competence and standard remain intact.
             if (curriculumType === 'cbc') {
-              weeks[i].topics[0].subtopic = subtopicsList[weekIndex];
-              weeks[i].topics[0].specificCompetence = `By the end of this lesson, learners will be able to understand and explain ${subtopicsList[weekIndex]}`;
+              weeks[i].subTopic = manualSubtopic;
+              weeks[i].topics[0].subtopic = manualSubtopic;
+              if (!weeks[i].specificCompetences) {
+                weeks[i].specificCompetences = `By the end of this lesson, learners will be able to understand and explain ${manualSubtopic}`;
+              }
+              if (!weeks[i].topics[0].specificCompetence) {
+                weeks[i].topics[0].specificCompetence = weeks[i].specificCompetences;
+              }
+              if (!weeks[i].expectedStandards) {
+                weeks[i].expectedStandards = `Learners explain and apply ${manualSubtopic} correctly.`;
+              }
             } else {
-              weeks[i].topics[0].specificOutcome = `By the end of this lesson, learners will be able to understand and explain ${subtopicsList[weekIndex]}`;
+              weeks[i].topics[0].subtopic = manualSubtopic;
+              if (!weeks[i].topics[0].specificOutcome) {
+                weeks[i].topics[0].specificOutcome = `By the end of this lesson, learners will be able to understand and explain ${manualSubtopic}`;
+              }
             }
             weekIndex++;
           }
@@ -2155,6 +2130,8 @@ Return ONLY the JSON object, no other text.
       assessmentWeeks: assessmentWeeksList,
       testTopics: testTopics || [`Mid-term test on ${subject}`, `End of term test on ${subject}`],
       curriculum: curriculumType,
+      curriculumSourceStatus: sourcePacks.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : 'NO_LOCAL_SOURCE',
+      curriculumSources: sourcePacks,
       createdAt: new Date().toISOString()
     };
 
@@ -2199,20 +2176,90 @@ Return ONLY the JSON object, no other text.
 
 // ============ SCHEME EXPORT ROUTES ============
 
+function cbcListText(value) {
+  if (Array.isArray(value)) return value.join('\n');
+  return String(value ?? '');
+}
+
+function cbcExportRow(week) {
+  return {
+    week: String(week.week ?? ''),
+    topic: String(week.topic ?? ''),
+    subTopic: String(week.subTopic ?? week.subtopic ?? ''),
+    specificCompetences: cbcListText(week.specificCompetences ?? week.specificCompetence ?? week.competencies ?? ''),
+    learningActivities: cbcListText(week.learningActivities ?? week.activities ?? ''),
+    expectedStandards: String(week.expectedStandards ?? week.expectedStandard ?? ''),
+    resources: cbcListText(week.resources ?? week.aids ?? ''),
+    strategies: cbcListText(week.strategies ?? week.methods ?? ''),
+    reference: cbcListText(week.reference ?? week.references ?? 'Teacher-provided curriculum materials')
+  };
+}
+
+function cbcCell(text, options = {}) {
+  return new TableCell({
+    width: { size: options.width || 100, type: WidthType.PERCENTAGE },
+    children: [new Paragraph({
+      alignment: options.align || AlignmentType.LEFT,
+      spacing: { before: 0, after: 0, line: 180 },
+      children: [new TextRun({
+        text: String(text ?? ''),
+        bold: !!options.bold,
+        font: 'Times New Roman',
+        size: options.size || 14
+      })]
+    })]
+  });
+}
+
 app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
   try {
-    const { id } = req.params;
+    const scheme = await prisma.scheme.findUnique({ where: { id: req.params.id } });
+    if (!scheme) return res.status(404).json({ error: 'Scheme not found' });
+    if (scheme.userId !== req.userId) return res.status(403).json({ error: 'Unauthorized' });
 
-    const scheme = await prisma.scheme.findUnique({
-      where: { id: id },
-    });
+    if (String(scheme.curriculum || '').toLowerCase() === 'cbc') {
+      const widths = [6, 11, 13, 15, 17, 13, 11, 13, 13];
+      const headerNames = ['week','Topic','Sub- topic','Specific competences','Learning activities','Expected standards','T/L\nRESOURCES','STRATEGIES\nTECHNIQUES','REFERENCE'];
+      const tableRows = [new TableRow({
+        children: headerNames.map((h, i) => cbcCell(h, { bold: true, align: AlignmentType.CENTER, width: widths[i], size: 14 }))
+      })];
 
-    if (!scheme) {
-      return res.status(404).json({ error: 'Scheme not found' });
-    }
+      for (const week of (scheme.weeks || [])) {
+        const r = cbcExportRow(week);
+        tableRows.push(new TableRow({ children: [
+          cbcCell(r.week, { align: AlignmentType.CENTER, width: widths[0] }),
+          cbcCell(r.topic, { width: widths[1] }),
+          cbcCell(r.subTopic, { width: widths[2] }),
+          cbcCell(r.specificCompetences, { width: widths[3] }),
+          cbcCell(r.learningActivities, { width: widths[4] }),
+          cbcCell(r.expectedStandards, { width: widths[5] }),
+          cbcCell(r.resources, { width: widths[6] }),
+          cbcCell(r.strategies, { width: widths[7] }),
+          cbcCell(r.reference, { width: widths[8] })
+        ] }));
+      }
 
-    if (scheme.userId !== req.userId) {
-      return res.status(403).json({ error: 'Unauthorized' });
+      const doc = new Document({ sections: [{
+        properties: {
+          page: {
+            size: { width: 16838, height: 11906, orientation: 'landscape' },
+            margin: { top: 360, right: 360, bottom: 360, left: 360 }
+          }
+        },
+        children: [
+          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [new TextRun({ text: 'MINISTRY OF EDUCATION', font: 'Times New Roman', size: 22, bold: true })] }),
+          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [new TextRun({ text: scheme.school || '', font: 'Times New Roman', size: 21, bold: true })] }),
+          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [new TextRun({ text: 'DEPARTMENT OF NATURAL SCIENCES', font: 'Times New Roman', size: 21, bold: true })] }),
+          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [new TextRun({ text: `SCHEMES OF WORK FOR ${String(scheme.subject || '').toUpperCase()}`, font: 'Times New Roman', size: 21, bold: true })] }),
+          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 100 }, children: [new TextRun({ text: `SUBJECT: ${String(scheme.subject || '').toUpperCase()}     FORM: ${scheme.grade || ''}     TERM: ${termWord(scheme.term)}     YEAR: ${scheme.year || new Date().getFullYear()}`, font: 'Times New Roman', size: 18, bold: true })] }),
+          new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: tableRows })
+        ]
+      }] });
+
+      const buffer = await Packer.toBuffer(doc);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      res.setHeader('Content-Disposition', `attachment; filename="${scheme.subject}_Scheme_of_Work_Term_${scheme.term}.docx"`);
+      return res.send(buffer);
     }
 
     const tableRows = [];
@@ -2291,24 +2338,66 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
 
   } catch (error) {
     console.error('❌ Word export error:', error);
-    res.status(500).json({ error: 'Failed to export scheme as Word' });
+    return res.status(500).json({ error: 'Failed to export scheme as Word' });
   }
 });
 
 app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
   try {
-    const { id } = req.params;
+    const scheme = await prisma.scheme.findUnique({ where: { id: req.params.id } });
+    if (!scheme) return res.status(404).json({ error: 'Scheme not found' });
+    if (scheme.userId !== req.userId) return res.status(403).json({ error: 'Unauthorized' });
 
-    const scheme = await prisma.scheme.findUnique({
-      where: { id: id },
-    });
+    if (String(scheme.curriculum || '').toLowerCase() === 'cbc') {
+      const doc = new PDFDocument({ margin: 22, size: 'A3', layout: 'landscape' });
+      const chunks = [];
+      doc.on('data', c => chunks.push(c));
+      doc.on('end', () => res.send(Buffer.concat(chunks)));
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${scheme.subject}_Scheme_of_Work_Term_${scheme.term}.pdf"`);
 
-    if (!scheme) {
-      return res.status(404).json({ error: 'Scheme not found' });
-    }
+      doc.font('Helvetica-Bold').fontSize(15).text('MINISTRY OF EDUCATION', { align: 'center' });
+      doc.fontSize(14).text(scheme.school || '', { align: 'center' });
+      doc.fontSize(14).text('DEPARTMENT OF NATURAL SCIENCES', { align: 'center' });
+      doc.fontSize(14).text(`SCHEMES OF WORK FOR ${String(scheme.subject || '').toUpperCase()}`, { align: 'center' });
+      doc.fontSize(11).text(`SUBJECT: ${String(scheme.subject || '').toUpperCase()}     FORM: ${scheme.grade || ''}     TERM: ${termWord(scheme.term)}     YEAR: ${scheme.year || new Date().getFullYear()}`, { align: 'center' });
+      doc.moveDown(0.6);
 
-    if (scheme.userId !== req.userId) {
-      return res.status(403).json({ error: 'Unauthorized' });
+      const headers = ['week','Topic','Sub- topic','Specific competences','Learning activities','Expected standards','T/L RESOURCES','STRATEGIES / TECHNIQUES','REFERENCE'];
+      const baseWidths = [35, 80, 90, 125, 145, 110, 95, 110, 115];
+      const usable = doc.page.width - 44;
+      const scale = usable / baseWidths.reduce((a,b) => a + b, 0);
+      const widths = baseWidths.map(w => w * scale);
+      const startX = 22;
+      let y = doc.y;
+
+      const drawCell = (x, yy, w, h, text, bold = false, align = 'left') => {
+        doc.rect(x, yy, w, h).stroke();
+        doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(6.4).text(String(text || ''), x + 3, yy + 3, { width: w - 6, height: h - 6, align, ellipsis: true });
+      };
+
+      let x = startX;
+      headers.forEach((h, i) => { drawCell(x, y, widths[i], 28, h, true, 'center'); x += widths[i]; });
+      y += 28;
+
+      for (const week of (scheme.weeks || [])) {
+        const r = cbcExportRow(week);
+        const vals = [r.week, r.topic, r.subTopic, r.specificCompetences, r.learningActivities, r.expectedStandards, r.resources, r.strategies, r.reference];
+        const heights = vals.map((v, i) => Math.ceil(String(v || '').length / Math.max(12, Math.floor(widths[i] / 4.1))) * 7 + 10);
+        const h = Math.max(26, Math.min(160, Math.max(...heights)));
+        x = startX;
+        vals.forEach((v, i) => { drawCell(x, y, widths[i], h, v, false, i === 0 ? 'center' : 'left'); x += widths[i]; });
+        y += h;
+        if (y > doc.page.height - 45) {
+          doc.addPage();
+          y = 25;
+          x = startX;
+          headers.forEach((h2, i) => { drawCell(x, y, widths[i], 28, h2, true, 'center'); x += widths[i]; });
+          y += 28;
+        }
+      }
+      doc.end();
+      return;
     }
 
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
@@ -2402,7 +2491,7 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
 
   } catch (error) {
     console.error('❌ PDF export error:', error);
-    res.status(500).json({ error: 'Failed to export scheme as PDF' });
+    return res.status(500).json({ error: 'Failed to export scheme as PDF' });
   }
 });
 
@@ -2619,27 +2708,26 @@ app.delete('/api/assessments/:id', authenticate, async (req, res) => {
   }
 });
 
-// ============ PAYMENT ROUTES ============
+// ============ MANUAL PAYMENT ROUTES ============
 const PLAN_CONFIG = {
   PRO: { amount: 150, role: 'PRO', schemesLimit: 100, lessonsLimit: 1000 },
   SCHOOL: { amount: 500, role: 'SCHOOL', schemesLimit: 1000, lessonsLimit: 10000 },
 };
 
 function normalizePlan(plan) {
-  const value = String(plan || 'PRO').trim().toUpperCase();
-  if (value === 'SCHOOL') return 'SCHOOL';
-  return 'PRO';
+  const value = String(plan || '').trim().toUpperCase();
+  return PLAN_CONFIG[value] ? value : null;
 }
 
 function normalizeZambianPhone(phone) {
   const digits = String(phone || '').replace(/\D/g, '');
   if (/^260\d{9}$/.test(digits)) return digits;
   if (/^0\d{9}$/.test(digits)) return `260${digits.slice(1)}`;
-  throw new Error('Invalid Zambian phone number. Use 260XXXXXXXXX or 0XXXXXXXXX.');
+  throw new Error('Invalid Zambian phone number. Use 0XXXXXXXXX or 260XXXXXXXXX.');
 }
 
-function providerStatusIs(status) {
-  return String(status || '').toLowerCase();
+function createManualReference() {
+  return `MT-MANUAL-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 }
 
 async function applySuccessfulPayment(payment) {
@@ -2654,203 +2742,83 @@ async function applySuccessfulPayment(payment) {
       role: config.role,
       schemesLimit: config.schemesLimit,
       lessonsLimit: config.lessonsLimit,
-      subscriptionEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      subscriptionEndsAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
     }
   });
 }
 
-// =====================================================
-// PAYMENT ROUTES
-// =====================================================
-
-app.post("/api/payments/initiate", authenticate, async (req, res) => {
+// Teacher submits a payment notification after paying directly to your mobile-money number.
+app.post('/api/payments/manual', authenticate, async (req, res) => {
   try {
-    console.log("📥 Payment request body:", req.body);
-
-    const { phoneNumber, plan, provider, payerEmail } = req.body;
-
-    // -------------------------------------------------
-    // PLAN
-    // -------------------------------------------------
-
+    const { plan, phoneNumber, provider, transactionReference } = req.body;
     const normalizedPlan = normalizePlan(plan);
-
-    if (!normalizedPlan) {
-      return res.status(400).json({
-        error: "Invalid payment plan. Choose PRO or SCHOOL.",
-      });
-    }
+    if (!normalizedPlan) return res.status(400).json({ error: 'Invalid plan. Choose PRO or SCHOOL.' });
 
     const config = PLAN_CONFIG[normalizedPlan];
+    let cleanPhone = '';
+    try { cleanPhone = normalizeZambianPhone(phoneNumber); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
 
-    if (!config) {
-      return res.status(400).json({
-        error: "Payment plan is not configured.",
-      });
+    const cleanProvider = String(provider || '').trim().toUpperCase();
+    if (!['MTN', 'AIRTEL', 'ZAMTEL'].includes(cleanProvider)) {
+      return res.status(400).json({ error: 'Choose MTN, Airtel or Zamtel.' });
     }
 
-    // -------------------------------------------------
-    // PHONE
-    // -------------------------------------------------
-
-    let cleanNumber;
-
-    try {
-      cleanNumber = normalizeZambianPhone(phoneNumber);
-    } catch (error) {
-      return res.status(400).json({
-        error: error.message || "Invalid Zambian phone number.",
-      });
+    const txRef = String(transactionReference || '').trim();
+    if (!txRef || txRef.length < 3) {
+      return res.status(400).json({ error: 'Enter the transaction/reference number from your mobile-money payment.' });
     }
 
-    // -------------------------------------------------
-    // PROVIDER
-    // -------------------------------------------------
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) return res.status(404).json({ error: 'User not found.' });
 
-    if (!provider) {
-      return res.status(400).json({
-        error: "Mobile money provider is required.",
-      });
-    }
+    const duplicate = await prisma.payment.findFirst({ where: { externalId: txRef } });
+    if (duplicate) return res.status(409).json({ error: 'That transaction reference has already been submitted.' });
 
-    const lipilaProvider = lipilaService.normalizeProvider(provider);
-
-    console.log("🔎 Provider received:", provider);
-    console.log("🔎 Lipila provider:", lipilaProvider);
-
-    if (!lipilaProvider) {
-      return res.status(400).json({
-        error: "Unsupported mobile money provider.",
-        providerReceived: provider,
-        supportedProviders: ["MTN", "AIRTEL", "ZAMTEL"],
-      });
-    }
-
-    // -------------------------------------------------
-    // USER
-    // -------------------------------------------------
-
-    const user = await prisma.user.findUnique({
-      where: { id: req.userId },
-    });
-
-    if (!user) {
-      return res.status(404).json({
-        error: "User not found.",
-      });
-    }
-
-    // -------------------------------------------------
-    // INTERNAL REFERENCE
-    // -------------------------------------------------
-
-    const referenceId = `MT-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-
-    // -------------------------------------------------
-    // SEND TO LIPILA
-    // -------------------------------------------------
-
-    const lipilaPayment = await lipilaService.createMobileMoneyPayment({
-      reference: referenceId,
-      amount: config.amount,
-      payer: cleanNumber,
-      provider: lipilaProvider,
-      payerEmail: payerEmail || user.email,
-      payerMessage: `MyToolbox ${normalizedPlan} Plan`,
-      metadata: {
-        userId: req.userId,
-        plan: normalizedPlan,
-        referenceId: referenceId,
-      },
-    });
-
-    // -------------------------------------------------
-    // LIPILA TRANSACTION ID
-    // -------------------------------------------------
-
-    const providerTransactionId = lipilaPayment?.transaction_id ||
-      lipilaPayment?.transactionId ||
-      lipilaPayment?.identifier ||
-      lipilaPayment?.id ||
-      referenceId;
-
-    const externalId = lipilaPayment?.transaction_id ||
-      lipilaPayment?.id ||
-      lipilaPayment?.identifier ||
-      null;
-
-    // -------------------------------------------------
-    // DETERMINE INITIAL STATUS
-    // -------------------------------------------------
-
-    const initialStatus = providerStatusIs(lipilaPayment?.status);
-
-    const completedImmediately = ["completed", "successful", "success", "paid"].includes(initialStatus);
-
-    // -------------------------------------------------
-    // CREATE DATABASE PAYMENT
-    // -------------------------------------------------
+    const referenceId = createManualReference();
+    const transactionId = `MANUAL-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 
     const payment = await prisma.payment.create({
       data: {
         userId: req.userId,
-        referenceId: referenceId,
-        transactionId: providerTransactionId,
+        referenceId,
+        transactionId,
         amount: config.amount,
-        currency: "ZMW",
-        provider: "lipila",
-        phoneNumber: cleanNumber,
-        status: completedImmediately ? "completed" : "pending",
-        externalId: externalId,
+        currency: 'ZMW',
+        provider: cleanProvider.toLowerCase(),
+        phoneNumber: cleanPhone,
+        status: 'pending',
+        externalId: txRef,
         plan: normalizedPlan,
-        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
-        completedAt: completedImmediately ? new Date() : null,
       },
-    });
-
-    // -------------------------------------------------
-    // IF LIPILA COMPLETED IMMEDIATELY
-    // -------------------------------------------------
-
-    if (completedImmediately) {
-      await applySuccessfulPayment(payment);
-    }
-
-    // -------------------------------------------------
-    // RESPONSE
-    // -------------------------------------------------
-
-    console.log("✅ Payment initiated:", {
-      referenceId,
-      provider,
-      lipilaProvider,
-      amount: config.amount,
     });
 
     return res.status(201).json({
       success: true,
       paymentId: payment.id,
-      transactionId: providerTransactionId,
-      referenceId: referenceId,
-      externalId: externalId,
+      referenceId,
+      status: 'pending',
       amount: config.amount,
       plan: normalizedPlan,
-      provider: provider,
-      lipilaProvider: lipilaProvider,
-      status: completedImmediately ? "completed" : "pending",
-      message: completedImmediately
-        ? "Payment completed successfully."
-        : "Payment initiated. Please approve the mobile money request on your phone.",
-      instructions: lipilaPayment?.message ||
-        "Please check your phone and approve the mobile money payment.",
+      message: 'Payment notification received. We will verify your payment and activate your plan.',
     });
-
   } catch (error) {
-    console.error("❌ Payment initiation error:", error);
+    console.error('Manual payment submission error:', error);
+    return res.status(500).json({ error: error?.message || 'Failed to submit payment.' });
+  }
+});
 
-    return res.status(400).json({
-      error: error?.message || "Failed to initiate payment.",
+app.get('/api/payments/history', authenticate, async (req, res) => {
+  try {
+    const payments = await prisma.payment.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
     });
+    res.json(payments);
+  } catch (error) {
+    console.error('Error fetching payment history:', error);
+    res.status(500).json({ error: 'Failed to fetch payment history' });
   }
 });
 
@@ -2872,6 +2840,53 @@ const isAdmin = async (req, res, next) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+// Manual payment verification: admin checks the transaction in the mobile-money account
+// and approves or rejects the teacher's request.
+app.get('/api/admin/payments/pending', authenticate, isAdmin, async (req, res) => {
+  try {
+    const payments = await prisma.payment.findMany({
+      where: { status: 'pending' },
+      orderBy: { createdAt: 'asc' },
+      take: 100,
+      include: { user: { select: { fullName: true, email: true, school: true, phone: true } } },
+    });
+    res.json(payments);
+  } catch (error) {
+    console.error('Error fetching pending payments:', error);
+    res.status(500).json({ error: 'Failed to fetch pending payments' });
+  }
+});
+
+app.post('/api/admin/payments/:id/approve', authenticate, isAdmin, async (req, res) => {
+  try {
+    const payment = await prisma.payment.findUnique({ where: { id: req.params.id } });
+    if (!payment) return res.status(404).json({ error: 'Payment not found.' });
+    if (payment.status === 'completed') return res.json({ success: true, message: 'Payment is already approved.' });
+    if (payment.status !== 'pending') return res.status(400).json({ error: `Payment is already ${payment.status}.` });
+
+    await applySuccessfulPayment(payment);
+    const updated = await prisma.payment.findUnique({ where: { id: payment.id } });
+    res.json({ success: true, payment: updated, message: 'Payment approved and subscription activated for 90 days.' });
+  } catch (error) {
+    console.error('Error approving payment:', error);
+    res.status(500).json({ error: error?.message || 'Failed to approve payment.' });
+  }
+});
+
+app.post('/api/admin/payments/:id/reject', authenticate, isAdmin, async (req, res) => {
+  try {
+    const payment = await prisma.payment.findUnique({ where: { id: req.params.id } });
+    if (!payment) return res.status(404).json({ error: 'Payment not found.' });
+    if (payment.status !== 'pending') return res.status(400).json({ error: `Payment is already ${payment.status}.` });
+
+    const updated = await prisma.payment.update({ where: { id: payment.id }, data: { status: 'failed' } });
+    res.json({ success: true, payment: updated, message: 'Payment request rejected.' });
+  } catch (error) {
+    console.error('Error rejecting payment:', error);
+    res.status(500).json({ error: error?.message || 'Failed to reject payment.' });
+  }
+});
 
 // Admin Stats (basic) - FIXED
 app.get('/api/admin/stats', authenticate, isAdmin, async (req, res) => {
@@ -3377,7 +3392,7 @@ app.get('/api/admin/health', authenticate, isAdmin, async (req, res) => {
       services: {
         database: 'connected',
         deepseek: deepseekStatus,
-        lipila: 'configured'
+        manualPayments: 'enabled'
       },
       memory: process.memoryUsage(),
       version: process.version
@@ -3449,6 +3464,60 @@ app.get('/api/schemes/mine', authenticate, async (req, res) => {
   }
 });
 
+// ============ CURRICULUM CATALOG API ============
+app.get('/api/curriculum/subjects', (req, res) => {
+  try {
+    const curriculum = String(req.query.curriculum || 'cbc').toLowerCase();
+    const grade = String(req.query.grade || '');
+    const term = String(req.query.term || '');
+    const localSources = listCurriculumSources({ curriculum, grade, term });
+    const catalog = catalogSubjects();
+    const subjects = [...new Set([...catalog, ...localSources.map((s) => s.subject).filter(Boolean)])].sort();
+    const sourceBySubject = {};
+    for (const source of localSources) sourceBySubject[source.subject] = true;
+    res.json({
+      curriculum, grade, term, subjects,
+      sources: localSources,
+      sourceAvailability: Object.fromEntries(subjects.map((s) => [s, Boolean(sourceBySubject[s])]))
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to load curriculum subjects' });
+  }
+});
+
+app.get('/api/curriculum/topics', (req, res) => {
+  try {
+    const curriculum = String(req.query.curriculum || 'cbc').toLowerCase();
+    const grade = String(req.query.grade || '');
+    const subject = String(req.query.subject || '');
+    const term = String(req.query.term || '');
+    const sources = listCurriculumSources({ curriculum, grade, subject, term });
+    const rows = listCurriculumRows({ curriculum, grade, subject, term });
+    const topics = [...new Set(rows.map((r) => r.topic).filter(Boolean))];
+    const subtopics = [...new Set(rows.map((r) => r.subTopic || r.subtopic).filter(Boolean))];
+    res.json({ curriculum, grade, subject, term, hasLocalSource: sources.length > 0, topics, subtopics, rows, sources });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to load curriculum topics' });
+  }
+});
+
+app.get('/api/curriculum/status', (req, res) => {
+  try {
+    const curriculum = String(req.query.curriculum || 'cbc').toLowerCase();
+    const grade = String(req.query.grade || '');
+    const subject = String(req.query.subject || '');
+    const term = String(req.query.term || '');
+    const sources = listCurriculumSources({ curriculum, grade, subject, term });
+    res.json({
+      curriculum, grade, subject, term,
+      status: sources.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : (curriculum === 'obc' ? 'OBC_MODE' : 'NO_LOCAL_SOURCE'),
+      sources
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to load curriculum status' });
+  }
+});
+
 // ============ START SERVER ============
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server running on port ${PORT}`);
@@ -3466,7 +3535,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Get lessons (alias) at /api/lessons/mine`);
   console.log(`✅ Get schemes (alias) at /api/schemes/mine`);
   console.log(`✅ DeepSeek AI integration enabled`);
-  console.log(`✅ Lipila payment integration enabled`);
+  console.log(`✅ Manual payment verification enabled`);
   console.log(`✅ CORS enabled for Vercel and Render frontend`);
 });
 
