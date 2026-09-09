@@ -8,7 +8,7 @@ const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 const OpenAI = require('openai');
 const axios = require('axios');
-const { Document, Packer, Paragraph, Table, TableRow, TableCell, HeadingLevel, AlignmentType, WidthType } = require('docx');
+const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel, AlignmentType, WidthType } = require('docx');
 const PDFDocument = require('pdfkit');
 const { getCurriculumContext, formatContext, listCurriculumSources, listCurriculumRows, catalogSubjects } = require('./utils/curriculumContext');
 
