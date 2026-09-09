@@ -12,6 +12,24 @@ const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, Headin
 const PDFDocument = require('pdfkit');
 const { getCurriculumContext, formatContext, listCurriculumSources, listCurriculumRows, catalogSubjects } = require('./utils/curriculumContext');
 
+
+// Format scheme term for Ministry-style exports.
+function termWord(term) {
+  const value = String(term ?? '').trim();
+  if (!value) return '';
+  const match = value.match(/\d+/);
+  if (!match) return value.toUpperCase();
+
+  const n = Number(match[0]);
+  const words = {
+    1: 'ONE',
+    2: 'TWO',
+    3: 'THREE',
+    4: 'FOUR',
+  };
+  return words[n] || value.toUpperCase();
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const prisma = new PrismaClient();
