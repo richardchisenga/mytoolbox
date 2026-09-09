@@ -8,27 +8,8 @@ const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 const OpenAI = require('openai');
 const axios = require('axios');
-const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel, AlignmentType, WidthType } = require('docx');
+const { Document, Packer, Paragraph, Table, TableRow, TableCell, HeadingLevel, AlignmentType, WidthType } = require('docx');
 const PDFDocument = require('pdfkit');
-const { getCurriculumContext, formatContext, listCurriculumSources, listCurriculumRows, catalogSubjects } = require('./utils/curriculumContext');
-
-
-// Format scheme term for Ministry-style exports.
-function termWord(term) {
-  const value = String(term ?? '').trim();
-  if (!value) return '';
-  const match = value.match(/\d+/);
-  if (!match) return value.toUpperCase();
-
-  const n = Number(match[0]);
-  const words = {
-    1: 'ONE',
-    2: 'TWO',
-    3: 'THREE',
-    4: 'FOUR',
-  };
-  return words[n] || value.toUpperCase();
-}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -48,7 +29,6 @@ class LipilaService {
     this.apiKey = process.env.LIPILA_API_KEY;
     this.walletId = process.env.LIPILA_WALLET_ID;
 
-    this.baseURL = (
       process.env.LIPILA_BASE_URL ||
       "https://console.lipila.tech/api/v1"
     ).replace(/\/$/, "");
@@ -923,7 +903,7 @@ function generateLessonContent(topic, subject, grade) {
 }
 
 // ============ CBC LESSON PROMPT ============
-function generateCBCPrompt(topic, grade, subject, classSize, user, subtopic, term = '', curriculumContext = null) {
+function generateCBCPrompt(topic, grade, subject, classSize, user, subtopic) {
   const size = parseInt(classSize) || 40;
   const boys = Math.floor(size / 2) || 18;
   const girls = Math.ceil(size / 2) || 22;
@@ -933,10 +913,6 @@ function generateCBCPrompt(topic, grade, subject, classSize, user, subtopic, ter
   
   return `
 You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
-Term: ${term || 'not supplied'}.
-
-CURRICULUM SOURCE CONTROL:
-${formatContext(curriculumContext)}
 
 ⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this CBC lesson structure. The lessonProgression array MUST have content with all required fields.
 
@@ -946,7 +922,7 @@ ${formatContext(curriculumContext)}
   "subject": "${subject}",
   "subtopic": "${subtopic || ''}",
   "teacherName": "${user.fullName || 'MR/MRS'}",
-  "school": "${user.school || ''}",
+  "school": "${user.school || 'KASHINAKAZHI SECONDARY SCHOOL'}",
   "date": "${new Date().toISOString().split('T')[0]}",
   "time": "10:20-11:00",
   "duration": "80 MINUTES",
@@ -964,7 +940,9 @@ ${formatContext(curriculumContext)}
   "rationale": "Understanding ${topic} is essential for learners to develop critical thinking skills and solve real-world problems in ${subject}.",
   "priorKnowledge": "Learners have basic knowledge of the topic from previous lessons",
   "references": [
-    "Use the verified curriculum source shown below when available"
+    "2026 Teaching Module",
+    "Curriculum Guide",
+    "${subject} Grade ${grade} Textbook"
   ],
   "learningEnvironment": "Classroom with adequate resources",
   "materials": [
@@ -1017,7 +995,7 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
   "subject": "${subject}",
   "subtopic": "${subtopic || ''}",
   "teacherName": "${user.fullName || 'MR/MRS'}",
-  "school": "${user.school || ''}",
+  "school": "${user.school || 'KASHINAKAZHI SECONDARY SCHOOL'}",
   "date": "${new Date().toISOString().split('T')[0]}",
   "duration": "80 MINUTES",
   "classSize": ${size},
@@ -1025,7 +1003,7 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
   "girls": ${girls},
   "references": [
     "Progress in ${subject} Grade ${grade} pg 78",
-    "Teacher-provided curriculum materials",
+    "${subject} Grade ${grade} Textbook",
     "Teacher's Guide"
   ],
   "teachingAids": [
@@ -1067,7 +1045,7 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
 
 // ============ ENHANCED FALLBACK LESSON GENERATOR ============
 
-function generateFallbackCBC(topic, grade, subject, classSize, user, curriculumContext = null) {
+function generateFallbackCBC(topic, grade, subject, classSize, user) {
   const size = parseInt(classSize) || 40;
   const boys = Math.floor(size / 2) || 18;
   const girls = Math.ceil(size / 2) || 22;
@@ -1077,9 +1055,9 @@ function generateFallbackCBC(topic, grade, subject, classSize, user, curriculumC
     grade: grade,
     subject: subject,
     teacherName: user?.fullName || 'MR/MRS',
-    school: user?.school || '',
-    province: user?.province || '',
-    district: user?.district || '',
+    school: user?.school || 'KASHINAKAZHI SECONDARY SCHOOL',
+    province: user?.province || 'Southern',
+    district: user?.district || 'Itezhi-Tezhi',
     date: new Date().toISOString().split('T')[0],
     time: "08:00-08:40",
     duration: "80 MINUTES",
@@ -1097,7 +1075,7 @@ function generateFallbackCBC(topic, grade, subject, classSize, user, curriculumC
     lessonGoal: `By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}`,
     rationale: `Understanding ${topic} is essential for learners to develop critical thinking skills and make informed decisions.`,
     priorKnowledge: "Learners have basic knowledge of the topic from previous lessons",
-    references: curriculumContext?.matched && curriculumContext.match?.reference ? [curriculumContext.match.reference] : ["Teacher-provided curriculum materials"],
+    references: ["2026 Teaching Module", "Curriculum Guide", `${subject} Grade ${grade} Textbook`],
     learningEnvironment: "Classroom with adequate resources",
     materials: ["Manila paper", "Markers", "Charts", "Worksheet", "Real objects"],
     expectedStandard: "Topic concepts explained correctly",
@@ -1123,7 +1101,7 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
     grade: grade,
     subject: subject,
     teacherName: user?.fullName || 'MR/MRS',
-    school: user?.school || '',
+    school: user?.school || 'KASHINAKAZHI SECONDARY SCHOOL',
     date: new Date().toISOString().split('T')[0],
     duration: '80 MINUTES',
     classSize: size,
@@ -1132,7 +1110,7 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
     subtopic: '',
     references: [
       `Progress in ${subject} Grade ${grade} pg 78`,
-      "Teacher-provided curriculum materials",
+      `${subject} Grade ${grade} Textbook`,
       "Teacher's Guide"
     ],
     teachingAids: ["Learners book", "Chalk board", "Chart", "Diagrams"],
@@ -1415,7 +1393,7 @@ function generateCBCScheme(grade, subject, term, user, customTopics = {}) {
         specificCompetence: defaultTopic.specificCompetence || `By the end of this lesson, learners will be able to understand and apply knowledge of ${customTopic}`,
         methods: methodOptions[i % methodOptions.length],
         aids: aidsOptions[i % aidsOptions.length],
-        references: "Teacher-provided curriculum materials",
+        references: `${subject} Grade ${grade} Textbook, Teacher's Guide, Syllabus`,
         knowledge: `Comprehensive knowledge of ${customTopic}`,
         skills: skillsOptions[i % skillsOptions.length],
         values: valuesOptions[i % valuesOptions.length]
@@ -1430,7 +1408,7 @@ function generateCBCScheme(grade, subject, term, user, customTopics = {}) {
         specificCompetence: topicData.specificCompetence || `By the end of this lesson, learners will be able to understand and explain the concepts`,
         methods: methodOptions[i % methodOptions.length],
         aids: aidsOptions[i % aidsOptions.length],
-        references: "Teacher-provided curriculum materials",
+        references: `${subject} Grade ${grade} Textbook, Teacher's Guide`,
         knowledge: `Comprehensive knowledge of ${topicData.topic}`,
         skills: skillsOptions[i % skillsOptions.length],
         values: valuesOptions[i % valuesOptions.length]
@@ -1575,7 +1553,7 @@ function generateOBCScheme(grade, subject, term, user, customTopics = {}) {
         specificOutcome: `By the end of this lesson, learners will be able to understand and apply knowledge of ${customTopic}`,
         methods: "Lecture, discussion, group work, question and answer",
         aids: "Whiteboard, charts, textbooks, diagrams",
-        references: "Teacher-provided curriculum materials",
+        references: "Textbook, Teacher's Guide",
         knowledge: `Comprehensive knowledge of ${customTopic}`,
         skills: "Critical thinking, analysis, collaboration",
         values: "Responsibility, teamwork, curiosity"
@@ -1594,7 +1572,7 @@ function generateOBCScheme(grade, subject, term, user, customTopics = {}) {
         specificOutcome: `By the end of this lesson, learners will be able to understand and explain ${topicName}`,
         methods: methodOptions[methodIndex],
         aids: aidsOptions[aidsIndex],
-        references: "Teacher-provided curriculum materials",
+        references: `${subject} Grade ${grade} Textbook, Teacher's Guide`,
         knowledge: `Comprehensive knowledge of ${topicName}`,
         skills: skillsOptions[skillsIndex],
         values: valuesOptions[valuesIndex]
@@ -1713,7 +1691,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
 
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
-    const { topic, grade, subject, classSize, curriculum, subtopic, term } = req.body;
+    const { topic, grade, subject, classSize, curriculum, subtopic } = req.body;
 
     if (!topic || !grade || !subject) {
       return res.status(400).json({ error: 'Missing required fields: topic, grade, subject' });
@@ -1740,14 +1718,12 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
     
     let aiContent = null;
     let useFallback = false;
-    let curriculumContext = null;
 
     try {
       let prompt;
       
       if (curriculumType === 'cbc') {
-        curriculumContext = getCurriculumContext({ curriculum: curriculumType, grade, subject, term, topic, subtopic });
-        prompt = generateCBCPrompt(topic, grade, subject, classSize, user, subtopic, term, curriculumContext);
+        prompt = generateCBCPrompt(topic, grade, subject, classSize, user, subtopic);
       } else {
         prompt = generateOBCPrompt(topic, grade, subject, classSize, user, subtopic);
       }
@@ -1813,7 +1789,7 @@ Return ONLY the JSON object, no other text.
     if (useFallback || !aiContent) {
       console.log(`📝 Using ${curriculumType.toUpperCase()} fallback`);
       if (curriculumType === 'cbc') {
-        aiContent = generateFallbackCBC(topic, grade, subject, classSize, user, curriculumContext);
+        aiContent = generateFallbackCBC(topic, grade, subject, classSize, user);
       } else {
         aiContent = generateFallbackOBC(topic, grade, subject, classSize, user);
       }
@@ -1830,22 +1806,9 @@ Return ONLY the JSON object, no other text.
       aiContent.lessonDevelopment = generateLessonContent(topic, subject, grade);
     }
 
-    if (curriculumType === 'cbc' && curriculumContext?.matched && curriculumContext.match) {
-      aiContent.specificCompetence = curriculumContext.match.specificCompetence || aiContent.specificCompetence;
-      aiContent.expectedStandard = curriculumContext.match.expectedStandard || aiContent.expectedStandard;
-      aiContent.materials = curriculumContext.match.resources || aiContent.materials;
-      aiContent.subtopic = curriculumContext.match.subTopic || aiContent.subtopic;
-    }
-
-    let referencesArray = Array.isArray(aiContent.references)
-      ? aiContent.references
-      : (aiContent.references ? [aiContent.references] : ["Teacher-provided curriculum materials"]);
-
-    // Never fabricate an official reference. A verified local match may replace
-    // the AI reference with the source-pack reference.
-    if (curriculumType === 'cbc' && curriculumContext?.matched && curriculumContext.match?.reference) {
-      referencesArray = [curriculumContext.match.reference];
-    }
+    const referencesArray = Array.isArray(aiContent.references) 
+      ? aiContent.references 
+      : (aiContent.references ? [aiContent.references] : ["Textbook", "Teacher's Guide"]);
 
     const materialsArray = Array.isArray(aiContent.materials) 
       ? aiContent.materials 
@@ -1906,7 +1869,7 @@ Return ONLY the JSON object, no other text.
         development: lessonDevelopmentArray.map(d => d.learningPoints || d.content) || [],
         activities: lessonDevelopmentArray.map(d => d.pupilActivity || d.pupilActivities) || [],
         assessment: learnersEvaluationArray.join(', ') || '',
-        curriculumCodes: curriculumContext?.matched && curriculumContext.match?.topic ? [curriculumContext.match.topic] : [],
+        curriculumCodes: [`${subject}-${grade}-${topic.substring(0, 3)}`],
         provinceContext: user.province || '',
         lessonDevelopment: lessonDevelopmentArray,
         lessonProgression: lessonProgressionArray,
@@ -1958,12 +1921,8 @@ Return ONLY the JSON object, no other text.
 
     if (curriculumType === 'cbc') {
       responseData.lessonProgression = lessonProgressionArray;
-      responseData.curriculumSourceStatus = curriculumContext?.sourceStatus || 'SOURCE_NOT_FOUND';
-      responseData.curriculumSource = curriculumContext?.source || null;
-      responseData.curriculumMatch = curriculumContext?.match || null;
     } else {
       responseData.lessonDevelopment = lessonDevelopmentArray;
-      responseData.curriculumSourceStatus = 'OBC_MODE';
     }
 
     res.status(201).json(responseData);
@@ -1984,7 +1943,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
     const { 
       grade, subject, term, year, school, 
       weeks: totalWeeks, assessmentWeeks, testTopics, 
-      weekTopics, weekSubtopics, subtopic, curriculum 
+      weekTopics, subtopic, curriculum 
     } = req.body;
 
     if (!grade || !subject) {
@@ -2005,36 +1964,11 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       });
     }
 
-    const curriculumType = String(curriculum || 'cbc').toLowerCase();
-    // MyToolbox syllabus mode: CBC uses the current 2024 Competence-Based
-    // Curriculum; OBC uses the legacy/old syllabus structure.  This is kept
-    // separate from the output format so DeepSeek knows which syllabus family
-    // to follow when generating content.
-    const syllabusVersion = curriculumType === 'cbc'
-      ? 'NEW_2024_CBC'
-      : 'OLD_LEGACY_OBC';
-    const sourcePacks = listCurriculumSources({ curriculum: curriculumType, grade, subject, term });
-    const sourceRowsDetailed = listCurriculumRows({ curriculum: curriculumType, grade, subject, term });
-    const sourceRows = sourceRowsDetailed.map((row) => ({
-      week: row.week,
-      topic: row.topic,
-      subTopic: row.subTopic || row.subtopic || '',
-      specificCompetence: row.specificCompetence || row.specificCompetences || '',
-      expectedStandard: row.expectedStandard || row.expectedStandards || '',
-      methods: row.methods || row.strategies || '',
-      resources: row.resources || row.aids || '',
-      knowledge: row.knowledge || '',
-      skills: row.skills || '',
-      values: row.values || '',
-      reference: row.reference || row.references || '',
-      source: row._source
-    }));
-    console.log(`📚 Curriculum source packs found: ${sourcePacks.length}`);
-    console.log(`📝 Generating ${curriculumType.toUpperCase()} scheme with DeepSeek (${syllabusVersion})...`);
+    const curriculumType = curriculum || 'cbc';
+    console.log(`📝 Generating ${curriculumType.toUpperCase()} scheme with DeepSeek...`);
     
     const assessmentWeeksList = assessmentWeeks || [3, 6, 9, 12];
     const customTopics = weekTopics || {};
-    const customSubtopics = weekSubtopics || {};
     const totalWeeksCount = totalWeeks || 13;
     const subtopicsList = subtopic ? subtopic.split(',').map(s => s.trim()) : [];
     
@@ -2046,43 +1980,19 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       
       if (curriculumType === 'cbc') {
         let customTopicsString = '';
-        let matchedSourceDetails = '';
         Object.keys(customTopics).forEach(week => {
           if (customTopics[week]) {
             customTopicsString += `Week ${week}: ${customTopics[week]}\n`;
-            const ctx = getCurriculumContext({ curriculum: curriculumType, grade, subject, term, topic: customTopics[week], subtopic: customSubtopics[week] });
-            if (ctx.matched) matchedSourceDetails += `Week ${week}: ${formatContext(ctx)}\n`;
           }
         });
 
         prompt = `
-You are generating a Zambian school scheme of work.
-SYLLABUS VERSION: NEW 2024 COMPETENCE-BASED CURRICULUM (CBC)
-Grade/Form: "${grade}"
+Grade: "${grade}"
 Subject: "${subject}"
 Term: "${term || 'Term 1'}"
-
-IMPORTANT SYLLABUS RULES:
-- Follow the current Zambia Ministry of Education 2024 syllabus for the selected subject, grade/form and term.
-- Do NOT use the old/legacy syllabus when CBC is selected.
-- Use official syllabus topic/sub-topic terminology and numbering where known.
-- Do not invent unrelated topics merely to fill weeks.
-- If the user supplies topics/subtopics, preserve them and build the CBC competences, activities and standards around them.
-- If an official topic cannot be confidently identified, use the closest syllabus-aligned topic and keep the wording conservative rather than fabricating syllabus codes.
-- The output must remain suitable for a Zambian Ministry of Education CBC scheme of work.
-${customTopicsString ? `User topics (respect these):\n${customTopicsString}` : 'Generate appropriate topics for all weeks from the selected 2024 CBC syllabus.'}
+Curriculum: CBC (Competency-Based Curriculum)
+${customTopicsString ? `User topics:\n${customTopicsString}` : 'Generate appropriate topics for all weeks following CBC syllabus.'}
 Assessment weeks: ${assessmentWeeksList.join(', ')}
-
-LOCAL CURRICULUM SOURCE CONTROL:
-${sourceRows.length ? JSON.stringify(sourceRows, null, 2) : 'NO VERIFIED LOCAL SOURCE PACK IS AVAILABLE FOR THIS SUBJECT/GRADE/TERM. Do not invent official syllabus codes, page numbers or CDC claims.'}
-- When a local source pack is available, its rows are the authoritative local sequence for this generation. Preserve the supplied topic/subtopic/competence wording rather than replacing it with a generic DeepSeek sequence.
-- Never use a subject-specific default such as Biology when the selected subject is different.
-- References must come from the matched source row when one exists; otherwise use the neutral phrase "Teacher-provided curriculum materials" rather than inventing a textbook or page.
-${matchedSourceDetails ? `VERIFIED DETAILS FOR USER-SUPPLIED TOPICS:
-${matchedSourceDetails}` : ''}
-- If a verified local source row matches a supplied topic, preserve its official wording, competence, resources and reference.
-- If a verified source pack exists but the user leaves a week topic blank, use the source pack sequence rather than inventing a different topic.
-- If no verified source exists, generate a useful scheme but do not label invented topic codes/references as official CDC content.
 
 Return ONLY valid JSON with this CBC scheme structure:
 {
@@ -2120,20 +2030,11 @@ Return ONLY valid JSON with this CBC scheme structure:
         });
 
         prompt = `
-You are generating a Zambian school scheme of work.
-SYLLABUS VERSION: OLD / LEGACY ZAMBIAN O-LEVEL SYLLABUS
-Grade/Form: "${grade}"
+Grade: "${grade}"
 Subject: "${subject}"
 Term: "${term || 'Term 1'}"
-
-IMPORTANT SYLLABUS RULES:
-- Follow the older/legacy Zambia syllabus structure for the selected subject, grade/form and term.
-- Do NOT replace the old syllabus topics with the 2024 CBC topic sequence when OBC is selected.
-- Preserve established old-syllabus topic/sub-topic names and numbering where known.
-- If the user supplies topics/subtopics, preserve them.
-- Do not invent unrelated content just to fill weeks.
-- Keep objectives, methods, aids, knowledge, skills and values appropriate to the old Objective-Based Curriculum format.
-${customTopicsString ? `User topics (respect these):\n${customTopicsString}` : 'Generate appropriate topics for all weeks following the legacy syllabus sequence.'}
+Curriculum: OBC (Objective-Based Curriculum)
+${customTopicsString ? `User topics:\n${customTopicsString}` : 'Generate appropriate topics for all weeks.'}
 Assessment weeks: ${assessmentWeeksList.join(', ')}
 
 Return ONLY valid JSON with this OBC scheme structure:
@@ -2171,10 +2072,7 @@ You are an expert curriculum planner for Zambian schools creating ${curriculumTy
 The user will provide grade, subject, and term information.
 Parse the information and output it in valid JSON format.
 
-Syllabus selection is mandatory:
-- NEW_2024_CBC: use the current 2024 Zambia Ministry of Education Competence-Based syllabus and CBC terminology.
-- OLD_LEGACY_OBC: use the older/legacy Zambian syllabus and Objective-Based terminology; do not silently substitute the 2024 CBC sequence.
-For CBC: Include topic, subtopic, specificCompetences, learningActivities, expectedStandards, resources, strategies, and reference.
+For CBC: Include topic code, subtopic, specificCompetence, methods, aids, references, knowledge, skills, and values.
 For OBC: Include topic, specificOutcome, methods, aids, references, knowledge, skills, and values.
 
 Return ONLY the JSON object, no other text.
@@ -2200,99 +2098,32 @@ Return ONLY the JSON object, no other text.
     
     if (!aiContent || useFallback) {
       console.log(`📝 Using ${curriculumType.toUpperCase()} fallback scheme generator`);
-      if (curriculumType === 'cbc' && sourceRowsDetailed.length) {
-        aiContent = {
-          weeks: sourceRowsDetailed.map((row, index) => ({
-            week: Number(row.week || index + 1),
-            topics: [{
-              topic: row.topic || '',
-              subtopic: row.subTopic || row.subtopic || '',
-              specificCompetence: row.specificCompetence || row.specificCompetences || '',
-              methods: row.methods || row.strategies || '',
-              aids: row.resources || row.aids || '',
-              references: row.reference || row.references || 'Teacher-provided curriculum materials',
-              knowledge: row.knowledge || '',
-              skills: row.skills || '',
-              values: row.values || ''
-            }],
-            isRevision: false,
-            isAssessment: false
-          })),
-          assessmentWeeks: assessmentWeeksList,
-          testTopics: testTopics || []
-        };
-      } else if (curriculumType === 'cbc') {
+      if (curriculumType === 'cbc') {
         aiContent = generateCBCScheme(grade, subject, term, user, customTopics);
       } else {
         aiContent = generateOBCScheme(grade, subject, term, user, customTopics);
       }
     }
     
-    const weeks = (aiContent?.weeks || []).map(week => {
-      if (curriculumType === 'cbc') {
-        const topic = Array.isArray(week.topics) && week.topics.length > 0
-          ? week.topics[0]
-          : week;
+    const weeks = aiContent.weeks.map(week => ({
+      week: week.week,
+      topics: week.topics.map(topic => ({
+        topic: topic.topic || '',
+        subtopic: topic.subtopic || '',
+        specificCompetence: topic.specificCompetence || topic.specificOutcome || '',
+        specificOutcome: topic.specificOutcome || '',
+        methods: topic.methods || '',
+        aids: topic.aids || '',
+        references: topic.references || '',
+        knowledge: topic.knowledge || '',
+        skills: topic.skills || '',
+        values: topic.values || ''
+      })),
+      assessment: week.assessment || null,
+      isRevision: week.isRevision || false,
+      isAssessment: week.isAssessment || false
+    }));
 
-        const weekNumber = Number(week.week);
-        const forcedSubtopic = customSubtopics[weekNumber] || customSubtopics[String(weekNumber)] || '';
-        const topicName = topic.topic || '';
-        const competence = topic.specificCompetences ?? topic.specificCompetence ?? topic.competencies ?? '';
-        const activities = topic.learningActivities ?? topic.activities ?? '';
-        const standards = topic.expectedStandards ?? topic.expectedStandard ??
-          (competence ? `Learners demonstrate the competence: ${Array.isArray(competence) ? competence.join('; ') : competence}.` : '');
-        const resources = topic.resources ?? topic.aids ?? '';
-        const strategies = topic.strategies ?? topic.methods ?? '';
-        const reference = topic.reference ?? topic.references ?? 'Teacher-provided curriculum materials';
-        const sourceMatch = sourceRowsDetailed.find((row) =>
-          Number(row.week) === weekNumber ||
-          (String(row.topic || '').trim().toLowerCase() && String(row.topic || '').trim().toLowerCase() === String(topicName || '').trim().toLowerCase())
-        );
-        const finalTopic = sourceMatch?.topic || topicName;
-        const finalSubTopic = forcedSubtopic || sourceMatch?.subTopic || sourceMatch?.subtopic || topic.subTopic || topic.subtopic || '';
-        const finalCompetence = sourceMatch?.specificCompetence || sourceMatch?.specificCompetences || competence;
-        const finalActivities = sourceMatch?.learningActivities || activities;
-        const finalStandards = sourceMatch?.expectedStandard || sourceMatch?.expectedStandards || standards;
-        const finalResources = sourceMatch?.resources || sourceMatch?.aids || resources;
-        const finalStrategies = sourceMatch?.strategies || sourceMatch?.methods || strategies;
-        const finalReference = sourceMatch?.reference || sourceMatch?.references || reference;
-
-        return {
-          week: weekNumber,
-          topic: finalTopic,
-          subTopic: finalSubTopic,
-          specificCompetences: finalCompetence,
-          learningActivities: finalActivities || (finalTopic ? [`Introduction and discussion of ${finalTopic}`, `Group/individual activities on ${finalTopic}`] : ''),
-          expectedStandards: finalStandards,
-          resources: finalResources,
-          strategies: finalStrategies,
-          reference: finalReference,
-          isRevision: week.isRevision || false,
-          isAssessment: week.isAssessment || false,
-          // Keep nested data for compatibility with older saved scheme viewers.
-          topics: Array.isArray(week.topics) ? week.topics : [topic]
-        };
-      }
-
-      return {
-        week: week.week,
-        topics: (week.topics || []).map(topic => ({
-          topic: topic.topic || '',
-          subtopic: topic.subtopic || '',
-          specificCompetence: topic.specificCompetence || topic.specificOutcome || '',
-          specificOutcome: topic.specificOutcome || '',
-          methods: topic.methods || '',
-          aids: topic.aids || '',
-          references: topic.references || '',
-          knowledge: topic.knowledge || '',
-          skills: topic.skills || '',
-          values: topic.values || ''
-        })),
-        assessment: week.assessment || null,
-        isRevision: week.isRevision || false,
-        isAssessment: week.isAssessment || false
-      };
-    });
     if (subtopicsList.length > 0) {
       let weekIndex = 0;
       for (let i = 0; i < weeks.length; i++) {
@@ -2300,11 +2131,8 @@ Return ONLY the JSON object, no other text.
           if (weekIndex < subtopicsList.length) {
             weeks[i].topics[0].topic = subtopicsList[weekIndex];
             if (curriculumType === 'cbc') {
-              weeks[i].subTopic = subtopicsList[weekIndex];
               weeks[i].topics[0].subtopic = subtopicsList[weekIndex];
-              weeks[i].specificCompetences = `By the end of this lesson, learners will be able to understand and explain ${subtopicsList[weekIndex]}`;
-              weeks[i].topics[0].specificCompetence = weeks[i].specificCompetences;
-              weeks[i].expectedStandards = `Learners explain and apply ${subtopicsList[weekIndex]} correctly.`;
+              weeks[i].topics[0].specificCompetence = `By the end of this lesson, learners will be able to understand and explain ${subtopicsList[weekIndex]}`;
             } else {
               weeks[i].topics[0].specificOutcome = `By the end of this lesson, learners will be able to understand and explain ${subtopicsList[weekIndex]}`;
             }
@@ -2327,8 +2155,6 @@ Return ONLY the JSON object, no other text.
       assessmentWeeks: assessmentWeeksList,
       testTopics: testTopics || [`Mid-term test on ${subject}`, `End of term test on ${subject}`],
       curriculum: curriculumType,
-      curriculumSourceStatus: sourcePacks.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : 'NO_LOCAL_SOURCE',
-      curriculumSources: sourcePacks,
       createdAt: new Date().toISOString()
     };
 
@@ -2373,90 +2199,20 @@ Return ONLY the JSON object, no other text.
 
 // ============ SCHEME EXPORT ROUTES ============
 
-function cbcListText(value) {
-  if (Array.isArray(value)) return value.join('\n');
-  return String(value ?? '');
-}
-
-function cbcExportRow(week) {
-  return {
-    week: String(week.week ?? ''),
-    topic: String(week.topic ?? ''),
-    subTopic: String(week.subTopic ?? week.subtopic ?? ''),
-    specificCompetences: cbcListText(week.specificCompetences ?? week.specificCompetence ?? week.competencies ?? ''),
-    learningActivities: cbcListText(week.learningActivities ?? week.activities ?? ''),
-    expectedStandards: String(week.expectedStandards ?? week.expectedStandard ?? ''),
-    resources: cbcListText(week.resources ?? week.aids ?? ''),
-    strategies: cbcListText(week.strategies ?? week.methods ?? ''),
-    reference: cbcListText(week.reference ?? week.references ?? 'Teacher-provided curriculum materials')
-  };
-}
-
-function cbcCell(text, options = {}) {
-  return new TableCell({
-    width: { size: options.width || 100, type: WidthType.PERCENTAGE },
-    children: [new Paragraph({
-      alignment: options.align || AlignmentType.LEFT,
-      spacing: { before: 0, after: 0, line: 180 },
-      children: [new TextRun({
-        text: String(text ?? ''),
-        bold: !!options.bold,
-        font: 'Times New Roman',
-        size: options.size || 14
-      })]
-    })]
-  });
-}
-
 app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
   try {
-    const scheme = await prisma.scheme.findUnique({ where: { id: req.params.id } });
-    if (!scheme) return res.status(404).json({ error: 'Scheme not found' });
-    if (scheme.userId !== req.userId) return res.status(403).json({ error: 'Unauthorized' });
+    const { id } = req.params;
 
-    if (String(scheme.curriculum || '').toLowerCase() === 'cbc') {
-      const widths = [6, 11, 13, 15, 17, 13, 11, 13, 13];
-      const headerNames = ['week','Topic','Sub- topic','Specific competences','Learning activities','Expected standards','T/L\nRESOURCES','STRATEGIES\nTECHNIQUES','REFERENCE'];
-      const tableRows = [new TableRow({
-        children: headerNames.map((h, i) => cbcCell(h, { bold: true, align: AlignmentType.CENTER, width: widths[i], size: 14 }))
-      })];
+    const scheme = await prisma.scheme.findUnique({
+      where: { id: id },
+    });
 
-      for (const week of (scheme.weeks || [])) {
-        const r = cbcExportRow(week);
-        tableRows.push(new TableRow({ children: [
-          cbcCell(r.week, { align: AlignmentType.CENTER, width: widths[0] }),
-          cbcCell(r.topic, { width: widths[1] }),
-          cbcCell(r.subTopic, { width: widths[2] }),
-          cbcCell(r.specificCompetences, { width: widths[3] }),
-          cbcCell(r.learningActivities, { width: widths[4] }),
-          cbcCell(r.expectedStandards, { width: widths[5] }),
-          cbcCell(r.resources, { width: widths[6] }),
-          cbcCell(r.strategies, { width: widths[7] }),
-          cbcCell(r.reference, { width: widths[8] })
-        ] }));
-      }
+    if (!scheme) {
+      return res.status(404).json({ error: 'Scheme not found' });
+    }
 
-      const doc = new Document({ sections: [{
-        properties: {
-          page: {
-            size: { width: 16838, height: 11906, orientation: 'landscape' },
-            margin: { top: 360, right: 360, bottom: 360, left: 360 }
-          }
-        },
-        children: [
-          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [new TextRun({ text: 'MINISTRY OF EDUCATION', font: 'Times New Roman', size: 22, bold: true })] }),
-          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [new TextRun({ text: scheme.school || '', font: 'Times New Roman', size: 21, bold: true })] }),
-          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [new TextRun({ text: 'DEPARTMENT OF NATURAL SCIENCES', font: 'Times New Roman', size: 21, bold: true })] }),
-          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [new TextRun({ text: `SCHEMES OF WORK FOR ${String(scheme.subject || '').toUpperCase()}`, font: 'Times New Roman', size: 21, bold: true })] }),
-          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 100 }, children: [new TextRun({ text: `SUBJECT: ${String(scheme.subject || '').toUpperCase()}     FORM: ${scheme.grade || ''}     TERM: ${termWord(scheme.term)}     YEAR: ${scheme.year || new Date().getFullYear()}`, font: 'Times New Roman', size: 18, bold: true })] }),
-          new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: tableRows })
-        ]
-      }] });
-
-      const buffer = await Packer.toBuffer(doc);
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      res.setHeader('Content-Disposition', `attachment; filename="${scheme.subject}_Scheme_of_Work_Term_${scheme.term}.docx"`);
-      return res.send(buffer);
+    if (scheme.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
     }
 
     const tableRows = [];
@@ -2535,66 +2291,24 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
 
   } catch (error) {
     console.error('❌ Word export error:', error);
-    return res.status(500).json({ error: 'Failed to export scheme as Word' });
+    res.status(500).json({ error: 'Failed to export scheme as Word' });
   }
 });
 
 app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
   try {
-    const scheme = await prisma.scheme.findUnique({ where: { id: req.params.id } });
-    if (!scheme) return res.status(404).json({ error: 'Scheme not found' });
-    if (scheme.userId !== req.userId) return res.status(403).json({ error: 'Unauthorized' });
+    const { id } = req.params;
 
-    if (String(scheme.curriculum || '').toLowerCase() === 'cbc') {
-      const doc = new PDFDocument({ margin: 22, size: 'A3', layout: 'landscape' });
-      const chunks = [];
-      doc.on('data', c => chunks.push(c));
-      doc.on('end', () => res.send(Buffer.concat(chunks)));
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${scheme.subject}_Scheme_of_Work_Term_${scheme.term}.pdf"`);
+    const scheme = await prisma.scheme.findUnique({
+      where: { id: id },
+    });
 
-      doc.font('Helvetica-Bold').fontSize(15).text('MINISTRY OF EDUCATION', { align: 'center' });
-      doc.fontSize(14).text(scheme.school || '', { align: 'center' });
-      doc.fontSize(14).text('DEPARTMENT OF NATURAL SCIENCES', { align: 'center' });
-      doc.fontSize(14).text(`SCHEMES OF WORK FOR ${String(scheme.subject || '').toUpperCase()}`, { align: 'center' });
-      doc.fontSize(11).text(`SUBJECT: ${String(scheme.subject || '').toUpperCase()}     FORM: ${scheme.grade || ''}     TERM: ${termWord(scheme.term)}     YEAR: ${scheme.year || new Date().getFullYear()}`, { align: 'center' });
-      doc.moveDown(0.6);
+    if (!scheme) {
+      return res.status(404).json({ error: 'Scheme not found' });
+    }
 
-      const headers = ['week','Topic','Sub- topic','Specific competences','Learning activities','Expected standards','T/L RESOURCES','STRATEGIES / TECHNIQUES','REFERENCE'];
-      const baseWidths = [35, 80, 90, 125, 145, 110, 95, 110, 115];
-      const usable = doc.page.width - 44;
-      const scale = usable / baseWidths.reduce((a,b) => a + b, 0);
-      const widths = baseWidths.map(w => w * scale);
-      const startX = 22;
-      let y = doc.y;
-
-      const drawCell = (x, yy, w, h, text, bold = false, align = 'left') => {
-        doc.rect(x, yy, w, h).stroke();
-        doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(6.4).text(String(text || ''), x + 3, yy + 3, { width: w - 6, height: h - 6, align, ellipsis: true });
-      };
-
-      let x = startX;
-      headers.forEach((h, i) => { drawCell(x, y, widths[i], 28, h, true, 'center'); x += widths[i]; });
-      y += 28;
-
-      for (const week of (scheme.weeks || [])) {
-        const r = cbcExportRow(week);
-        const vals = [r.week, r.topic, r.subTopic, r.specificCompetences, r.learningActivities, r.expectedStandards, r.resources, r.strategies, r.reference];
-        const heights = vals.map((v, i) => Math.ceil(String(v || '').length / Math.max(12, Math.floor(widths[i] / 4.1))) * 7 + 10);
-        const h = Math.max(26, Math.min(160, Math.max(...heights)));
-        x = startX;
-        vals.forEach((v, i) => { drawCell(x, y, widths[i], h, v, false, i === 0 ? 'center' : 'left'); x += widths[i]; });
-        y += h;
-        if (y > doc.page.height - 45) {
-          doc.addPage();
-          y = 25;
-          x = startX;
-          headers.forEach((h2, i) => { drawCell(x, y, widths[i], 28, h2, true, 'center'); x += widths[i]; });
-          y += 28;
-        }
-      }
-      doc.end();
-      return;
+    if (scheme.userId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
     }
 
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
@@ -2688,7 +2402,7 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
 
   } catch (error) {
     console.error('❌ PDF export error:', error);
-    return res.status(500).json({ error: 'Failed to export scheme as PDF' });
+    res.status(500).json({ error: 'Failed to export scheme as PDF' });
   }
 });
 
@@ -3732,60 +3446,6 @@ app.get('/api/schemes/mine', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Error fetching schemes:', error);
     res.status(500).json({ error: 'Failed to fetch schemes' });
-  }
-});
-
-// ============ CURRICULUM CATALOG API ============
-app.get('/api/curriculum/subjects', (req, res) => {
-  try {
-    const curriculum = String(req.query.curriculum || 'cbc').toLowerCase();
-    const grade = String(req.query.grade || '');
-    const term = String(req.query.term || '');
-    const localSources = listCurriculumSources({ curriculum, grade, term });
-    const catalog = catalogSubjects();
-    const subjects = [...new Set([...catalog, ...localSources.map((s) => s.subject).filter(Boolean)])].sort();
-    const sourceBySubject = {};
-    for (const source of localSources) sourceBySubject[source.subject] = true;
-    res.json({
-      curriculum, grade, term, subjects,
-      sources: localSources,
-      sourceAvailability: Object.fromEntries(subjects.map((s) => [s, Boolean(sourceBySubject[s])]))
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to load curriculum subjects' });
-  }
-});
-
-app.get('/api/curriculum/topics', (req, res) => {
-  try {
-    const curriculum = String(req.query.curriculum || 'cbc').toLowerCase();
-    const grade = String(req.query.grade || '');
-    const subject = String(req.query.subject || '');
-    const term = String(req.query.term || '');
-    const sources = listCurriculumSources({ curriculum, grade, subject, term });
-    const rows = listCurriculumRows({ curriculum, grade, subject, term });
-    const topics = [...new Set(rows.map((r) => r.topic).filter(Boolean))];
-    const subtopics = [...new Set(rows.map((r) => r.subTopic || r.subtopic).filter(Boolean))];
-    res.json({ curriculum, grade, subject, term, hasLocalSource: sources.length > 0, topics, subtopics, rows, sources });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to load curriculum topics' });
-  }
-});
-
-app.get('/api/curriculum/status', (req, res) => {
-  try {
-    const curriculum = String(req.query.curriculum || 'cbc').toLowerCase();
-    const grade = String(req.query.grade || '');
-    const subject = String(req.query.subject || '');
-    const term = String(req.query.term || '');
-    const sources = listCurriculumSources({ curriculum, grade, subject, term });
-    res.json({
-      curriculum, grade, subject, term,
-      status: sources.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : (curriculum === 'obc' ? 'OBC_MODE' : 'NO_LOCAL_SOURCE'),
-      sources
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to load curriculum status' });
   }
 });
 
