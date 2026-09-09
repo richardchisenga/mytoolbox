@@ -164,12 +164,68 @@ function getCurriculumContext({ curriculum, grade, subject, term, topic, subtopi
   };
 }
 
+
+function getOfficialReferences({ subject = '', grade = '', term = '', context = null } = {}) {
+  const refs = [];
+  const registered = getRegisteredOfficialSource(subject);
+  const authority = 'Ministry of Education - Directorate of Curriculum Development';
+
+  if (registered) {
+    refs.push({
+      title: registered.officialTitle || `${subject} Syllabus, Forms 1–4`,
+      type: 'Official DCD syllabus',
+      authority,
+      url: registered.sourceType === 'official_dcd_syllabus_registry' ? registered.officialSource : '',
+      source: 'official_dcd_syllabus_registry'
+    });
+    if (registered.officialDcdIndex) {
+      refs.push({
+        title: 'Finalised Syllabi and Teaching Module Downloads',
+        type: 'Official DCD curriculum index',
+        authority,
+        url: registered.officialDcdIndex,
+        source: 'official_dcd_index'
+      });
+    }
+  }
+
+  // A local pack can contain an exact source reference/page range. Keep it,
+  // but never present a teacher-supplied local pack as an official CDC book.
+  const localRef = context?.match?.reference || context?.match?.references || '';
+  if (localRef) {
+    refs.push({
+      title: String(localRef),
+      type: 'Local curriculum/source-pack reference',
+      authority: context?.source?.sourceBasis || 'MyToolbox local curriculum source',
+      url: context?.source?.officialSource || '',
+      source: 'local_pack'
+    });
+  }
+
+  return refs.filter((r, i, arr) => arr.findIndex(x => `${x.type}|${x.title}|${x.url}` === `${r.type}|${r.title}|${r.url}`) === i);
+}
+
+function formatOfficialReferences({ subject = '', grade = '', term = '', context = null, includeUrls = false } = {}) {
+  return getOfficialReferences({ subject, grade, term, context })
+    .map((r) => includeUrls && r.url ? `${r.title} — ${r.authority} — ${r.url}` : r.title);
+}
+
+function getReferenceTitles({ subject = '', grade = '', term = '', context = null } = {}) {
+  return formatOfficialReferences({ subject, grade, term, context, includeUrls: false });
+}
+
 function formatContext(context) {
   if (!context?.matched || !context.match) {
     if (context?.sourceStatus === 'OFFICIAL_SOURCE_REGISTERED_NO_LOCAL_PACK') {
-    return `An official Zambia Ministry of Education Directorate of Curriculum Development syllabus is registered for this subject, but a detailed local topic index has not yet been imported. Generate useful topic-specific content without inventing syllabus codes, page numbers, or claiming exact CDC alignment. Official source: ${context.source?.officialSource || context.source?.sourceBasis || ''}`;
-  }
-  return 'NO VERIFIED LOCAL CURRICULUM MATCH WAS FOUND. Generate useful topic-specific teaching content, but DO NOT invent CDC syllabus codes, page numbers, official references, or claim unverified details are from the Ministry/CDC.';
+      const refs = getReferenceTitles({ subject: context.source?.subject, grade: context.source?.grade, term: context.source?.term });
+      return JSON.stringify({
+        status: context.sourceStatus,
+        instruction: 'Use the registered official DCD source titles as references. Do not invent syllabus codes, page numbers, textbook titles, Teaching Module titles, authors or publishers.',
+        officialSource: context.source?.officialSource || '',
+        references: refs
+      }, null, 2);
+    }
+    return 'NO VERIFIED LOCAL CURRICULUM MATCH WAS FOUND. Generate useful topic-specific teaching content, but DO NOT invent CDC syllabus codes, page numbers, official references, textbook titles or Teaching Module titles.';
   }
   const m = context.match;
   return JSON.stringify({
@@ -196,5 +252,8 @@ module.exports = {
   loadPacks,
   loadCatalog,
   loadRegistry,
-  getRegisteredOfficialSource
+  getRegisteredOfficialSource,
+  getOfficialReferences,
+  formatOfficialReferences,
+  getReferenceTitles
 };
