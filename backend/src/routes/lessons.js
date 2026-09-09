@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
-const { getCurriculumContext, formatContext } = require('../utils/curriculumContext');
 
 // ✅ SET TO FALSE TO USE DEEPSEEK
 const ALLOW_MOCK_GENERATION = false;
@@ -63,24 +62,11 @@ function ensureOBCDevelopment(lesson, topic) {
   ];
 }
 
-function buildCBCPrompt(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district, term, curriculumContext) {
-  const sourceContext = formatContext(curriculumContext);
+function buildCBCPrompt(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district) {
   return `You are an expert Zambian teacher preparing a Competence Based Curriculum (CBC) lesson plan.
 Create ONE lesson for ${grade} ${subject} specifically on the exact topic: "${topic}".
-Term: ${term || 'not supplied'}.
-
-CURRICULUM SOURCE CONTROL:
-- Use the curriculum source context below as the controlling curriculum information whenever it contains a match.
-- Do not replace a matched syllabus sub-topic, specific competence, knowledge, skills, methods, resources or reference with invented alternatives.
-- Do not invent syllabus codes, page ranges, textbook titles, authors or quotations.
-- Do not mix the old OBC curriculum into this CBC lesson.
-- If there is NO source match, say so by keeping the lesson topic-specific and do not claim that an invented detail is from the CDC syllabus.
-- DeepSeek is the lesson-writing engine; it is NOT the curriculum authority.
-
-CURRICULUM SOURCE CONTEXT:
-${sourceContext}
-
-Create learner-centred activities that directly practise the matched competence and skills. Use formative assessment that checks the expected learning. Include relevant Zambian classroom practice, competencies and values without inventing official syllabus codes.
+Do not use generic placeholders. Every outcome, activity, assessment and progression step must explicitly teach, practise or assess ${topic}.
+Use age-appropriate Zambian classroom practice and CBC language. Include learner-centred activities, competencies, values and formative assessment.
 Return ONLY one valid JSON object. No markdown and no commentary.
 Required shape:
 {
@@ -96,8 +82,9 @@ Required shape:
   ],
   "homework":"...", "lessonEvaluation":"..."
 }
-Make every progression activity concrete and topic-specific. Never use vague phrases such as "explain concepts", "research the topic", or "understand the topic" without stating the exact content being taught or assessed.`;
+Make the progression activities concrete and topic-specific. Do not write phrases such as "explain concepts", "research the topic", or "understand the topic" without specifying what about ${topic}.`;
 }
+
 function buildOBCPrompt(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district) {
   return `You are an expert Zambian teacher preparing an Objective Based Curriculum (OBC) lesson plan.
 Create ONE lesson for ${grade} ${subject} specifically on the exact topic: "${topic}".
@@ -246,7 +233,7 @@ const checkLessonLimit = async (userId) => {
 
 router.post('/generate', authenticate, async (req, res) => {
   try {
-    const { grade, subject, topic, classSize, curriculum, term } = req.body;
+    const { grade, subject, topic, classSize, curriculum } = req.body;
     const size = parseInt(classSize) || 40;
     const boys = Math.floor(size * 0.45);
     const girls = size - boys;
@@ -266,12 +253,11 @@ router.post('/generate', authenticate, async (req, res) => {
     });
 
     const teacherName = user?.fullName || 'MR/MRS';
-    const schoolName = user?.school || '';
-    const province = user?.province || '';
-    const district = user?.district || '';
+    const schoolName = user?.school || 'KASHINAKAZHI SECONDARY SCHOOL';
+    const province = user?.province || 'Southern';
+    const district = user?.district || 'Itezhi-Tezhi';
 
     const curriculumType = curriculum || 'cbc';
-    const curriculumContext = getCurriculumContext({ curriculum: curriculumType, grade, subject, term, topic });
 
     let lessonData;
     let useMock = true;
@@ -280,7 +266,7 @@ router.post('/generate', authenticate, async (req, res) => {
       try {
         const prompt = curriculumType === 'obc' 
           ? buildOBCPrompt(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district)
-          : buildCBCPrompt(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district, term, curriculumContext);
+          : buildCBCPrompt(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district);
 
         console.log('📝 Calling DeepSeek API...');
 
@@ -302,10 +288,6 @@ router.post('/generate', authenticate, async (req, res) => {
           lessonData = cleanAndParseJson(rawContent);
           if (curriculumType === 'obc') {
             lessonData.lessonDevelopment = ensureOBCDevelopment(lessonData, topic);
-          } else if (curriculumContext.matched) {
-            lessonData.specificCompetence = curriculumContext.match.specificCompetence || lessonData.specificCompetence;
-            lessonData.materials = Array.isArray(curriculumContext.match.resources) ? curriculumContext.match.resources : lessonData.materials;
-            lessonData.references = Array.from(new Set([...(Array.isArray(lessonData.references) ? lessonData.references : []), curriculumContext.match.reference]));
           }
           useMock = false;
           console.log('✅ DeepSeek response parsed successfully');
@@ -331,16 +313,7 @@ router.post('/generate', authenticate, async (req, res) => {
 
     if (curriculumType === 'obc') {
       lessonData.lessonDevelopment = ensureOBCDevelopment(lessonData, topic);
-    } else if (curriculumContext.matched) {
-      lessonData.specificCompetence = curriculumContext.match.specificCompetence || lessonData.specificCompetence;
-      lessonData.expectedStandard = lessonData.expectedStandard || curriculumContext.match.knowledge;
-      lessonData.materials = Array.isArray(curriculumContext.match.resources) ? curriculumContext.match.resources : lessonData.materials;
-      lessonData.references = Array.from(new Set([...(Array.isArray(lessonData.references) ? lessonData.references : []), curriculumContext.match.reference]));
     }
-
-    lessonData.curriculumSourceStatus = curriculumContext.sourceStatus;
-    lessonData.curriculumSource = curriculumContext.source;
-    lessonData.curriculumMatch = curriculumContext.match;
 
     // Save to database
     const lesson = await prisma.lesson.create({
