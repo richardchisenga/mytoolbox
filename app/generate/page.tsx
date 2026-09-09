@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -11,9 +11,45 @@ export default function GeneratePage() {
   const [subject, setSubject] = useState("");
   const [classSize, setClassSize] = useState("40");
   const [curriculum, setCurriculum] = useState("cbc");
+  const [term, setTerm] = useState("3");
   const [generatedLesson, setGeneratedLesson] = useState<any>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
+  const [curriculumSubjects, setCurriculumSubjects] = useState<string[]>([]);
+  const [curriculumTopics, setCurriculumTopics] = useState<string[]>([]);
+  const [sourceStatus, setSourceStatus] = useState("NO_LOCAL_SOURCE");
+  const SECONDARY_CBC_SUBJECTS = useMemo(() => new Set([
+    "Agricultural Science", "Art and Design", "Biology", "Chemistry",
+    "Civic Education", "Commerce", "Computer Science", "Design and Technology Studies",
+    "English", "Fashion and Fabrics", "Food and Nutrition", "French", "Geography",
+    "History", "Hospitality Management", "ICT", "Literature in English",
+    "Mathematics I", "Mathematics II", "Musical Arts Education",
+    "Physical Education and Sport", "Physics", "Religious Education",
+    "Travel and Tourism", "Zambian Languages", "Principles of Accounts"
+  ]), []);
+
+  const normalizeSubject = (value: string) => value.trim().toLowerCase();
+  const isSecondaryCBCSubject = SECONDARY_CBC_SUBJECTS.has(subject) ||
+    Array.from(SECONDARY_CBC_SUBJECTS).some((item) => normalizeSubject(item) === normalizeSubject(subject));
+
+  const gradeOptions = useMemo(() => {
+    if (curriculum === "obc") {
+      return Array.from({ length: 12 }, (_, i) => `Grade ${i + 1}`)
+        .concat(Array.from({ length: 6 }, (_, i) => `Form ${i + 1}`));
+    }
+    if (isSecondaryCBCSubject) {
+      return Array.from({ length: 4 }, (_, i) => `Form ${i + 1}`);
+    }
+    return Array.from({ length: 6 }, (_, i) => `Grade ${i + 1}`)
+      .concat(Array.from({ length: 4 }, (_, i) => `Form ${i + 1}`));
+  }, [curriculum, isSecondaryCBCSubject]);
+
+  useEffect(() => {
+    if (grade && !gradeOptions.includes(grade)) {
+      setGrade(gradeOptions[0] || "");
+    }
+  }, [grade, gradeOptions]);
+
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,6 +57,11 @@ export default function GeneratePage() {
 
     if (!topic || !grade || !subject) {
       setError("Please fill in all fields");
+      return;
+    }
+
+    if (!gradeOptions.includes(grade)) {
+      setError(`Please select a valid ${curriculum === "cbc" ? "CBC" : "OBC"} grade/form from the list.`);
       return;
     }
 
@@ -46,6 +87,7 @@ export default function GeneratePage() {
             subject,
             classSize: parseInt(classSize),
             curriculum: curriculum,
+            term: curriculum === "cbc" ? term : undefined,
           }),
         }
       );
@@ -81,6 +123,38 @@ export default function GeneratePage() {
       setIsGenerating(false);
     }
   };
+
+  useEffect(() => {
+    const loadCurriculum = async () => {
+      if (curriculum !== "cbc" || !grade || !term) {
+        setCurriculumSubjects([]);
+        setCurriculumTopics([]);
+        setSourceStatus(curriculum === "obc" ? "OBC_MODE" : "NO_LOCAL_SOURCE");
+        return;
+      }
+      try {
+        const params = new URLSearchParams({ curriculum, grade, term });
+        const subjectRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/curriculum/subjects?${params}`);
+        if (subjectRes.ok) {
+          const data = await subjectRes.json();
+          setCurriculumSubjects(data.subjects || []);
+        }
+        if (subject) {
+          const topicParams = new URLSearchParams({ curriculum, grade, subject, term });
+          const topicRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/curriculum/topics?${topicParams}`);
+          if (topicRes.ok) {
+            const data = await topicRes.json();
+            setCurriculumTopics(data.topics || []);
+            setSourceStatus(data.hasLocalSource ? "VERIFIED_LOCAL_PACK_AVAILABLE" : "NO_LOCAL_SOURCE");
+          }
+        }
+      } catch (e) {
+        console.warn("Curriculum catalog unavailable", e);
+        setSourceStatus("NO_LOCAL_SOURCE");
+      }
+    };
+    loadCurriculum();
+  }, [curriculum, grade, subject, term]);
 
   const quickTopics = [
     { grade: "Grade 5", subject: "Mathematics", topic: "Fractions" },
@@ -179,7 +253,7 @@ export default function GeneratePage() {
 
 <div class="header">
   <h1>MINISTRY OF EDUCATION</h1>
-  <h2>${lesson.school || "KASHINAKAZHI SECONDARY SCHOOL"}</h2>
+  <h2>${lesson.school || ""}</h2>
   <h3>LESSON PLAN</h3>
   <p>DEPARTMENT OF NATURAL SCIENCES</p>
 </div>
@@ -292,7 +366,7 @@ export default function GeneratePage() {
 
 <div class="header">
   <h1>MINISTRY OF EDUCATION</h1>
-  <h2>${lesson.school || "KASHINAKAZHI SECONDARY SCHOOL"}</h2>
+  <h2>${lesson.school || ""}</h2>
   <h3>LESSON PLAN</h3>
   <p>DEPARTMENT OF NATURAL SCIENCES</p>
 </div>
@@ -451,16 +525,42 @@ export default function GeneratePage() {
                 </select>
               </div>
 
+              {curriculum === "cbc" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Term</label>
+                  <select
+                    value={term}
+                    onChange={(e) => setTerm(e.target.value)}
+                    className="mt-1 w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  >
+                    <option value="1">Term 1</option>
+                    <option value="2">Term 2</option>
+                    <option value="3">Term 3</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Used to match the lesson against the local CBC curriculum source index when available.</p>
+                </div>
+              )}
+
               <div>
-                <label className="block text-sm font-medium text-gray-700">Grade</label>
-                <input
-                  type="text"
+                <label className="block text-sm font-medium text-gray-700">Grade / Form</label>
+                <select
                   value={grade}
                   onChange={(e) => setGrade(e.target.value)}
-                  placeholder="e.g. Grade 5"
                   className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400"
                   required
-                />
+                >
+                  <option value="">Select grade / form</option>
+                  {gradeOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {curriculum === "cbc"
+                    ? (isSecondaryCBCSubject
+                      ? "2024 CBC secondary subject: Forms 1–4."
+                      : "CBC options: Grades 1–6 and Forms 1–4.")
+                    : "OBC / legacy options: Grades 1–12 and Forms 1–6."}
+                </p>
               </div>
 
               <div>
@@ -471,8 +571,14 @@ export default function GeneratePage() {
                   onChange={(e) => setSubject(e.target.value)}
                   placeholder="e.g. Mathematics"
                   className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  list="curriculum-subjects"
                   required
                 />
+                {curriculumSubjects.length > 0 && (
+                  <datalist id="curriculum-subjects">
+                    {curriculumSubjects.map((item) => <option key={item} value={item} />)}
+                  </datalist>
+                )}
               </div>
 
               <div>
@@ -482,9 +588,20 @@ export default function GeneratePage() {
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
                   placeholder="e.g. Fractions"
+                  list="curriculum-topics"
                   className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400"
                   required
                 />
+                {curriculumTopics.length > 0 && (
+                  <datalist id="curriculum-topics">
+                    {curriculumTopics.map((item) => <option key={item} value={item} />)}
+                  </datalist>
+                )}
+                {curriculum === "cbc" && (
+                  <p className={`text-xs mt-1 ${sourceStatus === "VERIFIED_LOCAL_PACK_AVAILABLE" ? "text-green-700" : "text-amber-700"}`}>
+                    {sourceStatus === "VERIFIED_LOCAL_PACK_AVAILABLE" ? "✓ Verified local curriculum source pack available." : sourceStatus === "OFFICIAL_SOURCE_REGISTERED_NO_LOCAL_PACK" ? "✓ Official CDC/DCD source registered. Detailed local topic pack is not yet loaded." : "No verified CDC source is registered for this selection. Custom topics remain allowed without false official claims."}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -520,6 +637,14 @@ export default function GeneratePage() {
                     {generatedLesson.curriculum.toUpperCase()}
                   </span>
                 )}
+                {generatedLesson.curriculum === "cbc" && generatedLesson.curriculumSourceStatus && (
+                  <div className={`mt-3 p-3 rounded-md text-sm ${generatedLesson.curriculumSourceStatus === "VERIFIED_LOCAL_PACK_MATCH" ? "bg-green-50 border border-green-200 text-green-800" : "bg-yellow-50 border border-yellow-200 text-yellow-800"}`}>
+                    <strong>Curriculum alignment:</strong>{" "}
+                    {generatedLesson.curriculumSourceStatus === "VERIFIED_LOCAL_PACK_MATCH"
+                      ? `Matched ${generatedLesson.curriculumMatch?.subTopic || generatedLesson.topic} in the local CBC curriculum source index.`
+                      : "No local curriculum source match was found. The lesson was generated without claiming an unverified syllabus match."}
+                  </div>
+                )}
               </div>
               <div className="flex gap-2">
                 <button
@@ -544,7 +669,7 @@ export default function GeneratePage() {
               <div className="border border-gray-300 rounded-lg p-4 bg-white">
                 <div className="text-center border-b-2 border-gray-300 pb-4 mb-4">
                   <h3 className="text-xl font-bold text-gray-800">MINISTRY OF EDUCATION</h3>
-                  <h4 className="text-lg font-semibold">{generatedLesson.school || "KASHINAKAZHI SECONDARY SCHOOL"}</h4>
+                  <h4 className="text-lg font-semibold">{generatedLesson.school || ""}</h4>
                   <h4 className="text-lg font-semibold">LESSON PLAN</h4>
                   <p className="text-sm">DEPARTMENT OF NATURAL SCIENCES</p>
                 </div>
@@ -642,7 +767,7 @@ export default function GeneratePage() {
               <div className="border border-gray-300 rounded-lg p-4 bg-white">
                 <div className="text-center border-b-2 border-gray-300 pb-4 mb-4">
                   <h3 className="text-xl font-bold text-gray-800">MINISTRY OF EDUCATION</h3>
-                  <h4 className="text-lg font-semibold">{generatedLesson.school || "KASHINAKAZHI SECONDARY SCHOOL"}</h4>
+                  <h4 className="text-lg font-semibold">{generatedLesson.school || ""}</h4>
                   <h4 className="text-lg font-semibold">LESSON PLAN</h4>
                   <p className="text-sm">DEPARTMENT OF NATURAL SCIENCES</p>
                 </div>
