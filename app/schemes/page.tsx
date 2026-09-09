@@ -24,6 +24,38 @@ export default function SchemesPage() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [savedSchemes, setSavedSchemes] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [curriculumSubjects, setCurriculumSubjects] = useState<string[]>([]);
+  const [curriculumTopics, setCurriculumTopics] = useState<string[]>([]);
+  const [sourceStatus, setSourceStatus] = useState("NO_LOCAL_SOURCE");
+
+  useEffect(() => {
+    const loadCurriculum = async () => {
+      if (curriculum !== "cbc" || !grade || !term) {
+        setCurriculumSubjects([]);
+        setCurriculumTopics([]);
+        setSourceStatus(curriculum === "obc" ? "OBC_MODE" : "NO_LOCAL_SOURCE");
+        return;
+      }
+      try {
+        const params = new URLSearchParams({ curriculum, grade, term });
+        const subjectRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/curriculum/subjects?${params}`);
+        if (subjectRes.ok) setCurriculumSubjects((await subjectRes.json()).subjects || []);
+        if (subject) {
+          const topicParams = new URLSearchParams({ curriculum, grade, subject, term });
+          const topicRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/curriculum/topics?${topicParams}`);
+          if (topicRes.ok) {
+            const data = await topicRes.json();
+            setCurriculumTopics(data.topics || []);
+            setSourceStatus(data.hasLocalSource ? "VERIFIED_LOCAL_PACK_AVAILABLE" : "NO_LOCAL_SOURCE");
+          }
+        }
+      } catch (e) {
+        console.warn("Curriculum catalog unavailable", e);
+        setSourceStatus("NO_LOCAL_SOURCE");
+      }
+    };
+    loadCurriculum();
+  }, [curriculum, grade, subject, term]);
 
   // Fetch saved schemes
   useEffect(() => {
@@ -222,19 +254,24 @@ export default function SchemesPage() {
               </tr>
             </thead>
             <tbody>
-              {scheme.weeks.map((week: any, idx: number) => (
-                <tr key={idx} className="align-top">
-                  <td className="p-2 border border-gray-400 text-center font-bold">{week.week}</td>
-                  <td className="p-2 border border-gray-400 font-semibold">{week.topic || "-"}</td>
-                  <td className="p-2 border border-gray-400">{week.subTopic || week.subtopic || scheme.subtopic || "-"}</td>
-                  <td className="p-2 border border-gray-400 whitespace-pre-line">{display(week.specificCompetences || week.competencies || week.specificOutcome)}</td>
-                  <td className="p-2 border border-gray-400 whitespace-pre-line">{display(week.learningActivities || week.activities)}</td>
-                  <td className="p-2 border border-gray-400">{week.expectedStandards || week.specificOutcome || "-"}</td>
-                  <td className="p-2 border border-gray-400 whitespace-pre-line">{display(week.resources || week.aids)}</td>
-                  <td className="p-2 border border-gray-400 whitespace-pre-line">{display(week.strategies || week.methods)}</td>
-                  <td className="p-2 border border-gray-400 whitespace-pre-line">{display(week.reference || week.references || "2024 New Biology Syllabus")}</td>
-                </tr>
-              ))}
+              {scheme.weeks.map((week: any, idx: number) => {
+                // New CBC data is stored at week level. Older schemes stored the
+                // same information inside week.topics[0], so support both.
+                const legacy = Array.isArray(week.topics) && week.topics.length > 0 ? week.topics[0] : {};
+                return (
+                  <tr key={idx} className="align-top">
+                    <td className="p-2 border border-gray-400 text-center font-bold">{week.week}</td>
+                    <td className="p-2 border border-gray-400 font-semibold">{week.topic || legacy.topic || "-"}</td>
+                    <td className="p-2 border border-gray-400">{week.subTopic || week.subtopic || legacy.subTopic || legacy.subtopic || scheme.subtopic || "-"}</td>
+                    <td className="p-2 border border-gray-400 whitespace-pre-line">{display(week.specificCompetences || week.specificCompetence || legacy.specificCompetences || legacy.specificCompetence || week.competencies || legacy.competencies || week.specificOutcome || legacy.specificOutcome)}</td>
+                    <td className="p-2 border border-gray-400 whitespace-pre-line">{display(week.learningActivities || legacy.learningActivities || week.activities || legacy.activities || legacy.methods)}</td>
+                    <td className="p-2 border border-gray-400">{week.expectedStandards || legacy.expectedStandards || week.specificOutcome || legacy.specificOutcome || "-"}</td>
+                    <td className="p-2 border border-gray-400 whitespace-pre-line">{display(week.resources || legacy.resources || week.aids || legacy.aids)}</td>
+                    <td className="p-2 border border-gray-400 whitespace-pre-line">{display(week.strategies || legacy.strategies || week.methods || legacy.methods)}</td>
+                    <td className="p-2 border border-gray-400 whitespace-pre-line">{display(week.reference || legacy.reference || week.references || legacy.references || "Teacher-provided curriculum materials")}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -445,10 +482,15 @@ export default function SchemesPage() {
                 onChange={(e) => setCurriculum(e.target.value as "cbc" | "obc")}
                 className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400"
               >
-                <option value="cbc">CBC — Competency-Based Curriculum</option>
-                <option value="obc">OBC — Objective-Based Curriculum</option>
+                <option value="cbc">CBC — New 2024 Competence-Based Syllabus</option>
+                <option value="obc">OBC — Old / Legacy Syllabus</option>
               </select>
-              <p className="mt-1 text-xs text-gray-500">The selected curriculum controls how the scheme is generated, displayed and exported.</p>
+              <p className="mt-1 text-xs text-gray-500">CBC uses the current 2024 syllabus; OBC uses the old / legacy syllabus structure. The selected curriculum controls generation, display and export.</p>
+              {curriculum === "cbc" && (
+                <p className={`mt-2 text-xs p-2 rounded-md ${sourceStatus === "VERIFIED_LOCAL_PACK_AVAILABLE" ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
+                  {sourceStatus === "VERIFIED_LOCAL_PACK_AVAILABLE" ? "✓ Local curriculum source available for this subject, grade and term. Topic suggestions will come from that source pack." : "No verified local curriculum pack is available for this selection. You can still enter your own topics; the generator will not claim they are official CDC content."}
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -463,6 +505,9 @@ export default function SchemesPage() {
                   {["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"].map((g) => (
                     <option key={g}>Grade {g}</option>
                   ))}
+                  {["1", "2", "3", "4", "5", "6"].map((g) => (
+                    <option key={`form-${g}`}>Form {g}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -473,7 +518,9 @@ export default function SchemesPage() {
                   onChange={(e) => setSubject(e.target.value)}
                   className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400"
                   placeholder="e.g. Biology"
+                  list="scheme-curriculum-subjects"
                 />
+                {curriculumSubjects.length > 0 && <datalist id="scheme-curriculum-subjects">{curriculumSubjects.map((item) => <option key={item} value={item} />)}</datalist>}
               </div>
             </div>
 
@@ -553,8 +600,10 @@ export default function SchemesPage() {
                             value={weekTopics[week] || ""}
                             onChange={(e) => updateWeekTopic(week, e.target.value)}
                             placeholder={`Enter topic for Week ${week}`}
+                            list={curriculumTopics.length > 0 ? `scheme-topics-${week}` : undefined}
                             className="mt-1 w-full px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400 text-sm"
                           />
+                          {curriculumTopics.length > 0 && <datalist id={`scheme-topics-${week}`}>{curriculumTopics.map((item) => <option key={item} value={item} />)}</datalist>}
                           {curriculum === "cbc" && (
                             <input
                               type="text"
