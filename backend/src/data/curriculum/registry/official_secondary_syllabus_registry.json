@@ -1,0 +1,371 @@
+{
+  "version": "2026-09",
+  "authority": "Ministry of Education - Directorate of Curriculum Development",
+  "index": "https://www.edu.gov.zm/?page_id=1142",
+  "subjects": {
+    "Agricultural Science": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/?page_id=1142",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Art and Design": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/?page_id=1142",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Biology": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/wp-content/uploads/2025/02/CAMERA-READY-O-LEVEL-BIOLOGY-SYLABUS-5-02-2024-FINAL-CORRECTED-FOR-PRINTING.pdf",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Chemistry": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/?page_id=1142",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Civic Education": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/?page_id=1142",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Commerce": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/?page_id=1142",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Computer Science": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/wp-content/uploads/2025/02/Computer_Science_Syllabus_2024_Ordinary_Level.pdf",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Design and Technology Studies": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/?page_id=1142",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "English": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/?page_id=1142",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Fashion and Fabrics": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/?page_id=1142",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Food and Nutrition": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/?page_id=1142",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "French": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/wp-content/uploads/2025/02/FRENCH-LANGUAGE-EDITED-COPY.pdf",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Geography": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/wp-content/uploads/2025/04/GEOGRAPHY-SYLLABUS.pdf",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "History": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/wp-content/uploads/2025/04/HISTORY-SYLLABUS-FORMS-1-4.pdf",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Hospitality Management": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/wp-content/uploads/2025/02/HOSPITALITY-MANAGEMENT-SYLLABUS.pdf",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "ICT": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/wp-content/uploads/2025/02/ICT_Ordinary_Level_Syllabus_2024.pdf",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Literature in English": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/?page_id=1142",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Mathematics I": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/?page_id=1142",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Mathematics II": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/?page_id=1142",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Musical Arts Education": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/?page_id=1142",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Physical Education and Sport": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/?page_id=1142",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Physics": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/?page_id=1142",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Religious Education": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/wp-content/uploads/2025/02/RELIGIOUS-EDUCATION-SYLLABUS-5-02-2024-FINAL-CORRECTED-FOR-PRINTING.pdf",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Travel and Tourism": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/?page_id=1142",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Zambian Languages": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/wp-content/uploads/2025/04/ZAMBIAN-LANGUAGES-ORDINARY-LEVEL-SYLLABUS-FORM-1-4-FINAL.pdf",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    },
+    "Principles of Accounts": {
+      "level": "secondary",
+      "grades": [
+        "Form 1",
+        "Form 2",
+        "Form 3",
+        "Form 4"
+      ],
+      "curriculum": "cbc",
+      "sourceType": "official_dcd_syllabus_registry",
+      "officialSource": "https://www.edu.gov.zm/?page_id=1142",
+      "detailStatus": "source_registered_not_locally_indexed",
+      "rowsImported": false
+    }
+  }
+}
