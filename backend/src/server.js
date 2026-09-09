@@ -9,7 +9,7 @@ const { PrismaClient } = require('@prisma/client');
 const OpenAI = require('openai');
 const { Document, Packer, Paragraph, Table, TableRow, TableCell, HeadingLevel, AlignmentType, WidthType } = require('docx');
 const PDFDocument = require('pdfkit');
-const { getCurriculumContext, formatContext, listCurriculumSources, listCurriculumRows, catalogSubjects } = require('./utils/curriculumContext');
+const { getCurriculumContext, formatContext, listCurriculumSources, listCurriculumRows, catalogSubjects, getReferenceTitles, getRegisteredOfficialSource } = require('./utils/curriculumContext');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1609,12 +1609,17 @@ Return ONLY the JSON object, no other text.
 
     let referencesArray = Array.isArray(aiContent.references)
       ? aiContent.references
-      : (aiContent.references ? [aiContent.references] : ["Teacher-provided curriculum materials"]);
+      : (aiContent.references ? [aiContent.references] : []);
 
-    // Never fabricate an official reference. A verified local match may replace
-    // the AI reference with the source-pack reference.
-    if (curriculumType === 'cbc' && curriculumContext?.matched && curriculumContext.match?.reference) {
-      referencesArray = [curriculumContext.match.reference];
+    // CBC references are controlled by the official DCD registry plus any
+    // verified local source-pack reference. Never ask DeepSeek to invent a
+    // textbook, Teaching Module title, publisher or page number.
+    if (curriculumType === 'cbc') {
+      const officialRefs = getReferenceTitles({ subject, grade, term, context: curriculumContext });
+      if (officialRefs.length) referencesArray = officialRefs;
+      else if (!referencesArray.length) referencesArray = ['No verified official reference is loaded for this selection'];
+    } else if (!referencesArray.length) {
+      referencesArray = ['Teacher-provided curriculum materials'];
     }
 
     const materialsArray = Array.isArray(aiContent.materials) 
@@ -1817,7 +1822,20 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       knowledge: row.knowledge || '',
       skills: row.skills || '',
       values: row.values || '',
-      reference: row.reference || row.references || '',
+      reference: (() => {
+        const localReference = row.reference || row.references || '';
+        const titles = getReferenceTitles({
+          subject,
+          grade,
+          term,
+          context: {
+            matched: Boolean(localReference),
+            match: localReference ? { reference: localReference } : null,
+            source: row._source || null
+          }
+        });
+        return titles.join('; ');
+      })(),
       source: row._source
     }));
     console.log(`📚 Curriculum source packs found: ${sourcePacks.length}`);
@@ -1846,6 +1864,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
           }
         });
 
+        const officialReferenceTitles = getReferenceTitles({ subject, grade, term });
         prompt = `
 You are generating a Zambian school scheme of work.
 SYLLABUS VERSION: NEW 2024 COMPETENCE-BASED CURRICULUM (CBC)
@@ -1864,11 +1883,16 @@ IMPORTANT SYLLABUS RULES:
 ${customTopicsString ? `User topics (respect these):\n${customTopicsString}` : 'Generate appropriate topics for all weeks from the selected 2024 CBC syllabus.'}
 Assessment weeks: ${assessmentWeeksList.join(', ')}
 
+OFFICIAL DCD REFERENCE CONTROL:
+${officialReferenceTitles.length ? officialReferenceTitles.map((r, i) => `${i + 1}. ${r}`).join('\n') : 'No registered official DCD reference is available for this selection.'}
+- These are verified reference titles from the Zambia Ministry of Education Directorate of Curriculum Development registry.
+- Do not invent textbooks, Teaching Module titles, authors, publishers or page numbers.
+
 LOCAL CURRICULUM SOURCE CONTROL:
 ${sourceRows.length ? JSON.stringify(sourceRows, null, 2) : 'NO VERIFIED LOCAL SOURCE PACK IS AVAILABLE FOR THIS SUBJECT/GRADE/TERM. Do not invent official syllabus codes, page numbers or CDC claims.'}
 - When a local source pack is available, its rows are the authoritative local sequence for this generation. Preserve the supplied topic/subtopic/competence wording rather than replacing it with a generic DeepSeek sequence.
 - Never use a subject-specific default such as Biology when the selected subject is different.
-- References must come from the matched source row when one exists; otherwise use the neutral phrase "Teacher-provided curriculum materials" rather than inventing a textbook or page.
+- References must use the verified DCD reference titles supplied above, plus a matched local source-pack page/range when one exists. Never invent a textbook or page.
 ${matchedSourceDetails ? `VERIFIED DETAILS FOR USER-SUPPLIED TOPICS:
 ${matchedSourceDetails}` : ''}
 - If a verified local source row matches a supplied topic, preserve its official wording, competence, resources and reference.
@@ -2034,7 +2058,7 @@ Return ONLY the JSON object, no other text.
           (competence ? `Learners demonstrate the competence: ${Array.isArray(competence) ? competence.join('; ') : competence}.` : '');
         const resources = topic.resources ?? topic.aids ?? '';
         const strategies = topic.strategies ?? topic.methods ?? '';
-        const reference = topic.reference ?? topic.references ?? 'Teacher-provided curriculum materials';
+        const reference = topic.reference ?? topic.references ?? '';
         const sourceMatch = sourceRowsDetailed.find((row) =>
           Number(row.week) === weekNumber ||
           (String(row.topic || '').trim().toLowerCase() && String(row.topic || '').trim().toLowerCase() === String(topicName || '').trim().toLowerCase())
@@ -2046,7 +2070,11 @@ Return ONLY the JSON object, no other text.
         const finalStandards = sourceMatch?.expectedStandard || sourceMatch?.expectedStandards || standards;
         const finalResources = sourceMatch?.resources || sourceMatch?.aids || resources;
         const finalStrategies = sourceMatch?.strategies || sourceMatch?.methods || strategies;
-        const finalReference = sourceMatch?.reference || sourceMatch?.references || reference;
+        const officialReferenceText = getReferenceTitles({ subject, grade, term, context: curriculumContext }).join('; ');
+        const aiReferenceIsGeneric = !reference || /teacher-provided curriculum materials/i.test(String(reference));
+        const finalReference = sourceMatch?.reference || sourceMatch?.references ||
+          (aiReferenceIsGeneric ? officialReferenceText : reference) ||
+          'No verified official reference is loaded for this selection';
 
         return {
           week: weekNumber,
@@ -3475,6 +3503,11 @@ app.get('/api/curriculum/subjects', (req, res) => {
     const subjects = [...new Set([...catalog, ...localSources.map((s) => s.subject).filter(Boolean)])].sort();
     const sourceBySubject = {};
     for (const source of localSources) sourceBySubject[source.subject] = true;
+    if (curriculum === 'cbc') {
+      for (const subject of subjects) {
+        if (getRegisteredOfficialSource(subject)) sourceBySubject[subject] = true;
+      }
+    }
     res.json({
       curriculum, grade, term, subjects,
       sources: localSources,
@@ -3508,10 +3541,13 @@ app.get('/api/curriculum/status', (req, res) => {
     const subject = String(req.query.subject || '');
     const term = String(req.query.term || '');
     const sources = listCurriculumSources({ curriculum, grade, subject, term });
+    const officialSource = curriculum === 'cbc' ? getRegisteredOfficialSource(subject) : null;
     res.json({
       curriculum, grade, subject, term,
-      status: sources.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : (curriculum === 'obc' ? 'OBC_MODE' : 'NO_LOCAL_SOURCE'),
-      sources
+      status: sources.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : (officialSource ? 'OFFICIAL_SOURCE_REGISTERED_NO_LOCAL_PACK' : (curriculum === 'obc' ? 'OBC_MODE' : 'NO_LOCAL_SOURCE')),
+      sources,
+      officialSource: officialSource || null,
+      references: curriculum === 'cbc' ? getReferenceTitles({ subject, grade, term }) : []
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to load curriculum status' });
