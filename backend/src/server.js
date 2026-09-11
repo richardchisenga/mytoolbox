@@ -662,6 +662,15 @@ Term: ${term || 'not supplied'}.
 CURRICULUM SOURCE CONTROL:
 ${formatContext(curriculumContext)}
 
+CURRICULUM PRIORITY RULES:
+1. If the source above contains a verified syllabus/teaching-module match, it is the authoritative basis for this lesson.
+2. Use the verified topic and sub-topic exactly (preserve official wording except harmless capitalisation).
+3. Use the verified specific competence, expected standard, competences, methods, resources, knowledge and skills where supplied. Do NOT replace them with generic AI wording.
+4. Build the lesson activities around the verified learning activities/content. Do not create unrelated activities.
+5. Do not invent official codes, page numbers, textbook titles or curriculum statements.
+6. If a field is not supplied by the verified source, generate an appropriate pedagogical value but do not falsely label it as an official curriculum statement.
+7. The lesson progression MUST total exactly 80 minutes.
+
 ⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this CBC lesson structure. The lessonProgression array MUST have content with all required fields.
 
 {
@@ -1601,10 +1610,38 @@ Return ONLY the JSON object, no other text.
     }
 
     if (curriculumType === 'cbc' && curriculumContext?.matched && curriculumContext.match) {
-      aiContent.specificCompetence = curriculumContext.match.specificCompetence || aiContent.specificCompetence;
-      aiContent.expectedStandard = curriculumContext.match.expectedStandard || aiContent.expectedStandard;
-      aiContent.materials = curriculumContext.match.resources || aiContent.materials;
-      aiContent.subtopic = curriculumContext.match.subTopic || aiContent.subtopic;
+      const cm = curriculumContext.match;
+      aiContent.title = cm.topic || aiContent.title;
+      aiContent.subtopic = cm.subTopic || cm.subtopic || aiContent.subtopic;
+      aiContent.specificCompetence = cm.specificCompetence || cm.specificCompetences || aiContent.specificCompetence;
+      aiContent.expectedStandard = cm.expectedStandard || cm.expectedStandards || aiContent.expectedStandard;
+      aiContent.materials = Array.isArray(cm.resources) ? cm.resources : (Array.isArray(cm.aids) ? cm.aids : aiContent.materials);
+      if (Array.isArray(cm.competences) && cm.competences.length) aiContent.generalCompetences = cm.competences;
+      if (cm.knowledge) aiContent.curriculumKnowledge = cm.knowledge;
+      if (Array.isArray(cm.skills) && cm.skills.length) aiContent.curriculumSkills = cm.skills;
+      if (Array.isArray(cm.methods) && cm.methods.length) aiContent.curriculumMethods = cm.methods;
+      if (cm.officialExcerpt) aiContent.curriculumEvidence = cm.officialExcerpt;
+      if (cm.reference) aiContent.curriculumReference = cm.reference;
+
+      // Make the lesson objective directly reflect the verified competence.
+      if (cm.specificCompetence) {
+        aiContent.lessonGoal = `By the end of the lesson, learners will be able to ${String(cm.specificCompetence).replace(/^(demonstrate|explore|interpret|construct|apply|identify|explain)\s+/i, '').trim().replace(/[.]$/, '')}.`;
+      }
+    }
+
+    // Guarantee the displayed lesson duration is internally consistent.
+    if (curriculumType === 'cbc' && Array.isArray(aiContent.lessonProgression)) {
+      const parseMinutes = (value) => {
+        const m = String(value || '').match(/(\d+)\s*(?:min|mins|minutes?)/i);
+        return m ? Number(m[1]) : 0;
+      };
+      const total = aiContent.lessonProgression.reduce((sum, row) => sum + parseMinutes(row.time || row.duration), 0);
+      if (total !== 80 && aiContent.lessonProgression.length) {
+        const diff = 80 - total;
+        const last = aiContent.lessonProgression[aiContent.lessonProgression.length - 1];
+        const current = parseMinutes(last.time || last.duration) || 1;
+        last.time = `${Math.max(1, current + diff)} min`;
+      }
     }
 
     let referencesArray = Array.isArray(aiContent.references)
