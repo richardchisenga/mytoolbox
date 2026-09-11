@@ -9,7 +9,7 @@ const { PrismaClient } = require('@prisma/client');
 const OpenAI = require('openai');
 const { Document, Packer, Paragraph, Table, TableRow, TableCell, HeadingLevel, AlignmentType, WidthType } = require('docx');
 const PDFDocument = require('pdfkit');
-const { getCurriculumContext, formatContext, listCurriculumSources, listCurriculumRows, catalogSubjects, getReferenceTitles, getRegisteredOfficialSource } = require('./utils/curriculumContext');
+const { getCurriculumContext, getCurriculumContextAsync, formatContext, listCurriculumSources, listCurriculumRows, catalogSubjects, getReferenceTitles, getRegisteredOfficialSource } = require('./utils/curriculumContext');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1451,7 +1451,7 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    if (user.role !== 'ADMIN' && user.lessonsUsed >= user.lessonsLimit) {
+    if (user.lessonsUsed >= user.lessonsLimit) {
       return res.status(403).json({
         error: 'Lesson limit reached. Please upgrade your plan to generate more lessons.'
       });
@@ -1516,7 +1516,7 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       let prompt;
       
       if (curriculumType === 'cbc') {
-        curriculumContext = getCurriculumContext({ curriculum: curriculumType, grade, subject, term, topic, subtopic });
+        curriculumContext = await getCurriculumContextAsync({ curriculum: curriculumType, grade, subject, term, topic, subtopic });
         prompt = generateCBCPrompt(topic, grade, subject, classSize, user, subtopic, term, curriculumContext);
       } else {
         prompt = generateOBCPrompt(topic, grade, subject, classSize, user, subtopic);
@@ -1778,7 +1778,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    if (user.role !== 'ADMIN' && user.schemesUsed >= user.schemesLimit) {
+    if (user.schemesUsed >= user.schemesLimit) {
       return res.status(403).json({
         error: 'Scheme limit reached. Please upgrade your plan to generate more schemes.'
       });
