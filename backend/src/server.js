@@ -9,6 +9,8 @@ const { PrismaClient } = require('@prisma/client');
 const OpenAI = require('openai');
 const { Document, Packer, Paragraph, Table, TableRow, TableCell, HeadingLevel, AlignmentType, WidthType } = require('docx');
 const PDFDocument = require('pdfkit');
+const multer = require('multer');
+const pdfParse = require('pdf-parse');
 const { getCurriculumContext, getCurriculumContextAsync, formatContext, listCurriculumSources, listCurriculumRows, catalogSubjects, getReferenceTitles, getRegisteredOfficialSource } = require('./utils/curriculumContext');
 const { getCBCSubjectProfile } = require('./utils/cbcSubjectProfiles');
 
@@ -65,7 +67,24 @@ app.use(
 );
 
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+
+// Notes uploads: keep files in memory so no permanent server disk is required.
+const notesUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = new Set([
+      'application/pdf', 'text/plain', 'text/markdown', 'text/csv',
+      'application/json', 'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ]);
+    const ext = (file.originalname.split('.').pop() || '').toLowerCase();
+    const allowedExt = ['pdf','txt','md','csv','json','doc','docx'];
+    if (allowed.has(file.mimetype) || allowedExt.includes(ext)) return cb(null, true);
+    cb(new Error('Unsupported file type. Upload PDF, DOC, DOCX, TXT, MD, CSV or JSON.'));
+  }
+});
 // ============ AUTHENTICATION MIDDLEWARE ============
 const authenticate = (req, res, next) => {
   try {
@@ -2621,6 +2640,43 @@ app.get('/api/notes/:id', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Error fetching note:', error);
     res.status(500).json({ error: 'Failed to fetch note' });
+  }
+});
+
+app.post('/api/notes/upload', authenticate, notesUpload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Please select a notes file.' });
+
+    const ext = (req.file.originalname.split('.').pop() || '').toLowerCase();
+    let content = '';
+
+    if (ext === 'pdf' || req.file.mimetype === 'application/pdf') {
+      const parsed = await pdfParse(req.file.buffer);
+      content = (parsed.text || '').trim();
+    } else if (ext === 'txt' || ext === 'md' || ext === 'csv' || ext === 'json') {
+      content = req.file.buffer.toString('utf8').trim();
+    } else {
+      return res.status(415).json({ error: 'DOC/DOCX upload is accepted by the interface, but this server version only extracts PDF and text notes. Please upload PDF or TXT/MD/CSV/JSON.' });
+    }
+
+    if (!content) return res.status(422).json({ error: 'The uploaded file contains no readable text.' });
+    if (content.length > 200000) content = content.slice(0, 200000);
+
+    const title = (req.body?.title || req.file.originalname.replace(/\.[^.]+$/, '')).trim();
+    const note = await prisma.note.create({
+      data: {
+        userId: req.userId,
+        title: title || 'Uploaded Notes',
+        content,
+        subject: req.body?.subject || null,
+        grade: req.body?.grade || null
+      }
+    });
+    res.status(201).json({ ...note, filename: req.file.originalname, extractedCharacters: content.length });
+  } catch (error) {
+    console.error('Error uploading note:', error);
+    if (error instanceof multer.MulterError) return res.status(400).json({ error: error.code === 'LIMIT_FILE_SIZE' ? 'File is too large. Maximum size is 15 MB.' : 'File upload failed.' });
+    res.status(400).json({ error: error.message || 'Failed to process uploaded note.' });
   }
 });
 
