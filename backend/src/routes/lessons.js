@@ -218,7 +218,7 @@ const checkLessonLimit = async (userId) => {
     return { allowed: true, remaining: updatedUser.lessonsLimit };
   }
 
-  if (user.role === 'PRO' || user.role === 'SCHOOL') {
+  if (user.role === 'ADMIN' || user.role === 'PRO' || user.role === 'SCHOOL') {
     return { allowed: true, remaining: 'Unlimited' };
   }
 
