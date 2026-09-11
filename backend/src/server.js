@@ -1451,7 +1451,7 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    if (user.lessonsUsed >= user.lessonsLimit) {
+    if (user.role !== 'ADMIN' && user.lessonsUsed >= user.lessonsLimit) {
       return res.status(403).json({
         error: 'Lesson limit reached. Please upgrade your plan to generate more lessons.'
       });
@@ -1778,7 +1778,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    if (user.schemesUsed >= user.schemesLimit) {
+    if (user.role !== 'ADMIN' && user.schemesUsed >= user.schemesLimit) {
       return res.status(403).json({
         error: 'Scheme limit reached. Please upgrade your plan to generate more schemes.'
       });
