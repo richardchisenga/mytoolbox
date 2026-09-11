@@ -10,6 +10,7 @@ const OpenAI = require('openai');
 const { Document, Packer, Paragraph, Table, TableRow, TableCell, HeadingLevel, AlignmentType, WidthType } = require('docx');
 const PDFDocument = require('pdfkit');
 const { getCurriculumContext, getCurriculumContextAsync, formatContext, listCurriculumSources, listCurriculumRows, catalogSubjects, getReferenceTitles, getRegisteredOfficialSource } = require('./utils/curriculumContext');
+const { getCBCSubjectProfile } = require('./utils/cbcSubjectProfiles');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -651,27 +652,51 @@ function generateCBCPrompt(topic, grade, subject, classSize, user, subtopic, ter
   const size = parseInt(classSize) || 40;
   const boys = Math.floor(size / 2) || 18;
   const girls = Math.ceil(size / 2) || 22;
-  
-  // Generate topic-specific lesson progression
+  const profile = getCBCSubjectProfile(subject);
+  const cm = curriculumContext?.matched ? (curriculumContext.match || {}) : {};
+  const verifiedCompetences = Array.isArray(cm.competences) ? cm.competences : [];
+  const verifiedResources = Array.isArray(cm.resources) ? cm.resources : (Array.isArray(cm.aids) ? cm.aids : []);
+  const verifiedMethods = Array.isArray(cm.methods) ? cm.methods : (cm.methods ? [cm.methods] : []);
+  const verifiedOutcomes = cm.specificCompetence || cm.specificCompetences || '';
+  const verifiedStandard = cm.expectedStandard || cm.expectedStandards || '';
+  const verifiedKnowledge = cm.knowledge || '';
+  const verifiedSkills = cm.skills || '';
   const lessonProgression = generateLessonProgression(topic, subject, grade);
-  
+
   return `
-You are an expert Zambian teacher creating a CBC (Competency-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
+You are an expert Zambian teacher creating a CBC (Competence-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}"${subtopic ? ` and sub-topic "${subtopic}"` : ''}.
 Term: ${term || 'not supplied'}.
+
+SUBJECT-SPECIFIC CBC PROFILE:
+Subject family: ${profile.family}
+Recommended learning environment: ${profile.environment}
+Recommended methods: ${profile.methods.join(', ')}
+Subject-specific activity guidance: ${profile.activityGuidance}
 
 CURRICULUM SOURCE CONTROL:
 ${formatContext(curriculumContext)}
 
 CURRICULUM PRIORITY RULES:
-1. If the source above contains a verified syllabus/teaching-module match, it is the authoritative basis for this lesson.
-2. Use the verified topic and sub-topic exactly (preserve official wording except harmless capitalisation).
-3. Use the verified specific competence, expected standard, competences, methods, resources, knowledge and skills where supplied. Do NOT replace them with generic AI wording.
-4. Build the lesson activities around the verified learning activities/content. Do not create unrelated activities.
-5. Do not invent official codes, page numbers, textbook titles or curriculum statements.
-6. If a field is not supplied by the verified source, generate an appropriate pedagogical value but do not falsely label it as an official curriculum statement.
-7. The lesson progression MUST total exactly 80 minutes.
+1. A verified curriculum match is authoritative. Preserve its exact topic, sub-topic, specific competence, expected standard, competences, knowledge, skills, methods and resources whenever those fields are supplied.
+2. Do not replace an official specific competence or expected standard with generic wording.
+3. Do not invent official curriculum codes, page numbers, module titles, textbook titles, quotations or references.
+4. Build activities directly from the selected topic/sub-topic and verified curriculum content. The activities must be recognisably appropriate for ${subject}; never copy activities from another subject.
+5. Materials must be appropriate to ${subject} and this exact topic. Never automatically include food, specimens, laboratory apparatus, computers, maps or other objects unless they fit the topic.
+6. If a curriculum field is unavailable, create a pedagogically appropriate value using the subject profile, but do not present it as an official curriculum statement.
+7. Use learner-centred CBC pedagogy: participation, investigation, collaboration, communication, application and assessment of the stated competence.
+8. The lesson progression MUST total exactly 80 minutes.
 
-⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this CBC lesson structure. The lessonProgression array MUST have content with all required fields.
+VERIFIED CURRICULUM FIELDS TO PRESERVE WHEN PRESENT:
+Specific competence: ${verifiedOutcomes || '[not supplied]'}
+Expected standard: ${verifiedStandard || '[not supplied]'}
+General competences: ${verifiedCompetences.length ? JSON.stringify(verifiedCompetences) : '[not supplied]'}
+Knowledge: ${verifiedKnowledge || '[not supplied]'}
+Skills: ${verifiedSkills || '[not supplied]'}
+Resources: ${verifiedResources.length ? JSON.stringify(verifiedResources) : '[not supplied]'}
+Methods: ${verifiedMethods.length ? JSON.stringify(verifiedMethods) : '[not supplied]'}
+
+TARGET OUTPUT:
+Return ONLY valid JSON matching this structure. Do not add markdown or commentary.
 
 {
   "title": "${topic}",
@@ -681,57 +706,33 @@ CURRICULUM PRIORITY RULES:
   "teacherName": "${user.fullName || 'MR/MRS'}",
   "school": "${user.school || ''}",
   "date": "${new Date().toISOString().split('T')[0]}",
-  "time": "10:20-11:00",
+  "time": "10:20-11:40",
   "duration": "80 MINUTES",
   "classSize": ${size},
   "boys": ${boys},
   "girls": ${girls},
-  "generalCompetences": [
-    "Analytical thinking",
-    "Collaboration",
-    "Communication",
-    "Critical thinking"
-  ],
-  "specificCompetence": "Apply the concepts of ${topic} to solve problems",
-  "lessonGoal": "By the end of this lesson, learners will be able to identify, classify, and apply the concepts of ${topic}",
-  "rationale": "Understanding ${topic} is essential for learners to develop critical thinking skills and solve real-world problems in ${subject}.",
-  "priorKnowledge": "Learners have basic knowledge of the topic from previous lessons",
-  "references": [
-    "Use the verified curriculum source shown below when available"
-  ],
-  "learningEnvironment": "Classroom with adequate resources",
-  "materials": [
-    "Manila paper",
-    "Markers",
-    "Charts",
-    "Worksheet",
-    "Real objects"
-  ],
-  "expectedStandard": "Topic concepts classified correctly",
+  "generalCompetences": ${JSON.stringify(verifiedCompetences.length ? verifiedCompetences : profile.competences)},
+  "specificCompetence": ${JSON.stringify(verifiedOutcomes || `Demonstrate understanding of ${subtopic || topic} through subject-appropriate learning activities`)},
+  "lessonGoal": "Write a concise measurable goal derived from the specific competence and exact topic/sub-topic.",
+  "rationale": "Explain why this exact topic/sub-topic matters in ${subject}, using subject-appropriate learning and real-life relevance.",
+  "priorKnowledge": "State realistic prerequisite knowledge directly related to this topic/sub-topic.",
+  "references": ["Use only verified curriculum references available in the source context."],
+  "learningEnvironment": ${JSON.stringify(profile.environment)},
+  "materials": ${JSON.stringify(verifiedResources.length ? verifiedResources : profile.materials)},
+  "expectedStandard": ${JSON.stringify(verifiedStandard || `Learners demonstrate the stated competence for ${subtopic || topic}.`)},
   "lessonProgression": ${JSON.stringify(lessonProgression, null, 2)},
-  "homework": "Research and list examples of ${topic}",
-  "lessonEvaluation": "Lesson was successful, key competences were acquired",
-  "teacherEvaluation": "The lesson was well delivered. The majority of the learners were able to grasp the concept and could work out problems involving ${topic}. Remedial work was given to those who had challenges.",
-  "learningOutcomes": [
-    "By the end of this lesson, learners should be able to:",
-    "Define ${topic}",
-    "Explain the concept of ${topic}",
-    "Apply ${topic} to solve problems",
-    "Analyze real-world applications of ${topic}"
-  ],
-  "learnersEvaluation": [
-    "Define ${topic} in your own words",
-    "Give two examples of ${topic}",
-    "Explain the importance of ${topic}"
-  ],
-  "teachingAids": ["Whiteboard", "Charts", "Diagrams", "Real objects"],
+  "homework": "Give a short subject-specific task that reinforces the exact topic/sub-topic without introducing unrelated content.",
+  "lessonEvaluation": "Evaluate whether learners achieved the stated specific competence and expected standard using evidence from the lesson.",
+  "teacherEvaluation": "Provide a realistic teacher reflection based on learner performance, including remedial or extension action where appropriate.",
+  "learningOutcomes": ["Use the verified specific competence as the main outcome", "Add 2-3 measurable outcomes directly derived from the exact topic/sub-topic"],
+  "learnersEvaluation": ["Give concise learner-check questions/tasks directly assessing the specific competence"],
+  "teachingAids": ${JSON.stringify(verifiedResources.length ? verifiedResources : profile.materials)},
   "curriculum": "cbc"
 }
 `;
 }
-
 // ============ OBC LESSON PROMPT ============
-function generateOBCPrompt(topic, grade, subject, classSize, user, subtopic) {
+function generateOBCPrompt(topic, grade, subject, classSize, user, subtopic, term = '', curriculumContext = null) {
   const size = parseInt(classSize) || 40;
   const boys = Math.floor(size / 2) || 18;
   const girls = Math.ceil(size / 2) || 22;
@@ -740,7 +741,18 @@ function generateOBCPrompt(topic, grade, subject, classSize, user, subtopic) {
   const lessonDevelopment = generateLessonContent(topic, subject, grade);
   
   return `
-You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
+You are an expert Zambian teacher creating an OBC (legacy Outcome-Based Education / Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
+Term: ${term || 'not supplied'}.
+
+LEGACY OBC SOURCE CONTROL:
+${formatContext(curriculumContext)}
+
+CURRICULUM PRIORITY RULES:
+1. If a verified legacy OBC source match is supplied above, it is authoritative for the topic, subtopic, objectives/outcomes, methods, aids, knowledge, skills and values.
+2. Do NOT use 2024 CBC topic names, competences, expected standards or CBC terminology when OBC is selected.
+3. Preserve the verified OBC wording where supplied.
+4. Do not invent official OBC codes, page numbers, textbook titles or source claims.
+5. If no verified OBC source match exists, generate pedagogically useful legacy OBC content but clearly avoid claiming it is an official syllabus statement.
 
 ⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this OBC lesson structure. The lessonDevelopment array MUST have content with all required fields including content, teacherActivity, pupilActivity, and methods. The content field MUST contain actual lesson content with examples, not empty placeholders.
 
@@ -801,6 +813,8 @@ You are an expert Zambian teacher creating an OBC (Objective-Based Curriculum) l
 // ============ ENHANCED FALLBACK LESSON GENERATOR ============
 
 function generateFallbackCBC(topic, grade, subject, classSize, user, curriculumContext = null) {
+  const profile = getCBCSubjectProfile(subject);
+  const cm = curriculumContext?.matched ? (curriculumContext.match || {}) : {};
   const size = parseInt(classSize) || 40;
   const boys = Math.floor(size / 2) || 18;
   const girls = Math.ceil(size / 2) || 22;
@@ -820,20 +834,15 @@ function generateFallbackCBC(topic, grade, subject, classSize, user, curriculumC
     boys: boys,
     girls: girls,
     subtopic: '',
-    generalCompetences: [
-      "Analytical thinking",
-      "Collaboration",
-      "Communication",
-      "Critical thinking"
-    ],
-    specificCompetence: `By the end of this lesson, learners will be able to understand and explain ${topic}`,
-    lessonGoal: `By the end of this lesson, learners will be able to identify, classify, and explain the importance of ${topic}`,
-    rationale: `Understanding ${topic} is essential for learners to develop critical thinking skills and make informed decisions.`,
-    priorKnowledge: "Learners have basic knowledge of the topic from previous lessons",
-    references: curriculumContext?.matched && curriculumContext.match?.reference ? [curriculumContext.match.reference] : ["Teacher-provided curriculum materials"],
-    learningEnvironment: "Classroom with adequate resources",
-    materials: ["Manila paper", "Markers", "Charts", "Worksheet", "Real objects"],
-    expectedStandard: "Topic concepts explained correctly",
+    generalCompetences: Array.isArray(cm.competences) && cm.competences.length ? cm.competences : profile.competences,
+    specificCompetence: cm.specificCompetence || cm.specificCompetences || `Demonstrate understanding of ${topic} through subject-appropriate learning activities`,
+    lessonGoal: `By the end of this lesson, learners will be able to demonstrate the stated competence for ${topic}.`,
+    rationale: `The lesson develops subject-specific understanding and competence in ${topic}.`,
+    priorKnowledge: `Learners demonstrate prerequisite knowledge related to ${topic}.`,
+    references: curriculumContext?.matched && curriculumContext.match?.reference ? [curriculumContext.match.reference] : ["No verified official reference is loaded for this selection"],
+    learningEnvironment: profile.environment,
+    materials: Array.isArray(cm.resources) && cm.resources.length ? cm.resources : profile.materials,
+    expectedStandard: cm.expectedStandard || cm.expectedStandards || `Learners demonstrate the stated competence for ${topic}.`,
     lessonProgression: generateLessonProgression(topic, subject, grade),
     homework: `Research and list examples of ${topic}`,
     lessonEvaluation: "Lesson was successful, key competences were acquired",
@@ -1524,11 +1533,11 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
     try {
       let prompt;
       
+      curriculumContext = await getCurriculumContextAsync({ curriculum: curriculumType, grade, subject, term, topic, subtopic });
       if (curriculumType === 'cbc') {
-        curriculumContext = await getCurriculumContextAsync({ curriculum: curriculumType, grade, subject, term, topic, subtopic });
         prompt = generateCBCPrompt(topic, grade, subject, classSize, user, subtopic, term, curriculumContext);
       } else {
-        prompt = generateOBCPrompt(topic, grade, subject, classSize, user, subtopic);
+        prompt = generateOBCPrompt(topic, grade, subject, classSize, user, subtopic, term, curriculumContext);
       }
 
       console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson with DeepSeek...`);
@@ -1544,6 +1553,12 @@ Parse the information and output it in valid JSON format.
 
 For CBC: Include lessonProgression array with stages, times, teacherRole, learnerRole, and assessmentCriteria.
 For OBC: Include lessonDevelopment array with content, teacherActivity, pupilActivity, and methods.
+
+CURRICULUM ISOLATION:
+- CBC means the current 2024 Competence-Based Curriculum.
+- OBC means the legacy Outcome-Based/Objective-Based curriculum.
+- Never mix CBC source content into an OBC lesson, and never mix OBC source content into a CBC lesson.
+- DeepSeek is the lesson-writing engine, not the curriculum authority.
 
 ⚠️ CRITICAL: The lessonProgression and lessonDevelopment arrays MUST have content. Do NOT return empty arrays.
 
@@ -1609,24 +1624,32 @@ Return ONLY the JSON object, no other text.
       aiContent.lessonDevelopment = generateLessonContent(topic, subject, grade);
     }
 
-    if (curriculumType === 'cbc' && curriculumContext?.matched && curriculumContext.match) {
+    if (curriculumContext?.matched && curriculumContext.match) {
       const cm = curriculumContext.match;
       aiContent.title = cm.topic || aiContent.title;
       aiContent.subtopic = cm.subTopic || cm.subtopic || aiContent.subtopic;
-      aiContent.specificCompetence = cm.specificCompetence || cm.specificCompetences || aiContent.specificCompetence;
-      aiContent.expectedStandard = cm.expectedStandard || cm.expectedStandards || aiContent.expectedStandard;
-      aiContent.materials = Array.isArray(cm.resources) ? cm.resources : (Array.isArray(cm.aids) ? cm.aids : aiContent.materials);
-      if (Array.isArray(cm.competences) && cm.competences.length) aiContent.generalCompetences = cm.competences;
-      if (cm.knowledge) aiContent.curriculumKnowledge = cm.knowledge;
-      if (Array.isArray(cm.skills) && cm.skills.length) aiContent.curriculumSkills = cm.skills;
-      if (Array.isArray(cm.methods) && cm.methods.length) aiContent.curriculumMethods = cm.methods;
-      if (cm.officialExcerpt) aiContent.curriculumEvidence = cm.officialExcerpt;
-      if (cm.reference) aiContent.curriculumReference = cm.reference;
 
-      // Make the lesson objective directly reflect the verified competence.
-      if (cm.specificCompetence) {
-        aiContent.lessonGoal = `By the end of the lesson, learners will be able to ${String(cm.specificCompetence).replace(/^(demonstrate|explore|interpret|construct|apply|identify|explain)\s+/i, '').trim().replace(/[.]$/, '')}.`;
+      if (curriculumType === 'cbc') {
+        aiContent.specificCompetence = cm.specificCompetence || cm.specificCompetences || aiContent.specificCompetence;
+        aiContent.expectedStandard = cm.expectedStandard || cm.expectedStandards || aiContent.expectedStandard;
+        aiContent.materials = Array.isArray(cm.resources) ? cm.resources : (Array.isArray(cm.aids) ? cm.aids : aiContent.materials);
+        if (Array.isArray(cm.competences) && cm.competences.length) aiContent.generalCompetences = cm.competences;
+        if (cm.specificCompetence) {
+          aiContent.lessonGoal = `By the end of the lesson, learners will be able to ${String(cm.specificCompetence).replace(/^(demonstrate|explore|interpret|construct|apply|identify|explain)\s+/i, '').trim().replace(/[.]$/, '')}.`;
+        }
+      } else {
+        // Legacy OBC fields only. Never inject CBC-specific fields into OBC output.
+        aiContent.specificOutcome = cm.specificOutcome || cm.objective || aiContent.specificOutcome || '';
+        aiContent.teachingAids = Array.isArray(cm.aids) ? cm.aids : aiContent.teachingAids;
+        if (cm.methods) aiContent.curriculumMethods = cm.methods;
       }
+
+      if (cm.knowledge) aiContent.curriculumKnowledge = cm.knowledge;
+      if (cm.skills) aiContent.curriculumSkills = cm.skills;
+      if (cm.values) aiContent.curriculumValues = cm.values;
+      if (cm.methods) aiContent.curriculumMethods = cm.methods;
+      if (cm.officialExcerpt) aiContent.curriculumEvidence = cm.officialExcerpt;
+      if (cm.reference || cm.references) aiContent.curriculumReference = cm.reference || cm.references;
     }
 
     // Guarantee the displayed lesson duration is internally consistent.
@@ -1779,7 +1802,9 @@ Return ONLY the JSON object, no other text.
       responseData.curriculumMatch = curriculumContext?.match || null;
     } else {
       responseData.lessonDevelopment = lessonDevelopmentArray;
-      responseData.curriculumSourceStatus = 'OBC_MODE';
+      responseData.curriculumSourceStatus = curriculumContext?.sourceStatus || 'OBC_SOURCE_NOT_FOUND';
+      responseData.curriculumSource = curriculumContext?.source || null;
+      responseData.curriculumMatch = curriculumContext?.match || null;
     }
 
     res.status(201).json(responseData);
