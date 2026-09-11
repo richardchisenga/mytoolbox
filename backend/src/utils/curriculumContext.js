@@ -4,6 +4,11 @@ const path = require('path');
 const CURRICULUM_DIR = path.join(__dirname, '..', 'data', 'curriculum');
 const CATALOG_FILE = path.join(CURRICULUM_DIR, 'catalog', 'zambia_subject_catalog.json');
 const REGISTRY_FILE = path.join(CURRICULUM_DIR, 'registry', 'official_secondary_syllabus_registry.json');
+const REMOTE_CACHE_DIR = path.join(CURRICULUM_DIR, '.remote-cache');
+const REMOTE_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+
+let pdfParse = null;
+try { pdfParse = require('pdf-parse'); } catch { pdfParse = null; }
 
 function normalise(value) {
   return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -107,6 +112,70 @@ function listCurriculumRows({ curriculum = 'cbc', grade = '', subject = '', term
 function rowText(row, ...keys) {
   for (const key of keys) if (row && row[key] !== undefined && row[key] !== null && String(row[key]).trim()) return row[key];
   return '';
+}
+
+
+function safeCacheName(subject, grade) {
+  return `${normalise(subject)}-${normalise(grade)}`.replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') + '.json';
+}
+
+async function loadOfficialRemoteText(subject, grade) {
+  const registered = getRegisteredOfficialSource(subject);
+  if (!registered?.officialSource || !pdfParse) return null;
+  try {
+    fs.mkdirSync(REMOTE_CACHE_DIR, { recursive: true });
+    const cacheFile = path.join(REMOTE_CACHE_DIR, safeCacheName(subject, grade));
+    if (fs.existsSync(cacheFile)) {
+      const stat = fs.statSync(cacheFile);
+      if (Date.now() - stat.mtimeMs < REMOTE_CACHE_TTL_MS) return JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+    }
+    const response = await fetch(registered.officialSource, { headers: { 'User-Agent': 'MyToolbox Curriculum Indexer/1.0' } });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const parsed = await pdfParse(buffer);
+    const result = {
+      subject, grade, officialSource: registered.officialSource,
+      officialTitle: registered.officialTitle || `${subject} Syllabus, Forms 1–4`,
+      text: String(parsed.text || '').replace(/\s+/g, ' ').slice(0, 250000)
+    };
+    fs.writeFileSync(cacheFile, JSON.stringify(result));
+    return result;
+  } catch (error) {
+    console.warn(`⚠️ Official curriculum fetch failed for ${subject}: ${error.message}`);
+    return null;
+  }
+}
+
+function findRemoteTopic(text, topic, subtopic) {
+  const hay = normalise(text);
+  const keys = [topic, subtopic].map(normalise).filter(Boolean).sort((a,b)=>b.length-a.length);
+  if (!keys.length) return null;
+  const key = keys.find(k => hay.includes(k));
+  if (!key) return null;
+  const index = hay.indexOf(key);
+  const start = Math.max(0, index - 1400);
+  const end = Math.min(hay.length, index + key.length + 4200);
+  return { topic: topic || key, subTopic: subtopic || '', sourceExcerpt: text.slice(start, end) };
+}
+
+async function getCurriculumContextAsync(args) {
+  const local = getCurriculumContext(args);
+  if (local.matched || normalise(args.curriculum) !== 'cbc') return local;
+  const remote = await loadOfficialRemoteText(args.subject, args.grade);
+  if (!remote) return local;
+  const match = findRemoteTopic(remote.text, args.topic, args.subtopic);
+  if (!match) return {
+    ...local,
+    sourceStatus: 'OFFICIAL_SOURCE_FETCHED_NO_TOPIC_MATCH',
+    source: { sourceType: 'official_dcd_syllabus', sourceBasis: 'Official Ministry of Education DCD syllabus fetched from ministry website', officialSource: remote.officialSource, subject: args.subject, grade: args.grade, term: args.term || '', file: 'remote-official-syllabus' },
+    remoteExcerpt: remote.text.slice(0, 6000)
+  };
+  return {
+    matched: true,
+    sourceStatus: 'VERIFIED_OFFICIAL_REMOTE_MATCH',
+    source: { sourceType: 'official_dcd_syllabus', sourceBasis: 'Official Ministry of Education DCD syllabus fetched from ministry website', officialSource: remote.officialSource, subject: args.subject, grade: args.grade, term: args.term || '', file: 'remote-official-syllabus' },
+    match
+  };
 }
 
 function getCurriculumContext({ curriculum, grade, subject, term, topic, subtopic }) {
@@ -228,6 +297,16 @@ function formatContext(context) {
     return 'NO VERIFIED LOCAL CURRICULUM MATCH WAS FOUND. Generate useful topic-specific teaching content, but DO NOT invent CDC syllabus codes, page numbers, official references, textbook titles or Teaching Module titles.';
   }
   const m = context.match;
+  if (context.sourceStatus === 'VERIFIED_OFFICIAL_REMOTE_MATCH') {
+    return JSON.stringify({
+      status: context.sourceStatus,
+      syllabusTopic: m.topic,
+      syllabusSubTopic: m.subTopic || '',
+      officialSource: context.source?.officialSource || '',
+      officialCurriculumExcerpt: m.sourceExcerpt || '',
+      instruction: 'Use only the official Ministry curriculum evidence in this context. Do not invent syllabus codes, page numbers, competencies or outcomes that are not supported by the excerpt. If a detail is not present, write a sensible lesson-specific formulation and do not label it as an official syllabus statement.'
+    }, null, 2);
+  }
   return JSON.stringify({
     syllabusTopic: m.topic,
     syllabusSubTopic: m.subTopic || m.subtopic || '',
@@ -245,6 +324,7 @@ function formatContext(context) {
 
 module.exports = {
   getCurriculumContext,
+  getCurriculumContextAsync,
   formatContext,
   listCurriculumSources,
   listCurriculumRows,
