@@ -7,7 +7,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 const OpenAI = require('openai');
-const { Document, Packer, Paragraph, Table, TableRow, TableCell, HeadingLevel, AlignmentType, WidthType } = require('docx');
+const { Document, Packer, Paragraph, Table, TableRow, TableCell, HeadingLevel, AlignmentType, WidthType, TextRun } = require('docx');
 const PDFDocument = require('pdfkit');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
@@ -3743,6 +3743,91 @@ app.get('/api/curriculum/status', (req, res) => {
 });
 
 // ============ START SERVER ============
+
+// ================= RECORD OF WORK / WEEKLY FORECAST =================
+function plannerSafe(v) { return String(v ?? ''); }
+function plannerCell(text, bold=false, size=18) {
+  return new TableCell({ children: [new Paragraph({
+    spacing: { before: 0, after: 0 },
+    children: [new TextRun({ text: plannerSafe(text), bold, font: 'Times New Roman', size })]
+  })] });
+}
+function plannerPayload(body) {
+  const rows = Array.isArray(body?.rows) ? body.rows : [];
+  return {
+    title: body?.title || 'Term Planning Document', subject: body?.subject || '', grade: body?.grade || '',
+    term: body?.term || '', year: body?.year || new Date().getFullYear(), teacher: body?.teacher || '', school: body?.school || '', rows
+  };
+}
+function plannerDocx(data, type) {
+  const isForecast = type === 'weekly-forecast';
+  const title = isForecast ? 'WEEKLY FORECAST' : 'RECORD OF WORK';
+  const headers = isForecast
+    ? ['WK','UNIT','DAY','TOPIC/SUB-TOPIC','LEARNING OUTCOMES','TEACHING METHODS','T/L AIDS','REFERENCES','COMMENTS']
+    : ['WEEK','DATE','TOPIC','SUB-TOPIC','WORK COVERED','REMARKS'];
+  const keys = isForecast
+    ? ['week','unit','day','topicSubtopic','learningOutcomes','teachingMethods','aids','references','comments']
+    : ['week','date','topic','subTopic','workCovered','remarks'];
+  const rows = [new TableRow({ children: headers.map(h => plannerCell(h, true, 16)) })];
+  for (const row of data.rows) rows.push(new TableRow({ children: keys.map(k => plannerCell(row?.[k] ?? '', false, 15)) }));
+  return new Document({ sections: [{ properties: { page: { size: { width: 16838, height: 11906, orientation: 'landscape' }, margin: { top: 450, right: 450, bottom: 450, left: 450 } } }, children: [
+    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text:'REPUBLIC OF ZAMBIA', bold:true, font:'Times New Roman', size:20 })] }),
+    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text:'MINISTRY OF EDUCATION', bold:true, font:'Times New Roman', size:22 })] }),
+    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: data.school.toUpperCase(), bold:true, font:'Times New Roman', size:20 })] }),
+    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text:title, bold:true, font:'Times New Roman', size:22 })] }),
+    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text:`SUBJECT: ${data.subject.toUpperCase()}    GRADE/FORM: ${data.grade}    TERM: ${data.term}    YEAR: ${data.year}`, bold:true, font:'Times New Roman', size:17 })] }),
+    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text:`TEACHER: ${data.teacher}`, font:'Times New Roman', size:17 })] }),
+    new Table({ width:{size:100,type:WidthType.PERCENTAGE}, rows })
+  ] }] });
+}
+function plannerPdf(data, type, res) {
+  const isForecast = type === 'weekly-forecast';
+  const title = isForecast ? 'WEEKLY FORECAST' : 'RECORD OF WORK';
+  const headers = isForecast ? ['WK','UNIT','DAY','TOPIC/SUB-TOPIC','LEARNING OUTCOMES','TEACHING METHODS','T/L AIDS','REFERENCES','COMMENTS'] : ['WEEK','DATE','TOPIC','SUB-TOPIC','WORK COVERED','REMARKS'];
+  const keys = isForecast ? ['week','unit','day','topicSubtopic','learningOutcomes','teachingMethods','aids','references','comments'] : ['week','date','topic','subTopic','workCovered','remarks'];
+  const doc = new PDFDocument({ size:'A3', layout:'landscape', margin:28 });
+  res.setHeader('Content-Type','application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${type}_${String(data.subject||'document').replace(/[^a-z0-9_-]/gi,'_')}_${data.term||''}_${data.year||''}.pdf"`);
+  doc.pipe(res);
+  doc.font('Helvetica-Bold').fontSize(15).text('REPUBLIC OF ZAMBIA',{align:'center'});
+  doc.fontSize(14).text('MINISTRY OF EDUCATION',{align:'center'});
+  doc.fontSize(14).text(data.school || '',{align:'center'});
+  doc.fontSize(15).text(title,{align:'center'});
+  doc.fontSize(10).text(`SUBJECT: ${data.subject}    GRADE/FORM: ${data.grade}    TERM: ${data.term}    YEAR: ${data.year}    TEACHER: ${data.teacher}`,{align:'center'});
+  doc.moveDown(.5);
+  const totalW=doc.page.width-56, widths=headers.map((_,i)=> totalW/headers.length);
+  let y=doc.y; const lineH=30;
+  const cell=(x,w,h,t,b=false)=>{doc.rect(x,y,w,h).stroke();doc.font(b?'Helvetica-Bold':'Helvetica').fontSize(6.5).text(plannerSafe(t),x+2,y+3,{width:w-4,height:h-6,ellipsis:true});};
+  let x=28; headers.forEach((h,i)=>{cell(x,widths[i],lineH,h,true);x+=widths[i]}); y+=lineH;
+  for(const row of data.rows){
+    const vals=keys.map(k=>row?.[k]??'');
+    const h=Math.max(26, Math.min(95, ...vals.map((v,i)=>Math.ceil(plannerSafe(v).length/Math.max(12,Math.floor(widths[i]/4.3)))*7+10)));
+    if(y+h>doc.page.height-35){doc.addPage();y=28;x=28;headers.forEach((h2,i)=>{cell(x,widths[i],lineH,h2,true);x+=widths[i]});y+=lineH;}
+    x=28; vals.forEach((v,i)=>{cell(x,widths[i],h,v,false);x+=widths[i]}); y+=h;
+  }
+  doc.end();
+}
+
+app.post('/api/planner/export/:type/word', authenticate, async (req,res)=>{
+  try {
+    const type=req.params.type;
+    if(!['record-of-work','weekly-forecast'].includes(type)) return res.status(400).json({error:'Invalid planner type'});
+    const data=plannerPayload(req.body);
+    const buffer=await Packer.toBuffer(plannerDocx(data,type));
+    res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition',`attachment; filename="${type}_${String(data.subject||'document').replace(/[^a-z0-9_-]/gi,'_')}_${data.term||''}_${data.year||''}.docx"`);
+    res.send(buffer);
+  } catch(e){ console.error('Planner Word export error:',e); res.status(500).json({error:'Failed to export editable Word document'}); }
+});
+app.post('/api/planner/export/:type/pdf', authenticate, async (req,res)=>{
+  try {
+    const type=req.params.type;
+    if(!['record-of-work','weekly-forecast'].includes(type)) return res.status(400).json({error:'Invalid planner type'});
+    plannerPdf(plannerPayload(req.body),type,res);
+  } catch(e){ console.error('Planner PDF export error:',e); if(!res.headersSent) res.status(500).json({error:'Failed to export PDF'}); }
+});
+// =====================================================================
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`✅ Health check: http://localhost:${PORT}/health`);
