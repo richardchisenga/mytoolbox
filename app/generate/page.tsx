@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 export default function GeneratePage() {
   const router = useRouter();
   const [topic, setTopic] = useState("");
+  const [subtopic, setSubtopic] = useState("");
   const [grade, setGrade] = useState("");
   const [subject, setSubject] = useState("");
   const [classSize, setClassSize] = useState("40");
@@ -55,8 +56,8 @@ export default function GeneratePage() {
     e.preventDefault();
     setError("");
 
-    if (!topic || !grade || !subject) {
-      setError("Please fill in all fields");
+    if (!topic || !grade || !subject || (curriculum === "obc" && !subtopic.trim())) {
+      setError(curriculum === "obc" ? "Please fill in all fields, including the OBC sub-topic" : "Please fill in all fields");
       return;
     }
 
@@ -603,6 +604,23 @@ export default function GeneratePage() {
                   </p>
                 )}
               </div>
+
+              {curriculum === "obc" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Sub-topic</label>
+                  <input
+                    type="text"
+                    value={subtopic}
+                    onChange={(e) => setSubtopic(e.target.value)}
+                    placeholder="e.g. Properties of acids"
+                    className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-400"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Required for OBC. Topic and sub-topic remain separate throughout the lesson, scheme and exports.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">Class Size</label>
