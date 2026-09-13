@@ -85,7 +85,7 @@ Required shape:
 Make the progression activities concrete and topic-specific. Do not write phrases such as "explain concepts", "research the topic", or "understand the topic" without specifying what about ${topic}.`;
 }
 
-function buildOBCPrompt(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district) {
+function buildOBCPrompt(grade, subject, topic, subtopic, size, boys, girls, teacherName, schoolName, province, district) {
   return `You are an expert Zambian teacher preparing an Objective Based Curriculum (OBC) lesson plan.
 Create ONE lesson for ${grade} ${subject} specifically on the exact topic: "${topic}".
 The lesson development table MUST contain detailed, topic-specific learning points, teacher activities and pupil activities. Do not use generic placeholders.
@@ -151,13 +151,13 @@ function generateCBCMockLesson(grade, subject, topic, size, boys, girls, teacher
   };
 }
 
-function generateOBCMockLesson(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district) {
+function generateOBCMockLesson(grade, subject, topic, subtopic, size, boys, girls, teacherName, schoolName, province, district) {
   return {
     title: topic,
     grade,
     subject,
     topic: topic,
-    subtopic: '',
+    subtopic: subtopic,
     teacherName,
     school: schoolName,
     province,
@@ -171,7 +171,7 @@ function generateOBCMockLesson(grade, subject, topic, size, boys, girls, teacher
     teachingAids: ["Chart", "Whiteboard"],
     rationale: `${topic} is important`,
     learningOutcomes: ["Outcome 1", "Outcome 2"],
-    lessonDevelopment: ensureOBCDevelopment({ lessonDevelopment: [] }, topic),
+    lessonDevelopment: ensureOBCDevelopment({ lessonDevelopment: [] }, `${topic} — ${subtopic}`),
     learnersEvaluation: ["Question 1", "Question 2"],
     teacherEvaluation: "Successful",
     curriculum: 'obc',
@@ -233,13 +233,13 @@ const checkLessonLimit = async (userId) => {
 
 router.post('/generate', authenticate, async (req, res) => {
   try {
-    const { grade, subject, topic, classSize, curriculum } = req.body;
+    const { grade, subject, topic, subtopic, classSize, curriculum } = req.body;
     const size = parseInt(classSize) || 40;
     const boys = Math.floor(size * 0.45);
     const girls = size - boys;
 
-    if (!grade || !subject || !topic) {
-      return res.status(400).json({ error: 'Grade, subject, and topic are required' });
+    if (!grade || !subject || !topic || (String(curriculum || 'cbc').toLowerCase() === 'obc' && !String(subtopic || '').trim())) {
+      return res.status(400).json({ error: String(curriculum || 'cbc').toLowerCase() === 'obc' ? 'Grade, subject, topic, and sub-topic are required for OBC' : 'Grade, subject, and topic are required' });
     }
 
     const limitCheck = await checkLessonLimit(req.userId);
@@ -265,7 +265,7 @@ router.post('/generate', authenticate, async (req, res) => {
     if (deepseekClient && !ALLOW_MOCK_GENERATION) {
       try {
         const prompt = curriculumType === 'obc' 
-          ? buildOBCPrompt(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district)
+          ? buildOBCPrompt(grade, subject, topic, String(subtopic || "").trim(), size, boys, girls, teacherName, schoolName, province, district)
           : buildCBCPrompt(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district);
 
         console.log('📝 Calling DeepSeek API...');
@@ -307,7 +307,7 @@ router.post('/generate', authenticate, async (req, res) => {
     if (useMock) {
       console.log('📝 Generating mock lesson');
       lessonData = curriculumType === 'obc'
-        ? generateOBCMockLesson(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district)
+        ? generateOBCMockLesson(grade, subject, topic, String(subtopic || "").trim(), size, boys, girls, teacherName, schoolName, province, district)
         : generateCBCMockLesson(grade, subject, topic, size, boys, girls, teacherName, schoolName, province, district);
     }
 
