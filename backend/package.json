@@ -2,7 +2,7 @@
   "name": "mytoolbox-backend",
   "version": "1.0.0",
   "scripts": {
-    "start": "npx prisma migrate deploy && node src/server.js",
+    "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "postinstall": "npx prisma generate",
     "migrate:deploy": "prisma migrate deploy",
