@@ -6,6 +6,7 @@ const CATALOG_FILE = path.join(CURRICULUM_DIR, 'catalog', 'zambia_subject_catalo
 const REGISTRY_FILE = path.join(CURRICULUM_DIR, 'registry', 'official_secondary_syllabus_registry.json');
 const REMOTE_CACHE_DIR = path.join(CURRICULUM_DIR, '.remote-cache');
 const REMOTE_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const { getCDCContext, listCDCResources, loadCDCRows } = require('./cdcLibrary');
 
 let pdfParse = null;
 try { pdfParse = require('pdf-parse'); } catch { pdfParse = null; }
@@ -160,7 +161,28 @@ function findRemoteTopic(text, topic, subtopic) {
 
 async function getCurriculumContextAsync(args) {
   const local = getCurriculumContext(args);
-  if (local.matched || normalise(args.curriculum) !== 'cbc') return local;
+  if (normalise(args.curriculum) !== 'cbc') return local;
+
+  // CBC authority: CDC Digital Library first. Local packs are retained as a
+  // fallback for topics not yet present in the online repository.
+  try {
+    const cdc = await getCDCContext(args);
+    if (cdc.matched || cdc.resources.length) {
+      return {
+        matched: cdc.matched,
+        sourceStatus: cdc.sourceStatus,
+        source: cdc.source,
+        match: cdc.match,
+        availableTopics: [...new Set(cdc.rows.map(r => r.topic).filter(Boolean))],
+        cdcResources: cdc.resources,
+        cdcRows: cdc.rows
+      };
+    }
+  } catch (error) {
+    console.warn(`⚠️ CDC Digital Library lookup failed: ${error.message}`);
+  }
+
+  if (local.matched) return local;
   const remote = await loadOfficialRemoteText(args.subject, args.grade);
   if (!remote) return local;
   const match = findRemoteTopic(remote.text, args.topic, args.subtopic);
@@ -236,6 +258,18 @@ function getCurriculumContext({ curriculum, grade, subject, term, topic, subtopi
 
 function getOfficialReferences({ subject = '', grade = '', term = '', context = null } = {}) {
   const refs = [];
+  if (context?.sourceStatus === 'VERIFIED_CDC_LIBRARY_MATCH' || context?.sourceStatus === 'CDC_LIBRARY_RESOURCE_AVAILABLE' || context?.source?.sourceType === 'cdc_digital_library') {
+    const title = context.source?.resourceTitle || context.match?.cdcResourceTitle || context.match?.reference || `${subject} — CDC Digital Library`;
+    const url = context.source?.resourceUrl || context.source?.officialSource || context.match?.cdcResourceUrl || '';
+    refs.push({
+      title,
+      type: 'CDC Digital Library teaching resource',
+      authority: 'Curriculum Development Centre, Ministry of Education, Zambia',
+      url,
+      source: 'cdc_digital_library'
+    });
+    if (context?.sourceStatus === 'VERIFIED_CDC_LIBRARY_MATCH' || context?.sourceStatus === 'CDC_LIBRARY_RESOURCE_AVAILABLE' || context?.source?.sourceType === 'cdc_digital_library') return refs;
+  }
   const registered = getRegisteredOfficialSource(subject);
   const authority = 'Ministry of Education - Directorate of Curriculum Development';
 
@@ -284,6 +318,24 @@ function getReferenceTitles({ subject = '', grade = '', term = '', context = nul
 }
 
 function formatContext(context) {
+  if (context?.sourceStatus === 'VERIFIED_CDC_LIBRARY_MATCH' || context?.sourceStatus === 'CDC_LIBRARY_RESOURCE_AVAILABLE') {
+    const m = context.match || {};
+    return JSON.stringify({
+      status: context.sourceStatus,
+      cdcResource: context.source?.resourceTitle || '',
+      cdcResourceUrl: context.source?.resourceUrl || context.source?.officialSource || '',
+      syllabusTopic: m.topic || '',
+      syllabusSubTopic: m.subTopic || '',
+      specificCompetence: m.specificCompetence || '',
+      expectedStandard: m.expectedStandard || '',
+      resources: m.resources || '',
+      methods: m.methods || '',
+      knowledge: m.knowledge || '',
+      reference: m.reference || '',
+      availableTopics: context.availableTopics || [],
+      instruction: 'CDC Digital Library material is the primary CBC authority for this selection. Preserve its topic, sub-topic, competence, expected standard and teaching guidance when present. Do not invent CDC codes, page numbers or references.'
+    }, null, 2);
+  }
   if (!context?.matched || !context.match) {
     if (context?.sourceStatus === 'OFFICIAL_SOURCE_REGISTERED_NO_LOCAL_PACK') {
       const refs = getReferenceTitles({ subject: context.source?.subject, grade: context.source?.grade, term: context.source?.term });
