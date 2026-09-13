@@ -1,0 +1,161 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  fullName           String
+  email              String    @unique
+  phone              String ?
+  passwordHash       String
+  school             String
+  province           String
+  district           String
+  grades             String[]
+  subjects           String[]
+  lastActive         DateTime  @default(now())
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  lastResetAt        DateTime  @default(now())
+  lessonsLimit       Int       @default(5)
+  lessonsUsed        Int       @default(0)
+  schemesLimit       Int       @default(3)
+  schemesUsed        Int       @default(0)
+  subscriptionEndsAt DateTime?
+  role               Plan      @default(FREE)
+  lessons            Lesson[]
+  payments           Payment[]
+  schemes            Scheme[]
+  notes              Note[]
+  assessments        Assessment[]
+}
+
+model Lesson {
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  grade               String
+  subject             String
+  topic               String
+  subtopic            String?  @default("")
+  title               String?  @default("")
+  classSize           Int      @default(40)
+  duration            String   @default("80 MINUTES")
+  curriculum          String   @default("cbc")
+  teacherName         String?  @default("")
+  school              String?  @default("")
+  province            String?  @default("")
+  district            String?  @default("")
+  date                String?  @default("")
+  time                String?  @default("")
+  boys                Int?     @default(0)
+  girls               Int?     @default(0)
+  generalCompetences  String[] @default([])
+  specificCompetence  String?  @default("")
+  lessonGoal          String?  @default("")
+  rationale           String?  @default("")
+  priorKnowledge      String?  @default("")
+  references          String[] @default([])
+  learningEnvironment String?  @default("")
+  materials           String[] @default([])
+  expectedStandard    String?  @default("")
+  lessonProgression   Json?    @default("[]")
+  homework            String?  @default("")
+  lessonEvaluation    String?  @default("")
+  teacherEvaluation   String?  @default("")
+  learningOutcomes    String[] @default([])
+  lessonDevelopment   Json?    @default("[]")
+  learnersEvaluation  String[] @default([])
+  teachingAids        String[] @default([])
+  objectives          String[] @default([])
+  development         String[] @default([])
+  activities          String[] @default([])
+  assessment          String   @default("")
+  curriculumCodes     String[] @default([])
+  provinceContext     String?  @default("")
+  lessonConclusion    String?  @default("")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model Scheme {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  grade           String
+  subject         String
+  term            String   @default("Term 1")
+  year            String   @default("2026")
+  totalWeeks      Int      @default(13)
+  school          String?  @default("")
+  teacherName     String?  @default("")
+  subtopic        String?  @default("")
+  weekTopics      Json?    @default("{}")
+  weeks           Json     @default("[]")
+  assessmentWeeks Int[]    @default([3, 6, 9, 12])
+  testTopics      Json?    @default("[]")
+  curriculum      String   @default("cbc")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referenceId   String   @unique
+  transactionId String   @unique
+  amount        Float
+  currency      String   @default("ZMW")
+  provider      String   @default("lipila")
+  phoneNumber   String?
+  status        String   @default("pending")
+  externalId    String?
+  completedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  expiresAt     DateTime?
+  plan          Plan     @default(PRO)
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  content   String
+  subject   String?
+  grade     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Assessment {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  type        String   // quiz, test, exam, assignment
+  subject     String?
+  grade       String?
+  description String?
+  questions   Json?
+  score       Float?
+  maxScore    Float?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum Plan {
+  FREE
+  PRO
+  SCHOOL
+ADMIN
+}
