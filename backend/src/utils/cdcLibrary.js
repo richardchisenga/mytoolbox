@@ -1,0 +1,324 @@
+const fs = require('fs');
+const path = require('path');
+
+const CDC_BASE = 'https://library.cdcrepository.info';
+const CACHE_DIR = path.join(__dirname, '..', 'data', 'curriculum', '.cdc-cache');
+const CACHE_TTL_MS = 1000 * 60 * 60 * 24;
+let pdfParse = null;
+try { pdfParse = require('pdf-parse'); } catch { pdfParse = null; }
+
+function normalise(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+function cleanHtml(value) {
+  return String(value || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/&ndash;/gi, '–')
+    .replace(/&mdash;/gi, '—')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function safeName(value) {
+  return normalise(value).replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'all';
+}
+function cachePath(name) {
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+  return path.join(CACHE_DIR, `${safeName(name)}.json`);
+}
+function readCache(name) {
+  try {
+    const file = cachePath(name);
+    if (!fs.existsSync(file)) return null;
+    const stat = fs.statSync(file);
+    if (Date.now() - stat.mtimeMs > CACHE_TTL_MS) return null;
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch { return null; }
+}
+function writeCache(name, value) {
+  try { fs.writeFileSync(cachePath(name), JSON.stringify(value)); } catch {}
+  return value;
+}
+
+async function fetchText(url) {
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'MyToolbox-CBC-Curriculum/1.0' },
+    redirect: 'follow'
+  });
+  if (!response.ok) throw new Error(`CDC HTTP ${response.status}`);
+  return response.text();
+}
+
+function gradeQuery(grade) {
+  const v = normalise(grade);
+  const gm = v.match(/^grade\s*(\d+)$/);
+  const fm = v.match(/^form\s*(\d+)$/);
+  if (gm) return { level: 'primary', grade: `g${gm[1]}` };
+  if (fm) return { level: 'secondary', grade: `f${fm[1]}` };
+  return null;
+}
+
+function subjectAliases(subject) {
+  const s = normalise(subject);
+  const aliases = {
+    'english': ['english language'],
+    'ict': ['information and communication technology'],
+    'information technology': ['information and communication technology'],
+    'physical education and sport': ['physical education'],
+    'physical education and sports': ['physical education'],
+    'design and technology studies': ['design and technology'],
+    'mathematics i': ['mathematics'],
+    'mathematics ii': ['mathematics'],
+    'musical arts education': ['music'],
+    'agriculture science': ['agricultural science']
+  };
+  return [s, ...(aliases[s] || [])];
+}
+
+function extractLinks(html) {
+  const links = [];
+  const re = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = re.exec(html))) links.push({ href: m[1], text: cleanHtml(m[2]) });
+  return links;
+}
+
+async function getSubjectCatalog({ grade } = {}) {
+  const g = gradeQuery(grade);
+  if (!g) return [];
+  const key = `subject-catalog-${g.level}-${g.grade}`;
+  const cached = readCache(key);
+  if (cached) return cached;
+  const html = await fetchText(`${CDC_BASE}/browse.php?grade=${encodeURIComponent(g.grade)}&level=${encodeURIComponent(g.level)}`);
+  const links = extractLinks(html);
+  const subjects = [];
+  for (const link of links) {
+    if (/(?:\?|&)subject=\d+/i.test(link.href) && link.text) subjects.push(link.text);
+  }
+  return writeCache(key, [...new Set(subjects)].sort((a,b)=>a.localeCompare(b)));
+}
+
+async function getSubjectIds({ grade, subject }) {
+  const g = gradeQuery(grade);
+  if (!g) return [];
+  const key = `subject-map-${g.level}-${g.grade}`;
+  const cached = readCache(key);
+  if (cached) return cached[normalise(subject)] || [];
+  const url = `${CDC_BASE}/browse.php?grade=${encodeURIComponent(g.grade)}&level=${encodeURIComponent(g.level)}`;
+  const html = await fetchText(url);
+  const links = extractLinks(html);
+  const map = {};
+  for (const link of links) {
+    const match = link.href.match(/(?:\?|&)subject=(\d+)/i);
+    if (!match || !link.text) continue;
+    map[normalise(link.text)] = map[normalise(link.text)] || [];
+    if (!map[normalise(link.text)].includes(match[1])) map[normalise(link.text)].push(match[1]);
+  }
+  writeCache(key, map);
+  const wanted = subjectAliases(subject);
+  return wanted.flatMap((name) => map[name] || []).filter((v, i, a) => a.indexOf(v) === i);
+}
+
+function parseResourceCards(html, requestedSubject = '') {
+  const links = extractLinks(html);
+  const out = [];
+  for (const link of links) {
+    const m = link.href.match(/resource\.php\?id=(\d+)/i);
+    if (!m || !link.text) continue;
+    const title = link.text;
+    const low = normalise(title);
+    if (requestedSubject) {
+      const aliases = subjectAliases(requestedSubject);
+      if (!aliases.some((a) => low.includes(a))) continue;
+    }
+    out.push({ id: m[1], title, url: `${CDC_BASE}/resource.php?id=${m[1]}` });
+  }
+  return out.filter((r, i, a) => a.findIndex(x => x.id === r.id) === i);
+}
+
+async function listCDCResources({ grade, subject, term = '' } = {}) {
+  const g = gradeQuery(grade);
+  if (!g || !subject) return [];
+  const cacheKey = `resources-${g.level}-${g.grade}-${safeName(subject)}-${safeName(term || 'all')}`;
+  const cached = readCache(cacheKey);
+  if (cached) return cached;
+
+  let subjectIds = [];
+  try { subjectIds = await getSubjectIds({ grade, subject }); } catch (error) {
+    console.warn(`⚠️ CDC subject map failed: ${error.message}`);
+  }
+
+  const pages = [];
+  if (subjectIds.length) {
+    for (const subjectId of subjectIds.slice(0, 3)) {
+      let url = `${CDC_BASE}/browse.php?grade=${encodeURIComponent(g.grade)}&level=${encodeURIComponent(g.level)}&subject=${encodeURIComponent(subjectId)}`;
+      if (term) url += `&term=${encodeURIComponent(String(term).replace(/^term\s*/i, ''))}`;
+      pages.push(url);
+    }
+  } else {
+    let url = `${CDC_BASE}/browse.php?grade=${encodeURIComponent(g.grade)}&level=${encodeURIComponent(g.level)}`;
+    if (term) url += `&term=${encodeURIComponent(String(term).replace(/^term\s*/i, ''))}`;
+    pages.push(url);
+  }
+
+  const resources = [];
+  for (const url of pages) {
+    try {
+      const html = await fetchText(url);
+      resources.push(...parseResourceCards(html, subject));
+    } catch (error) {
+      console.warn(`⚠️ CDC resource listing failed: ${error.message}`);
+    }
+  }
+
+  const result = resources.filter((r, i, a) => a.findIndex(x => x.id === r.id) === i);
+  return writeCache(cacheKey, result);
+}
+
+async function getCDCResource(id) {
+  const cacheKey = `resource-${id}`;
+  const cached = readCache(cacheKey);
+  if (cached) return cached;
+  const html = await fetchText(`${CDC_BASE}/resource.php?id=${encodeURIComponent(id)}`);
+  const links = extractLinks(html);
+  const download = links.find((l) => /resource\.php\?download=1&id=/i.test(l.href) || /view-file\.php\?id=/i.test(l.href));
+  const body = cleanHtml(html);
+  const result = { id: String(id), pageUrl: `${CDC_BASE}/resource.php?id=${id}`, downloadUrl: download ? new URL(download.href, CDC_BASE).toString() : '', body };
+  return writeCache(cacheKey, result);
+}
+
+async function downloadPdfText(url) {
+  if (!url || !pdfParse) return null;
+  const key = `pdf-${safeName(url)}`;
+  const cached = readCache(key);
+  if (cached) return cached.text || '';
+  const response = await fetch(url, { headers: { 'User-Agent': 'MyToolbox-CBC-Curriculum/1.0' } });
+  if (!response.ok) throw new Error(`CDC PDF HTTP ${response.status}`);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const parsed = await pdfParse(buffer);
+  const text = String(parsed.text || '').replace(/\s+/g, ' ').trim().slice(0, 500000);
+  writeCache(key, { text, pages: parsed.numpages || 0 });
+  return text;
+}
+
+function extractRowsFromText(text, resource) {
+  if (!text) return [];
+  const normal = text.replace(/\r/g, '').replace(/[ \t]+/g, ' ');
+  const topicRe = /(?:^|\n|\s)(?:T0PIC|TOPIC)\s*([0-9.\-]*)\s*[:\-]?\s*([^\n]{2,140})/gi;
+  const subRe = /(?:^|\n|\s)(?:SUB-?TOPIC|SUB TOPIC)\s*([0-9.\-]*)\s*[:\-]?\s*([^\n]{2,180})/gi;
+  const topics = [];
+  let m;
+  while ((m = topicRe.exec(normal))) {
+    const name = cleanTopic(m[2]);
+    if (name) topics.push({ index: m.index, code: m[1] || '', topic: `${m[1] ? m[1].trim() + ' ' : ''}${name}`.trim() });
+  }
+  if (!topics.length) return [];
+  const subs = [];
+  while ((m = subRe.exec(normal))) {
+    const name = cleanTopic(m[2]);
+    if (name) subs.push({ index: m.index, code: m[1] || '', subTopic: `${m[1] ? m[1].trim() + ' ' : ''}${name}`.trim() });
+  }
+
+  const rows = [];
+  for (let i = 0; i < subs.length; i++) {
+    const sub = subs[i];
+    const next = subs[i + 1]?.index || normal.length;
+    const parent = [...topics].reverse().find(t => t.index < sub.index);
+    if (!parent) continue;
+    const section = normal.slice(sub.index, Math.min(next, sub.index + 16000));
+    const specific = firstAfter(section, /Specific Competence\s*[:\-]?\s*([^\n]{10,500})/i);
+    const standard = firstAfter(section, /Expected Standard\s*[:\-]?\s*([^\n]{10,500})/i);
+    const materials = firstAfter(section, /Learning materials?\s*[:\-]?\s*([^\n]{10,700})/i);
+    const methods = firstAfter(section, /(?:Teaching strategies|Teaching methods|Strategies)\s*[:\-]?\s*([^\n]{10,500})/i);
+    rows.push({
+      topic: parent.topic,
+      subTopic: sub.subTopic,
+      specificCompetence: specific,
+      expectedStandard: standard,
+      resources: materials,
+      methods,
+      knowledge: firstParagraph(section, 1200),
+      reference: `${resource.title} — CDC Digital Library`,
+      cdcResourceTitle: resource.title,
+      cdcResourceUrl: resource.downloadUrl || resource.pageUrl,
+      sourceType: 'cdc_digital_library',
+      sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia',
+      officialSource: resource.downloadUrl || resource.pageUrl
+    });
+  }
+  return rows;
+}
+
+function cleanTopic(value) {
+  return String(value || '').replace(/\s+/g, ' ').replace(/[|]+/g, '').trim().replace(/[.]+$/, '');
+}
+function firstAfter(text, regex) {
+  const m = String(text || '').match(regex);
+  return m ? String(m[1]).replace(/\s+/g, ' ').trim() : '';
+}
+function firstParagraph(text, max) {
+  return String(text || '').split(/(?:Specific Competence|Learning Activity|Assessment|Expected Standard)/i)[0].replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+async function loadCDCRows({ grade, subject, term = '' } = {}) {
+  const resources = await listCDCResources({ grade, subject, term });
+  const rows = [];
+  // Prefer teaching modules. Keep the number of PDFs bounded for Render.
+  const ordered = [...resources].sort((a, b) => {
+    const at = /teaching module/i.test(a.title) ? 0 : 1;
+    const bt = /teaching module/i.test(b.title) ? 0 : 1;
+    return at - bt;
+  }).slice(0, 4);
+  for (const item of ordered) {
+    try {
+      const detail = await getCDCResource(item.id);
+      const downloadUrl = detail.downloadUrl || item.url;
+      if (!downloadUrl) continue;
+      const text = await downloadPdfText(downloadUrl);
+      const resource = { ...item, pageUrl: detail.pageUrl, downloadUrl };
+      rows.push(...extractRowsFromText(text, resource));
+    } catch (error) {
+      console.warn(`⚠️ CDC resource ${item.id} could not be indexed: ${error.message}`);
+    }
+  }
+  return rows;
+}
+
+async function getCDCContext({ grade, subject, term = '', topic = '', subtopic = '' } = {}) {
+  const resources = await listCDCResources({ grade, subject, term });
+  const rows = await loadCDCRows({ grade, subject, term });
+  const topicKey = normalise(topic);
+  const subKey = normalise(subtopic);
+  let match = null;
+  if (topicKey || subKey) {
+    match = rows.find((r) => {
+      const t = normalise(r.topic), s = normalise(r.subTopic);
+      return (subKey && (s === subKey || s.includes(subKey) || subKey.includes(s))) ||
+        (topicKey && (t === topicKey || t.includes(topicKey) || topicKey.includes(t) || s.includes(topicKey) || topicKey.includes(s)));
+    }) || null;
+  }
+  const source = resources[0] ? {
+    sourceType: 'cdc_digital_library',
+    sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia',
+    officialSource: resources[0].url,
+    resourceTitle: resources[0].title,
+    resourceUrl: resources[0].url,
+    subject, grade, term
+  } : null;
+  return {
+    matched: Boolean(match),
+    sourceStatus: match ? 'VERIFIED_CDC_LIBRARY_MATCH' : (resources.length ? 'CDC_LIBRARY_RESOURCE_AVAILABLE' : 'CDC_LIBRARY_RESOURCE_NOT_FOUND'),
+    source,
+    resources,
+    rows,
+    match
+  };
+}
+
+module.exports = { CDC_BASE, listCDCResources, loadCDCRows, getCDCContext, getCDCResource, getSubjectCatalog };
