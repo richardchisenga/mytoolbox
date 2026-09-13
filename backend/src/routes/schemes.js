@@ -96,7 +96,8 @@ router.post('/generate', authenticate, async (req, res) => {
             : `By the end of the week, learners will demonstrate competencies related to ${topic}`,
           methods: isAssessmentWeek ? ['Assessment', 'Test', 'Evaluation'] : methods.slice(0, 3),
           aids: isAssessmentWeek ? ['Test papers', 'Assessment rubrics', 'Marking guide'] : resources.slice(0, 3),
-          knowledge: isAssessmentWeek ? 'Assessment of covered topics' : `Key concepts in ${topic}`,
+          references: ['Zambian OBC Syllabus', 'Approved subject textbook'],
+          knowledge: isAssessmentWeek ? 'Assessment of covered topics' : `Key concepts in ${topic}, with focus on ${rowSubtopic || 'the selected sub-topic'}`,
           skills: isAssessmentWeek ? 'Application, analysis and critical thinking' : 'Communication, collaboration, problem-solving and analysis',
           values: isAssessmentWeek ? 'Honesty, responsibility' : 'Responsibility, collaboration, curiosity',
           competencies: isAssessmentWeek ? ['Critical thinking', 'Problem solving'] : ['Communication', 'Collaboration', 'Critical thinking', 'Problem solving']
@@ -116,12 +117,13 @@ router.post('/generate', authenticate, async (req, res) => {
           curriculum: 'obc',
           specificOutcome: isAssessmentWeek
             ? `Assessment of topics covered in weeks ${Math.max(1, weekNum - 3)} - ${weekNum}`
-            : `By the end of the lesson, learners should be able to state, explain and apply knowledge related to ${topic}`,
+            : `By the end of the week, learners should be able to state, explain and apply knowledge related to ${topic}, specifically ${rowSubtopic || 'the selected sub-topic'}`,
           methods: isAssessmentWeek ? ['Assessment', 'Test', 'Evaluation'] : [methods[i % methods.length], methods[(i + 1) % methods.length]],
           aids: isAssessmentWeek ? ['Test papers', 'Assessment rubrics', 'Marking guide'] : [resources[i % resources.length], resources[(i + 1) % resources.length]],
+          references: ['Zambian OBC Syllabus', 'Approved subject textbook'],
           objectives: obcObjectives,
           competencies: [],
-          knowledge: isAssessmentWeek ? 'Assessment of covered topics' : `Key concepts in ${topic}`,
+          knowledge: isAssessmentWeek ? 'Assessment of covered topics' : `Key concepts in ${topic}, with focus on ${rowSubtopic || 'the selected sub-topic'}`,
           skills: isAssessmentWeek ? 'Evaluation, Critical thinking' : 'Critical thinking, problem-solving, analysis',
           values: isAssessmentWeek ? 'Honesty, Responsibility' : 'Responsibility, collaboration, curiosity'
         });
