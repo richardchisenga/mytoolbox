@@ -115,9 +115,9 @@ async function exportSchemeToWord(scheme) {
     new Paragraph({ children: [new TextRun({ text: `${scheme.subject} SCHEMES OF WORK`, size: 24, bold: true })], alignment: AlignmentType.CENTER }),
     new Paragraph({ children: [new TextRun({ text: `${scheme.grade} ${scheme.term}`, size: 20 })], alignment: AlignmentType.CENTER, spacing: { after: 300 } }),
     new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [
-      new TableRow({ children: ['WEEK','TOPIC','TYPE','SPECIFIC OUTCOME','METHODS','AIDS','KNOWLEDGE','SKILLS','VALUES'].map(h => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })], alignment: AlignmentType.CENTER })] })) }),
+      new TableRow({ children: ['WEEK','TOPIC','SUB-TOPIC','SPECIFIC OUTCOME','METHODS','T/L AIDS','REFERENCES','KNOWLEDGE','SKILLS','VALUES'].map(h => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })], alignment: AlignmentType.CENTER })] })) }),
       ...(scheme.weeks || []).map(w => new TableRow({ children: [
-        cell(w.week, { align: AlignmentType.CENTER }), cell(w.topic), cell(w.isAssessment ? 'TEST/ASSESSMENT' : 'Lesson', { align: AlignmentType.CENTER }), cell(w.specificOutcome), cell(listText(w.methods)), cell(listText(w.aids)), cell(w.knowledge), cell(w.skills), cell(w.values)
+        cell(w.week, { align: AlignmentType.CENTER }), cell(w.topic), cell(w.subTopic || w.subtopic || scheme.subtopic), cell(w.specificOutcome), cell(listText(w.methods)), cell(listText(w.aids)), cell(listText(w.references || ['Zambian OBC Syllabus', 'Approved subject textbook'])), cell(w.knowledge), cell(w.skills), cell(w.values)
       ] }))
     ]})
   ] }] });
@@ -185,10 +185,10 @@ function exportSchemeToPDF(scheme) {
       doc.moveDown(.5); doc.fontSize(16).text(`${scheme.subject} SCHEMES OF WORK`, { align: 'center' });
       doc.moveDown(.5); doc.fontSize(14).font('Helvetica').text(`${scheme.grade} ${scheme.term}`, { align: 'center' });
       doc.moveDown(1);
-      const headers=['WEEK','TOPIC','TYPE','SPECIFIC OUTCOME','METHODS','AIDS','KNOWLEDGE','SKILLS','VALUES'];
-      const widths=[30,80,50,90,70,70,80,80,80]; const startX=40; let y=doc.y; let x=startX;
+      const headers=['WEEK','TOPIC','SUB-TOPIC','SPECIFIC OUTCOME','METHODS','T/L AIDS','REFERENCES','KNOWLEDGE','SKILLS','VALUES'];
+      const widths=[28,75,75,95,65,65,85,75,65,65]; const startX=40; let y=doc.y; let x=startX;
       headers.forEach((h,i)=>{doc.rect(x,y,widths[i],25).stroke();doc.fontSize(9).font('Helvetica-Bold').text(h,x+3,y+5,{width:widths[i]-6,align:'center'});x+=widths[i];}); y+=25;
-      (scheme.weeks||[]).forEach(w=>{const vals=[String(w.week),w.topic||'',w.isAssessment?'TEST':'Lesson',w.specificOutcome||'',listText(w.methods),listText(w.aids),w.knowledge||'',w.skills||'',w.values||''];const h=Math.max(...vals.map(v=>Math.max(String(v).split('\n').length*10,18)))+10;let xx=startX;vals.forEach((v,i)=>{doc.rect(xx,y,widths[i],h).stroke();doc.fontSize(7).font('Helvetica').text(v,xx+3,y+3,{width:widths[i]-6});xx+=widths[i];});y+=h;});
+      (scheme.weeks||[]).forEach(w=>{const vals=[String(w.week),w.topic||'',w.subTopic||w.subtopic||scheme.subtopic||'',w.specificOutcome||'',listText(w.methods),listText(w.aids),listText(w.references||['Zambian OBC Syllabus','Approved subject textbook']),w.knowledge||'',w.skills||'',w.values||''];const h=Math.max(...vals.map(v=>Math.max(String(v).split('\n').length*10,18)))+10;let xx=startX;vals.forEach((v,i)=>{doc.rect(xx,y,widths[i],h).stroke();doc.fontSize(7).font('Helvetica').text(v,xx+3,y+3,{width:widths[i]-6});xx+=widths[i];});y+=h;});
       doc.end();
     } catch(e){reject(e);}
   });
