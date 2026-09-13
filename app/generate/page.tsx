@@ -18,7 +18,7 @@ export default function GeneratePage() {
   const [error, setError] = useState("");
   const [curriculumSubjects, setCurriculumSubjects] = useState<string[]>([]);
   const [curriculumTopics, setCurriculumTopics] = useState<string[]>([]);
-  const [sourceStatus, setSourceStatus] = useState("NO_LOCAL_SOURCE");
+  const [sourceStatus, setSourceStatus] = useState("NO_CDC_SOURCE");
   const SECONDARY_CBC_SUBJECTS = useMemo(() => new Set([
     "Agricultural Science", "Art and Design", "Biology", "Chemistry",
     "Civic Education", "Commerce", "Computer Science", "Design and Technology Studies",
@@ -89,6 +89,7 @@ export default function GeneratePage() {
             classSize: parseInt(classSize),
             curriculum: curriculum,
             term: curriculum === "cbc" ? term : undefined,
+            subtopic: curriculum === "obc" ? subtopic : undefined,
           }),
         }
       );
@@ -130,7 +131,7 @@ export default function GeneratePage() {
       if (curriculum !== "cbc" || !grade || !term) {
         setCurriculumSubjects([]);
         setCurriculumTopics([]);
-        setSourceStatus(curriculum === "obc" ? "OBC_MODE" : "NO_LOCAL_SOURCE");
+        setSourceStatus(curriculum === "obc" ? "OBC_MODE" : "NO_CDC_SOURCE");
         return;
       }
       try {
@@ -146,12 +147,12 @@ export default function GeneratePage() {
           if (topicRes.ok) {
             const data = await topicRes.json();
             setCurriculumTopics(data.topics || []);
-            setSourceStatus(data.hasLocalSource ? "VERIFIED_LOCAL_PACK_AVAILABLE" : "NO_LOCAL_SOURCE");
+            setSourceStatus(data.hasCDCSource ? "VERIFIED_CDC_LIBRARY_AVAILABLE" : (data.hasLocalSource ? "VERIFIED_LOCAL_PACK_AVAILABLE" : "NO_CDC_SOURCE"));
           }
         }
       } catch (e) {
         console.warn("Curriculum catalog unavailable", e);
-        setSourceStatus("NO_LOCAL_SOURCE");
+        setSourceStatus("NO_CDC_SOURCE");
       }
     };
     loadCurriculum();
@@ -600,7 +601,7 @@ export default function GeneratePage() {
                 )}
                 {curriculum === "cbc" && (
                   <p className={`text-xs mt-1 ${sourceStatus === "VERIFIED_LOCAL_PACK_AVAILABLE" ? "text-green-700" : "text-amber-700"}`}>
-                    {sourceStatus === "VERIFIED_LOCAL_PACK_AVAILABLE" ? "✓ Verified local curriculum source pack available." : sourceStatus === "OFFICIAL_SOURCE_REGISTERED_NO_LOCAL_PACK" ? "✓ Official CDC/DCD source registered. Detailed local topic pack is not yet loaded." : "No verified CDC source is registered for this selection. Custom topics remain allowed without false official claims."}
+                    {sourceStatus === "VERIFIED_CDC_LIBRARY_AVAILABLE" ? "✓ Verified CDC Digital Library resource available for this selection." : sourceStatus === "VERIFIED_LOCAL_PACK_AVAILABLE" ? "✓ Verified local curriculum source pack available." : sourceStatus === "OFFICIAL_SOURCE_REGISTERED_NO_LOCAL_PACK" ? "✓ Official CDC/DCD source registered, but no CDC topic resource was found for this selection." : "No CDC resource was found for this selection. Custom topics remain allowed without false official claims."}
                   </p>
                 )}
               </div>
