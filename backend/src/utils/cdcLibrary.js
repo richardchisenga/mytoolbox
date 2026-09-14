@@ -426,7 +426,6 @@ async function loadCDCRows({ grade, subject, term = '' } = {}) {
       const downloadUrl = detail.downloadUrl;
       if (!downloadUrl) {
         noDownloadableResourceIds.add(String(item.id));
-        console.warn(`⚠️ CDC resource ${item.id} has no downloadable file; skipped`);
         continue;
       }
       const text = await downloadPdfText(downloadUrl);
@@ -436,16 +435,9 @@ async function loadCDCRows({ grade, subject, term = '' } = {}) {
       console.warn(`⚠️ CDC resource ${item.id} could not be indexed: ${error.message}`);
     }
   }
-  if (rows.length) return rows;
-  try {
-    const ministryRows = await loadMinistryRows({ grade, subject, term });
-    if (ministryRows.length) {
-      console.log(`📚 Ministry DCD fallback supplied ${ministryRows.length} curriculum rows for ${subject} ${grade}`);
-      return ministryRows;
-    }
-  } catch (error) {
-    console.warn(`⚠️ Ministry fallback failed: ${error.message}`);
-  }
+  // External Ministry DCD fallback is intentionally disabled.
+  // The application must use the curriculum sources already available locally/through
+  // the CDC Digital Library path and must not make runtime Ministry website requests.
   return rows;
 }
 
