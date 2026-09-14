@@ -2121,7 +2121,7 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       let prompt;
       
       curriculumContext = await getCurriculumContextAsync({ curriculum: curriculumType, grade, subject, term, topic, subtopic });
-      const onlineResearch = await getOnlineResearchContext({ curriculum: curriculumType, grade, subject, term, topic, subtopic });
+      const onlineResearch = ''; // Online research disabled to keep generation dependent on official curriculum sources only.
       if (curriculumType === 'cbc') {
         prompt = generateCBCPrompt(topic, grade, subject, classSize, user, subtopic, term, curriculumContext);
       } else {
@@ -2574,7 +2574,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
     
     try {
       let prompt;
-      const schemeResearch = await getOnlineResearchContext({ curriculum: curriculumType, grade, subject, term, topic: Object.values(customTopics).filter(Boolean).join(' '), subtopic: Object.values(customSubtopics).filter(Boolean).join(' ') });
+      const schemeResearch = ''; // Online research disabled to keep scheme generation dependent on official curriculum sources only.
       
       if (curriculumType === 'cbc') {
         let customTopicsString = '';
