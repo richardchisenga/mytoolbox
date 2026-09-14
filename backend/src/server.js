@@ -110,7 +110,11 @@ async function getOnlineResearchContext({ curriculum, grade, subject, term = '',
     }
     return enriched.map((r, i) => `${i + 1}. ${r.title}\\nURL: ${r.url}\\nSearch summary: ${r.snippet || 'No snippet available.'}${r.pageText ? `\\nPage evidence: ${r.pageText}` : ''}`).join('\\n\\n');
   } catch (error) {
-    console.warn(`⚠️ Online research unavailable: ${error.message}`);
+    const msg = String(error?.message || 'unknown error');
+    if (!getOnlineResearchContext._lastFailure || Date.now() - getOnlineResearchContext._lastFailure > 60000) {
+      console.warn(`⚠️ Online research unavailable: ${msg}`);
+      getOnlineResearchContext._lastFailure = Date.now();
+    }
     return '';
   }
 }
@@ -121,7 +125,9 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // ============ DEEPSEEK AI CLIENT ============
 const deepseek = new OpenAI({
   apiKey: process.env.DEEPSEEK_API_KEY,
-  baseURL: "https://api.deepseek.com"
+  baseURL: "https://api.deepseek.com",
+  timeout: 60000,
+  maxRetries: 0
 });
 
 // ============ CORS CONFIGURATION ============
@@ -263,7 +269,7 @@ function safeParseJSON(content) {
 // ============ IMPROVED DEEPSEEK GENERATE FUNCTION ============
 
 async function generateDeepSeekJSON(messages, options = {}) {
-  const maxAttempts = 2;
+  const maxAttempts = 3;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -274,14 +280,20 @@ async function generateDeepSeekJSON(messages, options = {}) {
       const response = await deepseek.chat.completions.create({
         model: options.model || 'deepseek-chat',
         messages,
-        temperature: options.temperature || 0.3,
+        temperature: options.temperature ?? 0.3,
         max_tokens: maxTokens,
+        response_format: { type: 'json_object' },
       });
 
-      const choice = response?.choices?.[0];
+      const choices = Array.isArray(response?.choices) ? response.choices : [];
+      const choice = choices[0];
 
       if (!choice) {
-        throw new Error('DeepSeek returned no choices');
+        const responseKeys = response && typeof response === 'object' ? Object.keys(response).join(', ') : typeof response;
+        const status = response?.status || response?.status_code || 'unknown';
+        const finish = response?.finish_reason || response?.output?.finish_reason || 'unknown';
+        console.error(`❌ DeepSeek response contained no choices (status=${status}, finish=${finish}, keys=${responseKeys})`);
+        throw new Error('DeepSeek returned no choices; API response was incomplete');
       }
 
       console.log(`🤖 Finish reason: ${choice.finish_reason || 'unknown'}`);
@@ -335,7 +347,7 @@ async function generateDeepSeekJSON(messages, options = {}) {
         throw error;
       }
 
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 1500 * attempt));
     }
   }
 }
