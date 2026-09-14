@@ -2,6 +2,8 @@ const fs = require('fs');
 const path = require('path');
 
 const CDC_BASE = 'https://library.cdcrepository.info';
+const MINISTRY_BASE = 'https://www.edu.gov.zm';
+const MINISTRY_CDC_PAGE = `${MINISTRY_BASE}/?page_id=1142`;
 const CACHE_DIR = path.join(__dirname, '..', 'data', 'curriculum', '.cdc-cache');
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24;
 let pdfParse = null;
@@ -294,6 +296,111 @@ function firstParagraph(text, max) {
   return String(text || '').split(/(?:Specific Competence|Learning Activity|Assessment|Expected Standard)/i)[0].replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
+
+
+// Ministry of Education fallback. The Ministry DCD page publishes the finalized
+// CBC syllabi; use it only when the CDC Digital Library cannot supply rows.
+async function getMinistrySyllabusResources({ subject = '', grade = '' } = {}) {
+  const key = `ministry-resources-${safeName(subject)}-${safeName(grade)}`;
+  const cached = readCache(key);
+  if (cached) return cached;
+  try {
+    const html = await fetchText(MINISTRY_CDC_PAGE);
+    const links = extractLinks(html);
+    const aliases = subjectAliases(subject).map(normalise);
+    const g = gradeQuery(grade);
+    const wantsForm = g?.level === 'secondary';
+    const filtered = links.filter((link) => {
+      if (!link.href || !/^https?:|^\//i.test(link.href)) return false;
+      const text = normalise(link.text);
+      if (!aliases.some(a => text.includes(a) || a.includes(text))) return false;
+      if (wantsForm && !/form\s*[1-6]|secondary|syllabus/i.test(text + ' ' + link.href)) return false;
+      return /syllabus|curriculum/i.test(text + ' ' + link.href);
+    }).map((link) => ({
+      title: link.text,
+      url: new URL(link.href, MINISTRY_BASE).toString()
+    }));
+    const result = filtered.filter((r, i, a) => a.findIndex(x => x.url === r.url) === i);
+    return writeCache(key, result);
+  } catch (error) {
+    console.warn(`⚠️ Ministry DCD resource lookup failed: ${error.message}`);
+    return [];
+  }
+}
+
+function extractRowsFromMinistryText(text, resource) {
+  if (!text) return [];
+  const normal = String(text).replace(/\r/g, '').replace(/[ \t]+/g, ' ');
+  const topicMatches = [];
+  const topicRe = /(?:^|\n)\s*((?:\d+\.){2}\d+\.?\s+[^\n]{3,180})/g;
+  let m;
+  while ((m = topicRe.exec(normal))) {
+    const line = cleanTopic(m[1]);
+    if (/^(?:vision|preface|acknowledgement|introduction|assessment|form\s+\d|competences?\b)/i.test(line)) continue;
+    topicMatches.push({ index: m.index, topic: line });
+  }
+  if (!topicMatches.length) return [];
+
+  const rows = [];
+  for (let i = 0; i < topicMatches.length; i++) {
+    const parent = topicMatches[i];
+    const next = topicMatches[i + 1]?.index || normal.length;
+    const section = normal.slice(parent.index, Math.min(next, parent.index + 30000));
+    const topicCode = (parent.topic.match(/^((?:\d+\.){2}\d+)/) || [,''])[1];
+    const subRe = new RegExp(`(?:^|\\n)\\s*(${topicCode.replace(/\\./g,'\\.')}\\.\\d+\\s+[^\\n]{3,180})`, 'g');
+    const subs = [];
+    let sm;
+    while ((sm = subRe.exec(section))) subs.push(cleanTopic(sm[1]));
+    if (!subs.length) {
+      const genericSub = section.match(/(?:Sub-?topic|Sub Topic)\s*[:\-]?\s*([^\n]{3,180})/i)?.[1];
+      if (genericSub) subs.push(cleanTopic(genericSub));
+    }
+    if (!subs.length) {
+      rows.push({
+        topic: parent.topic, subTopic: '',
+        specificCompetence: firstAfter(section, /Specific Competence\s*[:\-]?\s*([^\n]{10,500})/i),
+        expectedStandard: firstAfter(section, /Expected Standard\s*[:\-]?\s*([^\n]{10,500})/i),
+        knowledge: firstParagraph(section, 1400),
+        reference: `${resource.title} — Ministry of Education, Zambia`,
+        cdcResourceTitle: resource.title, cdcResourceUrl: resource.url,
+        sourceType: 'ministry_dcd_syllabus',
+        sourceBasis: 'Ministry of Education, Directorate of Curriculum Development — finalized syllabus',
+        officialSource: resource.url
+      });
+    } else {
+      for (const sub of subs) {
+        const specific = firstAfter(section, /Specific Competence\s*[:\-]?\s*([^\n]{10,500})/i);
+        const standard = firstAfter(section, /Expected Standard\s*[:\-]?\s*([^\n]{10,500})/i);
+        rows.push({
+          topic: parent.topic, subTopic: sub,
+          specificCompetence: specific, expectedStandard: standard,
+          knowledge: firstParagraph(section, 1400),
+          reference: `${resource.title} — Ministry of Education, Zambia`,
+          cdcResourceTitle: resource.title, cdcResourceUrl: resource.url,
+          sourceType: 'ministry_dcd_syllabus',
+          sourceBasis: 'Ministry of Education, Directorate of Curriculum Development — finalized syllabus',
+          officialSource: resource.url
+        });
+      }
+    }
+  }
+  return rows;
+}
+
+async function loadMinistryRows({ grade, subject, term = '' } = {}) {
+  const resources = await getMinistrySyllabusResources({ subject, grade });
+  const rows = [];
+  for (const resource of resources.slice(0, 2)) {
+    try {
+      const text = resource.url.toLowerCase().includes('.pdf') ? await downloadPdfText(resource.url) : cleanHtml(await fetchText(resource.url));
+      rows.push(...extractRowsFromMinistryText(text, resource));
+    } catch (error) {
+      console.warn(`⚠️ Ministry syllabus ${resource.title} could not be indexed: ${error.message}`);
+    }
+  }
+  return rows;
+}
+
 async function loadCDCRows({ grade, subject, term = '' } = {}) {
   const resources = await listCDCResources({ grade, subject, term });
   const rows = [];
@@ -321,12 +428,29 @@ async function loadCDCRows({ grade, subject, term = '' } = {}) {
       console.warn(`⚠️ CDC resource ${item.id} could not be indexed: ${error.message}`);
     }
   }
+  if (rows.length) return rows;
+  try {
+    const ministryRows = await loadMinistryRows({ grade, subject, term });
+    if (ministryRows.length) {
+      console.log(`📚 Ministry DCD fallback supplied ${ministryRows.length} curriculum rows for ${subject} ${grade}`);
+      return ministryRows;
+    }
+  } catch (error) {
+    console.warn(`⚠️ Ministry fallback failed: ${error.message}`);
+  }
   return rows;
 }
 
 async function getCDCContext({ grade, subject, term = '', topic = '', subtopic = '' } = {}) {
-  const resources = await listCDCResources({ grade, subject, term });
+  let resources = await listCDCResources({ grade, subject, term });
   const rows = await loadCDCRows({ grade, subject, term });
+  if (!resources.length && rows.length) {
+    resources = [{
+      title: rows[0].cdcResourceTitle || `${subject} ${grade} finalized syllabus`,
+      url: rows[0].cdcResourceUrl || rows[0].officialSource || MINISTRY_CDC_PAGE,
+      id: 'ministry-dcd'
+    }];
+  }
   const topicKey = normalise(topic);
   const subKey = normalise(subtopic);
   let match = null;
@@ -347,7 +471,7 @@ async function getCDCContext({ grade, subject, term = '', topic = '', subtopic =
   } : null;
   return {
     matched: Boolean(match),
-    sourceStatus: match ? 'VERIFIED_CDC_LIBRARY_MATCH' : (resources.length ? 'CDC_LIBRARY_RESOURCE_AVAILABLE' : 'CDC_LIBRARY_RESOURCE_NOT_FOUND'),
+    sourceStatus: match ? (String(match.sourceType || '').includes('ministry') ? 'VERIFIED_MINISTRY_FALLBACK_MATCH' : 'VERIFIED_CDC_LIBRARY_MATCH') : (rows.some(r => String(r.sourceType || '').includes('ministry')) ? 'MINISTRY_FALLBACK_RESOURCE_AVAILABLE' : (resources.length ? 'CDC_LIBRARY_RESOURCE_AVAILABLE' : 'CDC_LIBRARY_RESOURCE_NOT_FOUND')),
     source,
     resources,
     rows,
@@ -355,4 +479,4 @@ async function getCDCContext({ grade, subject, term = '', topic = '', subtopic =
   };
 }
 
-module.exports = { CDC_BASE, listCDCResources, loadCDCRows, getCDCContext, getCDCResource, getSubjectCatalog };
+module.exports = { CDC_BASE, MINISTRY_BASE, MINISTRY_CDC_PAGE, listCDCResources, loadCDCRows, loadMinistryRows, getCDCContext, getCDCResource, getSubjectCatalog };
