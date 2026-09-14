@@ -13,6 +13,7 @@ const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const { getCurriculumContext, getCurriculumContextAsync, formatContext, listCurriculumSources, listCurriculumRows, catalogSubjects, getReferenceTitles, getRegisteredOfficialSource } = require('./utils/curriculumContext');
 const { getCBCSubjectProfile } = require('./utils/cbcSubjectProfiles');
+const { listCDCResources, loadCDCRows } = require('./utils/cdcLibrary');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -666,6 +667,129 @@ function generateLessonContent(topic, subject, grade) {
   ];
 }
 
+
+// ============ CBC VERIFIED LESSON PROGRESSION ============
+// Builds the classroom sequence from the selected CDC topic/sub-topic instead
+// of the old subject-agnostic templates. Total time is always exactly 80 min.
+function generateVerifiedCBCProgression(topic, subtopic, subject, grade, cm = {}) {
+  const exactTopic = String(topic || cm.topic || '').trim();
+  const exactSubtopic = String(subtopic || cm.subTopic || cm.subtopic || '').trim();
+  const focus = exactSubtopic || exactTopic;
+  const knowledge = String(cm.knowledge || '').trim();
+  const standard = String(cm.expectedStandard || cm.expectedStandards || '').trim();
+  const competence = String(cm.specificCompetence || cm.specificCompetences || '').trim();
+  const resources = Array.isArray(cm.resources) ? cm.resources.filter(Boolean) : [];
+
+  const contentEvidence = knowledge
+    ? `Use the verified curriculum content as the starting point: ${knowledge.slice(0, 900)}`
+    : `Develop the lesson around the selected curriculum focus: ${focus}. Do not introduce unrelated content.`;
+
+  const competenceText = competence || `demonstrate understanding of ${focus} through appropriate ${subject} activities`;
+
+  return [
+    {
+      stage: 'INTRODUCTION / ACTIVATION OF PRIOR KNOWLEDGE',
+      time: '5 min',
+      teacherRole: `Elicit learners' prior knowledge directly related to ${focus}. Ask 2–3 focused questions and connect their responses to today's lesson.`,
+      learnerRole: `Respond to questions, share relevant prior knowledge and state what they already know about ${focus}.`,
+      assessmentCriteria: `Learners give relevant responses about ${focus}.`
+    },
+    {
+      stage: 'EXPLORATION / DISCOVERY',
+      time: '15 min',
+      teacherRole: `Present an appropriate stimulus, example, text, diagram, specimen, data set or practical situation for ${focus}, using only resources suitable for ${subject}. Guide learners to observe, investigate and identify the key ideas.`,
+      learnerRole: `Work individually or in small groups to observe, investigate, discuss and record findings about ${focus}.`,
+      assessmentCriteria: `Learners identify and discuss the main ideas relevant to ${focus}.`
+    },
+    {
+      stage: 'CONCEPT DEVELOPMENT',
+      time: '20 min',
+      teacherRole: `Facilitate discussion and clarify the concepts arising from the exploration. Use the verified curriculum content and correct misconceptions. ${contentEvidence}`,
+      learnerRole: `Explain their findings, compare ideas, ask questions and construct accurate subject-specific understanding of ${focus}.`,
+      assessmentCriteria: `Learners explain the key concept(s) accurately and correct misconceptions.`
+    },
+    {
+      stage: 'APPLICATION / COLLABORATIVE TASK',
+      time: '20 min',
+      teacherRole: `Give a structured task requiring learners to apply the lesson knowledge to ${focus}. Circulate, question learners and provide support without giving the answers.`,
+      learnerRole: `Apply their understanding of ${focus} to the task, collaborate with peers and justify their responses using subject-specific evidence or reasoning.`,
+      assessmentCriteria: `Learners correctly apply the knowledge to the task and justify their responses.`
+    },
+    {
+      stage: 'ASSESSMENT / CONSOLIDATION',
+      time: '15 min',
+      teacherRole: `Administer short individual assessment questions/tasks directly aligned to the specific competence. Give feedback and address common errors.`,
+      learnerRole: `Complete the assessment independently, explain selected answers and make corrections from feedback.`,
+      assessmentCriteria: standard ? `Evidence shows progress towards the expected standard: ${standard.slice(0, 500)}` : `Evidence shows progress towards the specific competence: ${competenceText}.`
+    },
+    {
+      stage: 'CONCLUSION / EXIT CHECK',
+      time: '5 min',
+      teacherRole: `Summarise the essential learning from ${focus}. Ask learners to state one key idea and one way they can apply it.`,
+      learnerRole: `State the key learning point and complete a brief exit response related to ${focus}.`,
+      assessmentCriteria: `Learners accurately state the key learning and its application.`
+    }
+  ];
+}
+
+function repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term, curriculumContext, profile) {
+  const cm = curriculumContext?.matched ? (curriculumContext.match || {}) : {};
+  const focus = subtopic || cm.subTopic || cm.subtopic || topic;
+
+  aiContent.subtopic = subtopic || cm.subTopic || cm.subtopic || aiContent.subtopic || '';
+  aiContent.specificCompetence = cm.specificCompetence || cm.specificCompetences || aiContent.specificCompetence ||
+    `Demonstrate understanding of ${focus} through appropriate ${subject} activities.`;
+  aiContent.expectedStandard = cm.expectedStandard || cm.expectedStandards || aiContent.expectedStandard ||
+    `Learners demonstrate the stated competence in ${focus}.`;
+
+  if (Array.isArray(cm.competences) && cm.competences.length) {
+    aiContent.generalCompetences = cm.competences;
+  } else if (!Array.isArray(aiContent.generalCompetences) || !aiContent.generalCompetences.length) {
+    aiContent.generalCompetences = profile.competences;
+  }
+
+  // Never allow the generic maths/problem-solving fallback language to leak
+  // into non-mathematics CBC lessons.
+  if (!/math|account|commerce|physics|chemistry/i.test(subject)) {
+    const bad = /accuracy in computing|solve (a|the) .*problem|formulae|quadratic|trigonometry|calculus/i;
+    if (bad.test(String(aiContent.rationale || ''))) {
+      aiContent.rationale = `This lesson develops learners' understanding and application of ${focus} within ${subject}, with emphasis on accurate subject-specific reasoning and real-life relevance.`;
+    }
+    aiContent.learningOutcomes = [
+      `Explain the key ideas related to ${focus}`,
+      `Apply knowledge of ${focus} in an appropriate ${subject} task`,
+      `Demonstrate the stated competence through evidence from the lesson`
+    ];
+    aiContent.learnersEvaluation = [
+      `State or explain the key concept(s) of ${focus}`,
+      `Complete an application task based on ${focus}`,
+      `Give evidence that demonstrates the stated competence`
+    ];
+  } else {
+    aiContent.learningOutcomes = [
+      `Explain the key ideas related to ${focus}`,
+      `Apply the relevant ${subject} method or concept to ${focus}`,
+      `Demonstrate the stated competence through an appropriate task`
+    ];
+  }
+
+  aiContent.lessonGoal = cm.specificCompetence
+    ? `By the end of the lesson, learners will be able to ${String(cm.specificCompetence).replace(/[.]$/, '')}.`
+    : `By the end of the lesson, learners will demonstrate the stated competence in ${focus}.`;
+
+  aiContent.priorKnowledge = `Learners should have prerequisite knowledge directly related to ${focus}.`;
+  aiContent.teacherEvaluation = `Teacher reflection: record evidence of learner achievement of the specific competence and expected standard; identify learners needing remediation and learners requiring extension; record what should be improved in the next lesson.`;
+  aiContent.lessonEvaluation = `Evaluate learner evidence against the specific competence and expected standard for ${focus}. Record strengths, misconceptions and follow-up action.`;
+
+  const officialRefs = getReferenceTitles({ subject, grade, term, context: curriculumContext });
+  if (officialRefs.length) aiContent.references = officialRefs;
+  else if (cm.reference) aiContent.references = [cm.reference];
+  else if (cm.cdcResourceTitle) aiContent.references = [`${cm.cdcResourceTitle} — CDC Digital Library`];
+
+  aiContent.lessonProgression = generateVerifiedCBCProgression(topic, subtopic, subject, grade, cm);
+  return aiContent;
+}
+
 // ============ CBC LESSON PROMPT ============
 function generateCBCPrompt(topic, grade, subject, classSize, user, subtopic, term = '', curriculumContext = null) {
   const size = parseInt(classSize) || 40;
@@ -680,7 +804,7 @@ function generateCBCPrompt(topic, grade, subject, classSize, user, subtopic, ter
   const verifiedStandard = cm.expectedStandard || cm.expectedStandards || '';
   const verifiedKnowledge = cm.knowledge || '';
   const verifiedSkills = cm.skills || '';
-  const lessonProgression = generateLessonProgression(topic, subject, grade);
+  const lessonProgression = generateVerifiedCBCProgression(topic, subtopic, subject, grade, cm);
 
   return `
 You are an expert Zambian teacher creating a CBC (Competence-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}"${subtopic ? ` and sub-topic "${subtopic}"` : ''}.
@@ -742,7 +866,7 @@ Return ONLY valid JSON matching this structure. Do not add markdown or commentar
   "lessonProgression": ${JSON.stringify(lessonProgression, null, 2)},
   "homework": "Give a short subject-specific task that reinforces the exact topic/sub-topic without introducing unrelated content.",
   "lessonEvaluation": "Evaluate whether learners achieved the stated specific competence and expected standard using evidence from the lesson.",
-  "teacherEvaluation": "Provide a realistic teacher reflection based on learner performance, including remedial or extension action where appropriate.",
+  "teacherEvaluation": "Leave a teacher reflection template: record evidence of learner achievement, learners needing remediation, learners needing extension, and improvements for the next lesson. Do not claim the lesson has already happened.",
   "learningOutcomes": ["Use the verified specific competence as the main outcome", "Add 2-3 measurable outcomes directly derived from the exact topic/sub-topic"],
   "learnersEvaluation": ["Give concise learner-check questions/tasks directly assessing the specific competence"],
   "teachingAids": ${JSON.stringify(verifiedResources.length ? verifiedResources : profile.materials)},
@@ -757,7 +881,7 @@ function generateOBCPrompt(topic, grade, subject, classSize, user, subtopic, ter
   const girls = Math.ceil(size / 2) || 22;
   
   // Generate lesson development content based on topic
-  const lessonDevelopment = generateLessonContent(topic, subject, grade);
+  const lessonDevelopment = generateVerifiedOBCDevelopment(topic, subtopic, subject, grade);
   
   return `
 You are an expert Zambian teacher creating an OBC (legacy Outcome-Based Education / Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
@@ -788,8 +912,7 @@ CURRICULUM PRIORITY RULES:
   "boys": ${boys},
   "girls": ${girls},
   "references": [
-    "Progress in ${subject} Grade ${grade} pg 78",
-    "Teacher-provided curriculum materials",
+    "Progress in ${subject} Grade ${grade}",
     "Teacher's Guide"
   ],
   "teachingAids": [
@@ -800,20 +923,20 @@ CURRICULUM PRIORITY RULES:
   ],
   "prerequisiteKnowledge": "Learners have basic knowledge of ${topic} from previous lessons.",
   "lessonIntroduction": "Teacher revises through the previous lesson and introduces the topic.",
-  "rationale": "This lesson is on ${topic}. Teacher Exposition, Demonstration, Question and answer and group or class discussion methods will be used. This lesson will develop learners knowledge of ${topic}. The skill of identification and application of ${topic} methods. The value of logical thinking and accuracy in computing ${topic}.",
+  "rationale": "Develop learners knowledge and understanding of ${topic} using appropriate OBC teaching methods and subject-specific skills and values.",
   "learningOutcomes": [
     "By the end of this lesson, learners should be able to:",
     "Define ${topic}",
     "Explain the concept of ${topic}",
-    "Apply ${topic} to solve problems",
-    "Analyze real-world applications of ${topic}"
+    "Apply knowledge of ${topic} to relevant subject questions or activities",
+    "Explain the importance or application of ${topic}"
   ],
   "lessonDevelopment": ${JSON.stringify(lessonDevelopment, null, 2)},
   "learnersEvaluation": [
     "Define ${topic} in your own words",
     "Give two examples of ${topic}",
-    "Solve a ${topic} problem",
-    "Explain the importance of ${topic}"
+    "Apply your knowledge of ${topic} to a relevant subject question or activity",
+    "Explain the importance or application of ${topic}"
   ],
   "expectedAnswers": [
     "Correct definition of ${topic}",
@@ -823,10 +946,167 @@ CURRICULUM PRIORITY RULES:
   ],
   "lessonConclusion": "Teacher concludes lesson by revising through the lesson with learners to help remedial learners.",
   "learnersEvaluationText": "Space for teacher's assessment of learner performance",
-  "teacherEvaluation": "The lesson was well delivered. The majority of the learners were able to grasp the concept and could work out problems involving ${topic}. Remedial work was given to those who had challenges.",
+  "teacherEvaluation": "Lesson reflection: record learner achievement, difficulties observed, participation and remedial or follow-up action required.",
   "curriculum": "obc"
 }
 `;
+}
+
+
+function generateVerifiedOBCDevelopment(topic, subtopic, subject, grade) {
+  const t = String(topic || '').trim();
+  const st = String(subtopic || '').trim();
+  const key = `${t} ${st}`.toLowerCase();
+
+  if (subject.toLowerCase() === 'biology' && (key.includes('excretion') || key.includes('excretory'))) {
+    return [
+      {
+        time: '10 min',
+        learningPoints: `INTRODUCTION: EXCRETION\n\nExcretion is the removal of metabolic waste products and excess substances from the body. It is different from egestion, which is the removal of undigested food from the alimentary canal.\n\nFocus: ${st || 'The Excretory Organs and Products'}.`,
+        teacherActivities: 'Teacher revises the previous lesson using questions and introduces excretion. Teacher defines excretion and distinguishes it from egestion. Teacher displays a chart of the human excretory organs.',
+        pupilActivities: 'Learners answer revision questions, listen to the explanation, write the definition and identify excretory organs shown on the chart.',
+        methods: 'Question and Answer, Teacher Exposition, Demonstration'
+      },
+      {
+        time: '25 min',
+        learningPoints: `THE EXCRETORY ORGANS AND THEIR PRODUCTS\n\n1. Kidneys — remove urea, excess mineral salts and excess water in urine.\n2. Lungs — remove carbon dioxide and water vapour during exhalation.\n3. Skin — sweat glands remove water, mineral salts and small amounts of urea.\n4. Liver — deaminates excess amino acids, producing urea, and forms bile pigments from the breakdown of haemoglobin.\n\nThe kidneys contain nephrons, which are the functional units involved in urine formation.`,
+        teacherActivities: 'Teacher explains each excretory organ and its products using labelled diagrams. Teacher relates the liver to deamination and the kidneys to removal of urea. Teacher asks targeted questions to check understanding.',
+        pupilActivities: 'Learners observe and draw labelled diagrams, match organs with excretory products, take notes and answer oral questions.',
+        methods: 'Teacher Exposition, Demonstration, Question and Answer'
+      },
+      {
+        time: '20 min',
+        learningPoints: `GUIDED APPLICATION\n\nLearners complete a table with three columns: Excretory organ, excretory product, and how the product leaves the body.\n\nExample:\nKidneys → urea, excess salts and water → urine\nLungs → carbon dioxide and water vapour → exhaled air\nSkin → water, salts and small amount of urea → sweat\nLiver → bile pigments; produces urea from excess amino acids → bile/urine after transport to the kidneys`,
+        teacherActivities: 'Teacher gives groups an organ-product matching task and guides learners to justify each answer. Teacher corrects misconceptions, especially the difference between excretion and egestion.',
+        pupilActivities: 'Learners work in groups to complete the table, discuss their answers and present one organ-product relationship to the class.',
+        methods: 'Group Work, Discussion, Question and Answer'
+      },
+      {
+        time: '15 min',
+        learningPoints: `INDIVIDUAL PRACTICE AND ASSESSMENT\n\n1. Define excretion.\n2. State four excretory organs in humans and one product removed by each.\n3. Explain the role of the kidneys in removing urea from the blood.\n4. Explain the role of the liver in excretion.\n5. Distinguish between excretion and egestion.`,
+        teacherActivities: 'Teacher sets the questions, supervises individual work and marks selected responses. Teacher gives immediate feedback and provides correction where necessary.',
+        pupilActivities: 'Learners answer the questions individually, exchange answers for guided checking where appropriate and correct errors.',
+        methods: 'Individual Work, Question and Answer, Assessment'
+      },
+      {
+        time: '10 min',
+        learningPoints: `SUMMARY AND CONCLUSION\n\nExcretion removes metabolic wastes from the body. The major human excretory organs are the kidneys, lungs, skin and liver, and each is associated with particular waste products. Excretion helps maintain a stable internal environment.`,
+        teacherActivities: 'Teacher asks learners to state the main organs and products, reinforces the key points and gives a short exit question. Teacher identifies learners who need remedial support.',
+        pupilActivities: 'Learners state key points, answer the exit question and record the homework/remedial task where applicable.',
+        methods: 'Review, Question and Answer, Consolidation'
+      }
+    ];
+  }
+
+  return [
+    {
+      time: '10 min',
+      learningPoints: `INTRODUCTION TO ${t.toUpperCase()}${st ? `\n\nSubtopic: ${st}` : ''}\n\nKey terms and the meaning of ${t} are introduced using examples appropriate to ${subject}.`,
+      teacherActivities: `Teacher revises prerequisite knowledge and introduces ${t} using subject-appropriate examples.`,
+      pupilActivities: `Learners answer revision questions, listen to the explanation and record key points about ${t}.`,
+      methods: 'Question and Answer, Teacher Exposition'
+    },
+    {
+      time: '25 min',
+      learningPoints: `MAIN CONTENT: ${t.toUpperCase()}\n\nTeacher explains the main concepts, terms, processes or structures related to ${t}, using appropriate examples for ${subject}.`,
+      teacherActivities: `Teacher explains the main content of ${t}, demonstrates relevant examples and checks understanding through questions.`,
+      pupilActivities: `Learners observe, take notes, answer questions and contribute examples related to ${t}.`,
+      methods: 'Teacher Exposition, Demonstration, Question and Answer'
+    },
+    {
+      time: '20 min',
+      learningPoints: `GUIDED PRACTICE\n\nLearners apply the concepts of ${t} to structured questions, examples or a subject-appropriate activity.`,
+      teacherActivities: `Teacher organises guided practice on ${t}, monitors learners and corrects misconceptions.`,
+      pupilActivities: `Learners work in pairs or groups, apply the concepts and present their responses.`,
+      methods: 'Group Work, Discussion, Guided Practice'
+    },
+    {
+      time: '15 min',
+      learningPoints: `INDIVIDUAL ASSESSMENT\n\nLearners answer short questions that test knowledge, understanding and application of ${t}.`,
+      teacherActivities: `Teacher gives an individual assessment, supervises the work and provides feedback.`,
+      pupilActivities: `Learners complete the assessment individually and correct errors after feedback.`,
+      methods: 'Individual Work, Question and Answer, Assessment'
+    },
+    {
+      time: '10 min',
+      learningPoints: `SUMMARY AND CONCLUSION\n\nTeacher and learners review the key points of ${t} and identify areas requiring further practice.`,
+      teacherActivities: `Teacher summarises ${t}, asks an exit question and identifies learners requiring remedial support.`,
+      pupilActivities: `Learners state the main points learned and answer the exit question.`,
+      methods: 'Review, Question and Answer, Consolidation'
+    }
+  ];
+}
+
+function repairOBCLessonContent(aiContent, topic, subtopic, subject, grade, term, profile = null) {
+  const content = aiContent && typeof aiContent === 'object' ? aiContent : {};
+  const size = Number(content.classSize) || 40;
+  const boys = Number(content.boys) || Math.floor(size / 2);
+  const girls = Number(content.girls) || (size - boys);
+  const focus = String(subtopic || content.subtopic || '').trim();
+  const development = generateVerifiedOBCDevelopment(topic, focus, subject, grade);
+  const biologyExcretion = subject.toLowerCase() === 'biology' && `${topic} ${focus}`.toLowerCase().includes('excret');
+
+  content.title = topic;
+  content.subtopic = focus;
+  content.duration = '80 MINUTES';
+  content.classSize = size;
+  content.boys = boys;
+  content.girls = girls;
+  content.curriculum = 'obc';
+
+  content.rationale = biologyExcretion
+    ? `This lesson develops learners' understanding of excretion, with emphasis on the human excretory organs and the products they remove. Teacher exposition, demonstration, question and answer, group work and individual practice will be used. The lesson develops the skills of identification, classification, explanation and application, as well as accuracy, cooperation and responsibility.`
+    : `This lesson develops learners' knowledge and understanding of ${topic}${focus ? `, specifically ${focus}` : ''}. Teacher exposition, demonstration, question and answer, guided practice and individual work will be used to develop relevant subject skills, values and understanding.`;
+
+  content.learningOutcomes = biologyExcretion ? [
+    'By the end of this lesson, learners should be able to:',
+    'Define excretion and distinguish it from egestion.',
+    'Identify the major human excretory organs and state the main products removed by each.',
+    'Explain the roles of the kidneys, lungs, skin and liver in excretion.',
+    'Relate each excretory product to the organ and process through which it leaves the body.'
+  ] : [
+    'By the end of this lesson, learners should be able to:',
+    `Define and explain ${topic}.`,
+    `Identify the main concepts, structures or processes related to ${topic}.`,
+    `Apply knowledge of ${topic} to relevant subject questions or activities.`,
+    `Explain the importance or application of ${topic}.`
+  ];
+
+  content.lessonDevelopment = development;
+  content.learnersEvaluation = biologyExcretion ? [
+    'Define excretion.',
+    'State four human excretory organs and one product removed by each.',
+    'Explain how the kidneys contribute to the removal of urea.',
+    'Explain the role of the liver in excretion.',
+    'Distinguish between excretion and egestion.'
+  ] : [
+    `Define ${topic} in your own words.`,
+    `State or identify two important points about ${topic}.`,
+    `Apply your knowledge of ${topic} to a relevant subject question or activity.`,
+    `Explain the importance or application of ${topic}.`
+  ];
+
+  content.expectedAnswers = biologyExcretion ? [
+    'Excretion is the removal of metabolic waste products and excess substances from the body.',
+    'Kidneys—urea/excess salts/water; lungs—carbon dioxide/water vapour; skin—water/salts/small amount of urea; liver—bile pigments and production of urea from excess amino acids.',
+    'Urea is carried in the blood to the kidneys, filtered into the nephron and eventually removed from the body in urine.',
+    'The liver deaminates excess amino acids to form urea and forms bile pigments from the breakdown of haemoglobin.',
+    'Excretion removes metabolic wastes; egestion removes undigested food from the alimentary canal.'
+  ] : (content.expectedAnswers || []);
+
+  content.prerequisiteKnowledge = biologyExcretion
+    ? 'Learners have prior knowledge of cellular respiration, metabolism and the need to remove waste products from the body.'
+    : `Learners have prerequisite knowledge related to ${topic}.`;
+  content.lessonIntroduction = biologyExcretion
+    ? 'Teacher revises the previous lesson and uses questions to lead learners to the need for removal of metabolic waste products.'
+    : `Teacher revises prerequisite knowledge and introduces ${topic}.`;
+  content.lessonConclusion = biologyExcretion
+    ? 'Teacher summarises the major excretory organs and their products, checks understanding with an exit question and identifies learners requiring remedial support.'
+    : `Teacher summarises the key points of ${topic}, checks understanding and identifies learners requiring remedial support.`;
+  content.teacherEvaluation = 'Lesson reflection: record the number of learners who achieved the intended outcomes, the concepts that caused difficulty, evidence of learner participation, and the remedial or follow-up action required.';
+  content.learnersEvaluationText = 'Record learner performance from the assessment activities and identify learners requiring further support.';
+  content.lessonEvaluation = 'Evaluate learner responses against the stated outcomes and record evidence for remediation or enrichment.';
+  return content;
 }
 
 // ============ ENHANCED FALLBACK LESSON GENERATOR ============
@@ -862,13 +1142,13 @@ function generateFallbackCBC(topic, grade, subject, classSize, user, curriculumC
     learningEnvironment: profile.environment,
     materials: Array.isArray(cm.resources) && cm.resources.length ? cm.resources : profile.materials,
     expectedStandard: cm.expectedStandard || cm.expectedStandards || `Learners demonstrate the stated competence for ${topic}.`,
-    lessonProgression: generateLessonProgression(topic, subject, grade),
+    lessonProgression: generateVerifiedCBCProgression(topic, cm.subTopic || cm.subtopic || '', subject, grade, cm),
     homework: `Research and list examples of ${topic}`,
     lessonEvaluation: "Lesson was successful, key competences were acquired",
     teacherEvaluation: "Space for teacher's reflections",
     learningOutcomes: [`Understand ${topic}`, `Apply ${topic}`, `Analyze ${topic}`],
     learnersEvaluation: [`Define ${topic}`, `Give examples of ${topic}`, `Explain the importance of ${topic}`],
-    lessonDevelopment: generateLessonContent(topic, subject, grade),
+    lessonDevelopment: generateVerifiedOBCDevelopment(topic, '', subject, grade),
     teachingAids: ["Whiteboard", "Charts", "Diagrams"],
     curriculum: 'cbc'
   };
@@ -892,12 +1172,11 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
     girls: girls,
     subtopic: '',
     references: [
-      `Progress in ${subject} Grade ${grade} pg 78`,
-      "Teacher-provided curriculum materials",
+      `Progress in ${subject} Grade ${grade}`,
       "Teacher's Guide"
     ],
     teachingAids: ["Learners book", "Chalk board", "Chart", "Diagrams"],
-    rationale: `This lesson is on ${topic}. Teacher Exposition, Demonstration, Question and answer and group or class discussion methods will be used. This lesson will develop learners knowledge of ${topic}. The skill of identification and application of ${topic} methods. The value of logical thinking and accuracy in computing ${topic}.`,
+    rationale: `This lesson develops learners' knowledge and understanding of ${topic} using teacher exposition, demonstration, question and answer, guided practice and individual work. The lesson develops subject-specific skills, values and understanding.`,
     learningOutcomes: [
       "By the end of this lesson, learners should be able to:",
       `Define ${topic}`,
@@ -911,7 +1190,7 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
     learnersEvaluation: [
       `Define ${topic} in your own words`,
       `Give two examples of ${topic}`,
-      `Solve a ${topic} problem`,
+      `Apply your knowledge of ${topic} to a relevant subject question or activity`,
       `Explain the importance of ${topic}`
     ],
     expectedAnswers: [
@@ -922,7 +1201,7 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
     ],
     lessonConclusion: "Teacher concludes lesson by revising through the lesson with learners to help remedial learners",
     learnersEvaluationText: "Space for teacher's assessment of learner performance",
-    teacherEvaluation: `The lesson was well delivered. The majority of the learners were able to grasp the concept and could work out problems involving ${topic}. Remedial work was given to those who had challenges.`,
+    teacherEvaluation: 'Lesson reflection: record learner achievement, difficulties observed, participation and remedial or follow-up action required.',
     curriculum: 'obc'
   };
 }
@@ -1671,6 +1950,18 @@ Return ONLY the JSON object, no other text.
       if (cm.reference || cm.references) aiContent.curriculumReference = cm.reference || cm.references;
     }
 
+    // Final OBC quality gate: rebuild legacy OBC development and remove the
+    // generic mathematics-style template contamination from generated lessons.
+    if (curriculumType === 'obc') {
+      aiContent = repairOBCLessonContent(aiContent, topic, subtopic, subject, grade, term);
+    }
+
+    // Final CBC quality gate: rebuild the progression and clean generated fields
+    // from the selected CDC curriculum context before saving the lesson.
+    if (curriculumType === 'cbc') {
+      aiContent = repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term, curriculumContext, getCBCSubjectProfile(subject));
+    }
+
     // Guarantee the displayed lesson duration is internally consistent.
     if (curriculumType === 'cbc' && Array.isArray(aiContent.lessonProgression)) {
       const parseMinutes = (value) => {
@@ -1697,8 +1988,11 @@ Return ONLY the JSON object, no other text.
       const officialRefs = getReferenceTitles({ subject, grade, term, context: curriculumContext });
       if (officialRefs.length) referencesArray = officialRefs;
       else if (!referencesArray.length) referencesArray = ['No verified official reference is loaded for this selection'];
-    } else if (!referencesArray.length) {
-      referencesArray = ['Teacher-provided curriculum materials'];
+    } else {
+      referencesArray = referencesArray.filter(r => !/teacher-provided curriculum materials/i.test(String(r).trim()));
+      if (!referencesArray.length) {
+        referencesArray = [`Progress in ${subject} Grade ${grade}`, "Teacher's Guide"];
+      }
     }
 
     const materialsArray = Array.isArray(aiContent.materials) 
@@ -1739,7 +2033,7 @@ Return ONLY the JSON object, no other text.
     if (curriculumType === 'obc') {
       lessonDevelopmentArray = lessonDevelopmentArray.map((item, index) => ({
         ...item,
-        time: item.time || ['10 min', '15 min', '15 min', '10 min'][index] || '10 min',
+        time: item.time || ['10 min', '25 min', '20 min', '15 min', '10 min'][index] || '10 min',
         learningPoints: item.learningPoints ?? item.content ?? '',
         teacherActivities: item.teacherActivities ?? item.teacherActivity ?? '',
         pupilActivities: item.pupilActivities ?? item.pupilActivity ?? '',
@@ -1894,8 +2188,30 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
     const syllabusVersion = curriculumType === 'cbc'
       ? 'NEW_2024_CBC'
       : 'OLD_LEGACY_OBC';
-    const sourcePacks = listCurriculumSources({ curriculum: curriculumType, grade, subject, term });
-    const sourceRowsDetailed = listCurriculumRows({ curriculum: curriculumType, grade, subject, term });
+    let sourcePacks = listCurriculumSources({ curriculum: curriculumType, grade, subject, term });
+    let sourceRowsDetailed = listCurriculumRows({ curriculum: curriculumType, grade, subject, term });
+
+    // CBC schemes use the live CDC Digital Library as the primary source.
+    // Local JSON packs remain a fallback when the CDC repository has no match.
+    if (curriculumType === 'cbc') {
+      try {
+        const cdcResources = await listCDCResources({ grade, subject, term });
+        const cdcRows = await loadCDCRows({ grade, subject, term });
+        if (cdcResources.length) {
+          sourcePacks = cdcResources.map((r) => ({
+            curriculum: 'cbc', subject, grade, term, sourceType: 'cdc_digital_library',
+            sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia',
+            officialSource: r.url, file: `cdc:${r.id}`,
+            title: r.title, resourceUrl: r.url, topics: [...new Set(cdcRows.filter(x => x.cdcResourceUrl === r.url || x.cdcResourceTitle === r.title).map(x => x.topic).filter(Boolean))],
+            subtopics: [...new Set(cdcRows.filter(x => x.cdcResourceUrl === r.url || x.cdcResourceTitle === r.title).map(x => x.subTopic).filter(Boolean))]
+          }));
+          if (cdcRows.length) sourceRowsDetailed = cdcRows.map((row) => ({ ...row, _source: { subject, grade, term, sourceType: 'cdc_digital_library', sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia', officialSource: row.cdcResourceUrl || '', file: `cdc:${row.cdcResourceTitle || ''}` } }));
+        }
+      } catch (error) {
+        console.warn(`⚠️ CDC scheme source lookup failed: ${error.message}`);
+      }
+    }
+
     const sourceRows = sourceRowsDetailed.map((row) => ({
       week: row.week,
       topic: row.topic,
@@ -1941,13 +2257,13 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       if (curriculumType === 'cbc') {
         let customTopicsString = '';
         let matchedSourceDetails = '';
-        Object.keys(customTopics).forEach(week => {
+        for (const week of Object.keys(customTopics)) {
           if (customTopics[week]) {
             customTopicsString += `Week ${week}: ${customTopics[week]}\n`;
-            const ctx = getCurriculumContext({ curriculum: curriculumType, grade, subject, term, topic: customTopics[week], subtopic: customSubtopics[week] });
+            const ctx = await getCurriculumContextAsync({ curriculum: curriculumType, grade, subject, term, topic: customTopics[week], subtopic: customSubtopics[week] });
             if (ctx.matched) matchedSourceDetails += `Week ${week}: ${formatContext(ctx)}\n`;
           }
-        });
+        }
 
         const officialReferenceTitles = getReferenceTitles({ subject, grade, term });
         prompt = `
@@ -2243,7 +2559,7 @@ Return ONLY the JSON object, no other text.
       assessmentWeeks: assessmentWeeksList,
       testTopics: testTopics || [`Mid-term test on ${subject}`, `End of term test on ${subject}`],
       curriculum: curriculumType,
-      curriculumSourceStatus: sourcePacks.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : 'NO_LOCAL_SOURCE',
+      curriculumSourceStatus: curriculumType === 'cbc' ? (sourcePacks.some(s => s.sourceType === 'cdc_digital_library') ? 'VERIFIED_CDC_LIBRARY_AVAILABLE' : (sourcePacks.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : 'NO_CDC_SOURCE')) : (sourcePacks.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : 'OBC_MODE'),
       curriculumSources: sourcePacks,
       createdAt: new Date().toISOString()
     };
@@ -3681,14 +3997,26 @@ app.get('/api/schemes/mine', authenticate, async (req, res) => {
 });
 
 // ============ CURRICULUM CATALOG API ============
-app.get('/api/curriculum/subjects', (req, res) => {
+app.get('/api/curriculum/subjects', async (req, res) => {
   try {
     const curriculum = String(req.query.curriculum || 'cbc').toLowerCase();
     const grade = String(req.query.grade || '');
     const term = String(req.query.term || '');
     const localSources = listCurriculumSources({ curriculum, grade, term });
     const catalog = catalogSubjects();
-    const subjects = [...new Set([...catalog, ...localSources.map((s) => s.subject).filter(Boolean)])].sort();
+    let cdcSubjects = [];
+    if (curriculum === 'cbc' && grade) {
+      try {
+        // The CDC grade page exposes the authoritative subject filter. We
+        // discover subject names through the same repository integration used
+        // for resources rather than maintaining another hard-coded list.
+        const { getSubjectCatalog } = require('./utils/cdcLibrary');
+        cdcSubjects = await getSubjectCatalog({ grade });
+      } catch (error) {
+        console.warn(`⚠️ CDC subject catalog unavailable: ${error.message}`);
+      }
+    }
+    const subjects = [...new Set([...catalog, ...localSources.map((s) => s.subject).filter(Boolean), ...cdcSubjects])].sort();
     const sourceBySubject = {};
     for (const source of localSources) sourceBySubject[source.subject] = true;
     if (curriculum === 'cbc') {
@@ -3706,37 +4034,47 @@ app.get('/api/curriculum/subjects', (req, res) => {
   }
 });
 
-app.get('/api/curriculum/topics', (req, res) => {
+app.get('/api/curriculum/topics', async (req, res) => {
   try {
     const curriculum = String(req.query.curriculum || 'cbc').toLowerCase();
     const grade = String(req.query.grade || '');
     const subject = String(req.query.subject || '');
     const term = String(req.query.term || '');
-    const sources = listCurriculumSources({ curriculum, grade, subject, term });
-    const rows = listCurriculumRows({ curriculum, grade, subject, term });
+    let sources = listCurriculumSources({ curriculum, grade, subject, term });
+    let rows = listCurriculumRows({ curriculum, grade, subject, term });
+    if (curriculum === 'cbc') {
+      try {
+        const cdcResources = await listCDCResources({ grade, subject, term });
+        const cdcRows = await loadCDCRows({ grade, subject, term });
+        if (cdcResources.length) {
+          sources = cdcResources.map((r) => ({ curriculum: 'cbc', subject, grade, term, sourceType: 'cdc_digital_library', sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia', officialSource: r.url, title: r.title, file: `cdc:${r.id}` }));
+          rows = cdcRows.map((r) => ({ ...r, _source: { subject, grade, term, sourceType: 'cdc_digital_library', sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia', officialSource: r.cdcResourceUrl || '', file: `cdc:${r.cdcResourceTitle || ''}` } }));
+        }
+      } catch (error) { console.warn(`⚠️ CDC topics unavailable: ${error.message}`); }
+    }
     const topics = [...new Set(rows.map((r) => r.topic).filter(Boolean))];
     const subtopics = [...new Set(rows.map((r) => r.subTopic || r.subtopic).filter(Boolean))];
-    res.json({ curriculum, grade, subject, term, hasLocalSource: sources.length > 0, topics, subtopics, rows, sources });
+    res.json({ curriculum, grade, subject, term, hasLocalSource: sources.length > 0, hasCDCSource: sources.some(s => s.sourceType === 'cdc_digital_library'), sourceStatus: sources.some(s => s.sourceType === 'cdc_digital_library') ? 'VERIFIED_CDC_LIBRARY_AVAILABLE' : (sources.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : 'NO_CDC_SOURCE'), topics, subtopics, rows, sources });
   } catch (error) {
     res.status(500).json({ error: 'Failed to load curriculum topics' });
   }
 });
 
-app.get('/api/curriculum/status', (req, res) => {
+app.get('/api/curriculum/status', async (req, res) => {
   try {
     const curriculum = String(req.query.curriculum || 'cbc').toLowerCase();
     const grade = String(req.query.grade || '');
     const subject = String(req.query.subject || '');
     const term = String(req.query.term || '');
-    const sources = listCurriculumSources({ curriculum, grade, subject, term });
+    let sources = listCurriculumSources({ curriculum, grade, subject, term });
+    let cdcResources = [];
+    if (curriculum === 'cbc') {
+      try { cdcResources = await listCDCResources({ grade, subject, term }); } catch (error) { console.warn(`⚠️ CDC status lookup failed: ${error.message}`); }
+      if (cdcResources.length) sources = cdcResources.map(r => ({ curriculum: 'cbc', subject, grade, term, sourceType: 'cdc_digital_library', title: r.title, officialSource: r.url, file: `cdc:${r.id}` }));
+    }
     const officialSource = curriculum === 'cbc' ? getRegisteredOfficialSource(subject) : null;
-    res.json({
-      curriculum, grade, subject, term,
-      status: sources.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : (officialSource ? 'OFFICIAL_SOURCE_REGISTERED_NO_LOCAL_PACK' : (curriculum === 'obc' ? 'OBC_MODE' : 'NO_LOCAL_SOURCE')),
-      sources,
-      officialSource: officialSource || null,
-      references: curriculum === 'cbc' ? getReferenceTitles({ subject, grade, term }) : []
-    });
+    const status = curriculum === 'cbc' ? (cdcResources.length ? 'VERIFIED_CDC_LIBRARY_AVAILABLE' : (sources.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : (officialSource ? 'OFFICIAL_SOURCE_REGISTERED_NO_LOCAL_PACK' : 'NO_CDC_SOURCE'))) : 'OBC_MODE';
+    res.json({ curriculum, grade, subject, term, status, sources, cdcResources, officialSource: officialSource || null, references: curriculum === 'cbc' ? getReferenceTitles({ subject, grade, term }) : [] });
   } catch (error) {
     res.status(500).json({ error: 'Failed to load curriculum status' });
   }
