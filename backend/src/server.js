@@ -748,6 +748,13 @@ function repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term
     aiContent.generalCompetences = profile.competences;
   }
 
+  // Keep the specific competence curriculum-grounded when CDC matching succeeds.
+  // When no verified competence is available, use a measurable, topic-specific
+  // fallback rather than the vague phrase "demonstrate understanding".
+  if (!cm.specificCompetence && !cm.specificCompetences) {
+    aiContent.specificCompetence = `Demonstrate understanding of ${focus} by identifying key concepts, explaining relevant biological or subject-specific relationships, and applying the knowledge in an appropriate classroom task.`;
+  }
+
   // Never allow the generic maths/problem-solving fallback language to leak
   // into non-mathematics CBC lessons.
   if (!/math|account|commerce|physics|chemistry/i.test(subject)) {
@@ -756,26 +763,29 @@ function repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term
       aiContent.rationale = `This lesson develops learners' understanding and application of ${focus} within ${subject}, with emphasis on accurate subject-specific reasoning and real-life relevance.`;
     }
     aiContent.learningOutcomes = [
-      `Explain the key ideas related to ${focus}`,
-      `Apply knowledge of ${focus} in an appropriate ${subject} task`,
-      `Demonstrate the stated competence through evidence from the lesson`
+      `Define and identify the key concepts related to ${focus}`,
+      `Explain the main relationships, processes or features involved in ${focus}`,
+      `Apply knowledge of ${focus} to complete an appropriate ${subject} task`,
+      `Demonstrate the stated competence through accurate responses and participation in the lesson`
     ];
     aiContent.learnersEvaluation = [
-      `State or explain the key concept(s) of ${focus}`,
+      `Define or identify the key concept(s) of ${focus}`,
+      `Explain the main idea, relationship or process involved in ${focus}`,
       `Complete an application task based on ${focus}`,
       `Give evidence that demonstrates the stated competence`
     ];
   } else {
     aiContent.learningOutcomes = [
-      `Explain the key ideas related to ${focus}`,
-      `Apply the relevant ${subject} method or concept to ${focus}`,
-      `Demonstrate the stated competence through an appropriate task`
+      `Define and identify the key concepts related to ${focus}`,
+      `Explain the relevant ${subject} method, rule, process or relationship in ${focus}`,
+      `Apply the relevant ${subject} method or concept to ${focus} in a structured task`,
+      `Demonstrate the stated competence through accurate working or responses`
     ];
   }
 
-  aiContent.lessonGoal = cm.specificCompetence
-    ? `By the end of the lesson, learners will be able to ${String(cm.specificCompetence).replace(/[.]$/, '')}.`
-    : `By the end of the lesson, learners will demonstrate the stated competence in ${focus}.`;
+  aiContent.lessonGoal = cm.specificCompetence || cm.specificCompetences
+    ? `By the end of the lesson, learners will be able to ${String(cm.specificCompetence || cm.specificCompetences).replace(/[.]$/, '')}.`
+    : `By the end of the lesson, learners will be able to identify the key concepts of ${focus}, explain the main ideas or relationships, and apply the knowledge in an appropriate ${subject} task.`;
 
   aiContent.priorKnowledge = `Learners should have prerequisite knowledge directly related to ${focus}.`;
   aiContent.teacherEvaluation = `Teacher reflection: record evidence of learner achievement of the specific competence and expected standard; identify learners needing remediation and learners requiring extension; record what should be improved in the next lesson.`;
@@ -785,6 +795,13 @@ function repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term
   if (officialRefs.length) aiContent.references = officialRefs;
   else if (cm.reference) aiContent.references = [cm.reference];
   else if (cm.cdcResourceTitle) aiContent.references = [`${cm.cdcResourceTitle} — CDC Digital Library`];
+  else {
+    const refs = Array.isArray(aiContent.references) ? aiContent.references : [];
+    aiContent.references = refs.filter(r => !/not for syllabi|teacher-provided curriculum materials/i.test(String(r)));
+    if (!aiContent.references.length) {
+      aiContent.references = [`${subject} Grade ${grade} curriculum materials`, "Teacher's Guide"];
+    }
+  }
 
   aiContent.lessonProgression = generateVerifiedCBCProgression(topic, subtopic, subject, grade, cm);
   return aiContent;
@@ -1988,11 +2005,8 @@ Return ONLY the JSON object, no other text.
       const officialRefs = getReferenceTitles({ subject, grade, term, context: curriculumContext });
       if (officialRefs.length) referencesArray = officialRefs;
       else if (!referencesArray.length) referencesArray = ['No verified official reference is loaded for this selection'];
-    } else {
-      referencesArray = referencesArray.filter(r => !/teacher-provided curriculum materials/i.test(String(r).trim()));
-      if (!referencesArray.length) {
-        referencesArray = [`Progress in ${subject} Grade ${grade}`, "Teacher's Guide"];
-      }
+    } else if (!referencesArray.length) {
+      referencesArray = ['Teacher-provided curriculum materials'];
     }
 
     const materialsArray = Array.isArray(aiContent.materials) 
@@ -2033,7 +2047,7 @@ Return ONLY the JSON object, no other text.
     if (curriculumType === 'obc') {
       lessonDevelopmentArray = lessonDevelopmentArray.map((item, index) => ({
         ...item,
-        time: item.time || ['10 min', '25 min', '20 min', '15 min', '10 min'][index] || '10 min',
+        time: item.time || ['10 min', '15 min', '15 min', '10 min'][index] || '10 min',
         learningPoints: item.learningPoints ?? item.content ?? '',
         teacherActivities: item.teacherActivities ?? item.teacherActivity ?? '',
         pupilActivities: item.pupilActivities ?? item.pupilActivity ?? '',
