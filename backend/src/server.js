@@ -17,6 +17,96 @@ const { listCDCResources, loadCDCRows } = require('./utils/cdcLibrary');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Safe term label used by Word/PDF exporters.
+function termWord(term) {
+  const raw = String(term ?? '').trim();
+  const n = raw.match(/\d+/)?.[0];
+  if (n === '1') return 'ONE';
+  if (n === '2') return 'TWO';
+  if (n === '3') return 'THREE';
+  if (/^first$/i.test(raw)) return 'ONE';
+  if (/^second$/i.test(raw)) return 'TWO';
+  if (/^third$/i.test(raw)) return 'THREE';
+  return raw || '';
+}
+
+
+
+// ============ ONLINE RESEARCH ENRICHMENT ============
+// Online sources enrich examples, explanations and activities only. They never
+// override the selected official CBC/OBC curriculum source or its terminology.
+async function getOnlineResearchContext({ curriculum, grade, subject, term = '', topic = '', subtopic = '' } = {}) {
+  const query = [
+    'Zambia', String(subject || ''), String(grade || ''), String(term || ''),
+    String(topic || ''), String(subtopic || ''), 'education lesson teaching'
+  ].filter(Boolean).join(' ');
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 7000);
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'MyToolbox-Online-Research/1.0' },
+      signal: controller.signal,
+      redirect: 'follow'
+    });
+    clearTimeout(timer);
+    if (!response.ok) throw new Error(`Search HTTP ${response.status}`);
+    const html = await response.text();
+    const clean = (v) => String(v || '')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').replace(/&#39;/gi, "'")
+      .replace(/\s+/g, ' ').trim();
+    const results = [];
+    const re = /<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    let m;
+    while ((m = re.exec(html)) && results.length < 5) {
+      const title = clean(m[2]);
+      let href = m[1];
+      try { href = new URL(href, 'https://html.duckduckgo.com').toString(); } catch {}
+      if (!title || !href) continue;
+      const snippetStart = m.index;
+      const tail = html.slice(snippetStart, snippetStart + 5000);
+      const sm = tail.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i) || tail.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/div>/i);
+      results.push({ title, url: href, snippet: sm ? clean(sm[1]).slice(0, 700) : '' });
+    }
+    // Prefer official Zambian education sources when present.
+    results.sort((a,b) => {
+      const score = (r) => /edu\.gov\.zm|cdcrepository\.info/i.test(r.url) ? 100 : (/ac\.|org\./i.test(r.url) ? 20 : 0);
+      return score(b) - score(a);
+    });
+    const selected = results.slice(0, 4);
+    if (!selected.length) return '';
+    const enriched = [];
+    for (const r of selected) {
+      let pageText = '';
+      try {
+        const pageController = new AbortController();
+        const pageTimer = setTimeout(() => pageController.abort(), 5000);
+        const pageResponse = await fetch(r.url, {
+          headers: { 'User-Agent': 'MyToolbox-Online-Research/1.0' },
+          signal: pageController.signal,
+          redirect: 'follow'
+        });
+        clearTimeout(pageTimer);
+        if (pageResponse.ok) {
+          const type = String(pageResponse.headers.get('content-type') || '').toLowerCase();
+          if (type.includes('text/html') || type.includes('text/plain')) {
+            pageText = clean(await pageResponse.text()).slice(0, 1800);
+          }
+        }
+      } catch (error) {}
+      enriched.push({ ...r, pageText });
+    }
+    return enriched.map((r, i) => `${i + 1}. ${r.title}\\nURL: ${r.url}\\nSearch summary: ${r.snippet || 'No snippet available.'}${r.pageText ? `\\nPage evidence: ${r.pageText}` : ''}`).join('\\n\\n');
+  } catch (error) {
+    console.warn(`⚠️ Online research unavailable: ${error.message}`);
+    return '';
+  }
+}
+
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -707,9 +797,28 @@ function generateVerifiedCBCProgression(topic, subtopic, subject, grade, cm = {}
   ];
 }
 
+function sanitizeCBCReferenceList(refs, subject, grade, term, curriculumContext) {
+  const arr = Array.isArray(refs) ? refs : (refs ? [refs] : []);
+  const cleaned = arr.map(v => String(v ?? '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .filter(v => !/not for syllabi|-->\s*term\s*\d|\b\d{1,2}\/\d{1,2}\/\d{4}\b|\b\d{3,4}\s+open\b|\b\d+\s+open\b/i.test(v));
+  const official = (() => { try { return getReferenceTitles({ subject, grade, term, context: curriculumContext }); } catch (_) { return []; } })();
+  const officialClean = (Array.isArray(official) ? official : []).map(v => String(v ?? '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .filter(v => !/not for syllabi|-->\s*term\s*\d|\b\d{1,2}\/\d{1,2}\/\d{4}\b|\b\d{3,4}\s+open\b|\b\d+\s+open\b/i.test(v));
+  return [...new Set([...officialClean, ...cleaned])].slice(0, 5);
+}
+
 function repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term, curriculumContext, profile) {
   const cm = curriculumContext?.matched ? (curriculumContext.match || {}) : {};
   const focus = subtopic || cm.subTopic || cm.subtopic || topic;
+  const biologyEcology = String(subject).toLowerCase() === 'biology' && /ecology|ecosystem|ecological|biotic|abiotic|food chain|food web/i.test(`${topic} ${subtopic}`);
+  if (biologyEcology && !cm.specificCompetence && !cm.specificCompetences) {
+    aiContent.specificCompetence = 'Demonstrate understanding of ecological relationships by identifying biotic and abiotic components of an ecosystem and explaining how organisms interact with one another and with their physical environment.';
+    aiContent.expectedStandard = 'Learners identify and classify biotic and abiotic components and explain simple ecological relationships using relevant local examples.';
+    aiContent.lessonGoal = 'By the end of the lesson, learners will be able to define ecology, identify and classify biotic and abiotic components, and explain simple relationships among organisms and their environment.';
+    aiContent.priorKnowledge = 'Learners should be able to identify common living organisms and non-living things in their surroundings and describe simple relationships between organisms and their environment.';
+  }
 
   aiContent.subtopic = subtopic || cm.subTopic || cm.subtopic || aiContent.subtopic || '';
   aiContent.specificCompetence = cm.specificCompetence || cm.specificCompetences || aiContent.specificCompetence ||
@@ -726,7 +835,7 @@ function repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term
   // Keep the specific competence curriculum-grounded when CDC matching succeeds.
   // When no verified competence is available, use a measurable, topic-specific
   // fallback rather than the vague phrase "demonstrate understanding".
-  if (!cm.specificCompetence && !cm.specificCompetences) {
+  if (!cm.specificCompetence && !cm.specificCompetences && !biologyEcology) {
     aiContent.specificCompetence = `Demonstrate understanding of ${focus} by identifying key concepts, explaining relevant biological or subject-specific relationships, and applying the knowledge in an appropriate classroom task.`;
   }
 
@@ -735,20 +844,36 @@ function repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term
   if (!/math|account|commerce|physics|chemistry/i.test(subject)) {
     const bad = /accuracy in computing|solve (a|the) .*problem|formulae|quadratic|trigonometry|calculus/i;
     if (bad.test(String(aiContent.rationale || ''))) {
-      aiContent.rationale = `This lesson develops learners' understanding and application of ${focus} within ${subject}, with emphasis on accurate subject-specific reasoning and real-life relevance.`;
+      aiContent.rationale = `This lesson develops learners' understanding of ${focus} within ${subject}, with emphasis on accurate subject-specific reasoning and real-life relevance.`;
     }
-    aiContent.learningOutcomes = [
-      `Define and identify the key concepts related to ${focus}`,
-      `Explain the main relationships, processes or features involved in ${focus}`,
-      `Apply knowledge of ${focus} to complete an appropriate ${subject} task`,
-      `Demonstrate the stated competence through accurate responses and participation in the lesson`
-    ];
-    aiContent.learnersEvaluation = [
-      `Define or identify the key concept(s) of ${focus}`,
-      `Explain the main idea, relationship or process involved in ${focus}`,
-      `Complete an application task based on ${focus}`,
-      `Give evidence that demonstrates the stated competence`
-    ];
+    if (biologyEcology) {
+      aiContent.rationale = 'Ecology helps learners understand relationships between living organisms and their environment. The lesson uses familiar local examples to develop awareness of biodiversity, environmental conservation and responsible use of natural resources.';
+      aiContent.learningOutcomes = [
+        'Define ecology and explain the meaning of an ecosystem',
+        'Identify and classify biotic and abiotic components in a local environment',
+        'Explain simple interactions among organisms and between organisms and their physical environment',
+        'Construct or interpret a simple food chain using local examples'
+      ];
+      aiContent.learnersEvaluation = [
+        'Define ecology and an ecosystem',
+        'Classify given examples as biotic or abiotic',
+        'Explain one relationship between organisms and their environment',
+        'Construct a simple food chain and identify the producer and consumers'
+      ];
+    } else {
+      aiContent.learningOutcomes = [
+        `Define and identify the key concepts related to ${focus}`,
+        `Explain the main relationships, processes or features involved in ${focus}`,
+        `Apply knowledge of ${focus} to complete an appropriate ${subject} task`,
+        `Demonstrate the stated competence through accurate responses and participation in the lesson`
+      ];
+      aiContent.learnersEvaluation = [
+        `Define or identify the key concept(s) of ${focus}`,
+        `Explain the main idea, relationship or process involved in ${focus}`,
+        `Complete an application task based on ${focus}`,
+        `Give evidence that demonstrates the stated competence`
+      ];
+    }
   } else {
     aiContent.learningOutcomes = [
       `Define and identify the key concepts related to ${focus}`,
@@ -758,15 +883,16 @@ function repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term
     ];
   }
 
-  aiContent.lessonGoal = cm.specificCompetence || cm.specificCompetences
-    ? `By the end of the lesson, learners will be able to ${String(cm.specificCompetence || cm.specificCompetences).replace(/[.]$/, '')}.`
-    : `By the end of the lesson, learners will be able to identify the key concepts of ${focus}, explain the main ideas or relationships, and apply the knowledge in an appropriate ${subject} task.`;
-
-  aiContent.priorKnowledge = `Learners should have prerequisite knowledge directly related to ${focus}.`;
+  if (!biologyEcology) {
+    aiContent.lessonGoal = cm.specificCompetence || cm.specificCompetences
+      ? `By the end of the lesson, learners will be able to ${String(cm.specificCompetence || cm.specificCompetences).replace(/[.]$/, '')}.`
+      : `By the end of the lesson, learners will be able to identify the key concepts of ${focus}, explain the main ideas or relationships, and apply the knowledge in an appropriate ${subject} task.`;
+    aiContent.priorKnowledge = `Learners should have prerequisite knowledge directly related to ${focus}.`;
+  }
   aiContent.teacherEvaluation = `Teacher reflection: record evidence of learner achievement of the specific competence and expected standard; identify learners needing remediation and learners requiring extension; record what should be improved in the next lesson.`;
   aiContent.lessonEvaluation = `Evaluate learner evidence against the specific competence and expected standard for ${focus}. Record strengths, misconceptions and follow-up action.`;
 
-  const officialRefs = getReferenceTitles({ subject, grade, term, context: curriculumContext });
+  const officialRefs = sanitizeCBCReferenceList([], subject, grade, term, curriculumContext);
   if (officialRefs.length) aiContent.references = officialRefs;
   else if (cm.reference) aiContent.references = [cm.reference];
   else if (cm.cdcResourceTitle) aiContent.references = [`${cm.cdcResourceTitle} — CDC Digital Library`];
@@ -774,7 +900,7 @@ function repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term
     const refs = Array.isArray(aiContent.references) ? aiContent.references : [];
     aiContent.references = refs.filter(r => !/not for syllabi|teacher-provided curriculum materials/i.test(String(r)));
     if (!aiContent.references.length) {
-      aiContent.references = [`${subject} Grade ${grade} curriculum materials`, "Teacher's Guide"];
+      aiContent.references = [`Ministry of Education — ${subject} Curriculum`, "Biology Learner's Book / Teacher's Guide"];
     }
   }
 
@@ -1199,6 +1325,157 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
 }
 
 // ============ CBC SCHEME GENERATOR ============
+
+
+function normaliseSchemeText(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function schemeTokens(value) {
+  const stop = new Set(['the','and','of','in','to','for','on','a','an','with','by','from','use','using','understanding','demonstrate','explain','apply','learners','learner']);
+  return new Set(normaliseSchemeText(value).split(/\s+/).filter(t => t.length > 2 && !stop.has(t)));
+}
+
+function schemeTextScore(a, b) {
+  const aa = schemeTokens(a), bb = schemeTokens(b);
+  if (!aa.size || !bb.size) return 0;
+  let common = 0;
+  for (const t of aa) if (bb.has(t)) common++;
+  return common / Math.max(1, Math.min(aa.size, bb.size));
+}
+
+function biologySchemeFamily(text) {
+  const t = normaliseSchemeText(text);
+  if (/cell|microscop|organelle|diffusion|osmosis|mitosis|meiosis|cellular/.test(t)) return 'cellular';
+  if (/reproduc|sexual|asexual|fertilis|gamete|embryo|development/.test(t)) return 'continuity';
+  if (/response|tropic|taxic|stimulus|coordination|nervous|hormone|excretion|homeostasis|photosynthesis|nutrition|digest|transport/.test(t)) return 'maintenance';
+  if (/science|inquiry|branch|organisation|organization|characteristics of living|nature of science/.test(t)) return 'concepts';
+  return '';
+}
+
+function biologyTopicForFamily(family) {
+  return {
+    concepts: '1.1.0 Concepts and Methods in Biology',
+    cellular: '1.2.0 Principles of Cellular Life',
+    maintenance: '1.3.0 Maintenance of the Organism',
+    continuity: '1.4.0 Continuity of Life'
+  }[family] || '';
+}
+
+function repairCBCSchemeAlignment(weeks, options = {}) {
+  const {
+    sourceRowsDetailed = [], customTopics = {}, customSubtopics = {},
+    assessmentWeeksList = [3, 6, 9, 12], subject = ''
+  } = options;
+  if (!Array.isArray(weeks)) return [];
+
+  const sourceRows = Array.isArray(sourceRowsDetailed) ? sourceRowsDetailed.filter(r => r && (r.topic || r.subTopic || r.subtopic)) : [];
+  const subjectIsBiology = /biology/i.test(String(subject));
+  const usableSource = sourceRows.filter(r => !/assessment/i.test(String(r.topic || '')));
+
+  return weeks.map((week, index) => {
+    const weekNumber = Number(week.week || index + 1);
+    if (assessmentWeeksList.includes(weekNumber) || week.isAssessment || week.isRevision) return week;
+
+    const topicObj = Array.isArray(week.topics) && week.topics.length ? week.topics[0] : week;
+    const currentTopic = topicObj.topic || week.topic || '';
+    const currentSub = topicObj.subtopic || week.subTopic || week.subtopic || '';
+    const requestedTopic = customTopics[weekNumber] || customTopics[String(weekNumber)] || '';
+    const requestedSub = customSubtopics[weekNumber] || customSubtopics[String(weekNumber)] || '';
+
+    // Prefer an exact verified source row for this week/topic/subtopic.
+    let match = usableSource.find(r => Number(r.week) === weekNumber);
+    if (!match && requestedTopic) {
+      match = usableSource.find(r => schemeTextScore(r.topic, requestedTopic) >= 0.65);
+    }
+    if (!match && requestedSub) {
+      match = usableSource.find(r => schemeTextScore(r.subTopic || r.subtopic, requestedSub) >= 0.65);
+    }
+    if (!match && currentTopic) {
+      match = usableSource.find(r => schemeTextScore(r.topic, currentTopic) >= 0.75);
+    }
+
+    let finalTopic = match?.topic || requestedTopic || currentTopic;
+    let finalSubtopic = match?.subTopic || match?.subtopic || requestedSub || currentSub;
+    let finalCompetence = match?.specificCompetence || match?.specificCompetences || topicObj.specificCompetence || topicObj.specificCompetences || '';
+    let finalActivities = match?.learningActivities || match?.activities || topicObj.learningActivities || topicObj.activities || '';
+    let finalStandards = match?.expectedStandard || match?.expectedStandards || topicObj.expectedStandard || topicObj.expectedStandards || '';
+    let finalResources = match?.resources || match?.aids || topicObj.resources || topicObj.aids || '';
+    let finalStrategies = match?.strategies || match?.methods || topicObj.strategies || topicObj.methods || '';
+    let finalReference = match?.reference || match?.references || topicObj.reference || topicObj.references || '';
+
+    // Biology has a small deterministic guard against the exact failure seen
+    // in generated schemes: plant/animal responses, photosynthesis, transport,
+    // digestion and related maintenance topics must not be placed under the
+    // cellular-life topic merely because the language model did so.
+    if (subjectIsBiology) {
+      const family = biologySchemeFamily(`${finalSubtopic} ${finalCompetence} ${finalActivities}`);
+      const familyTopic = biologyTopicForFamily(family);
+      if (familyTopic) {
+        const topicNorm = normaliseSchemeText(finalTopic);
+        const familyNorm = normaliseSchemeText(familyTopic);
+        const clearlyWrong = (family === 'maintenance' && /cellular life|principles of cellular life/.test(topicNorm)) ||
+          (family === 'cellular' && /maintenance of the organism|continuity of life/.test(topicNorm)) ||
+          (family === 'continuity' && /cellular life|maintenance of the organism/.test(topicNorm)) ||
+          (family === 'concepts' && /cellular life|maintenance of the organism|continuity of life/.test(topicNorm));
+        if (clearlyWrong) {
+          finalTopic = familyTopic;
+          // If the verified source has a matching family, use its complete row.
+          const familyMatch = usableSource.find(r => normaliseSchemeText(r.topic).includes(familyNorm) &&
+            schemeTextScore(r.subTopic || r.subtopic, finalSubtopic) >= 0.45);
+          if (familyMatch) {
+            finalTopic = familyMatch.topic || finalTopic;
+            finalSubtopic = familyMatch.subTopic || familyMatch.subtopic || finalSubtopic;
+            finalCompetence = familyMatch.specificCompetence || familyMatch.specificCompetences || finalCompetence;
+            finalActivities = familyMatch.learningActivities || familyMatch.activities || finalActivities;
+            finalStandards = familyMatch.expectedStandard || familyMatch.expectedStandards || finalStandards;
+            finalResources = familyMatch.resources || familyMatch.aids || finalResources;
+            finalStrategies = familyMatch.strategies || familyMatch.methods || finalStrategies;
+            finalReference = familyMatch.reference || familyMatch.references || finalReference;
+          }
+        }
+      }
+    }
+
+    // Never allow a user subtopic to overwrite a verified source subtopic.
+    // If there is no source match, only accept the requested subtopic when it
+    // is reasonably coherent with the selected topic; otherwise retain the AI
+    // subtopic instead of creating an obviously contradictory row.
+    if (requestedSub && !match) {
+      const coherent = schemeTextScore(finalTopic, requestedSub) >= 0.25 ||
+        (subjectIsBiology && biologySchemeFamily(requestedSub) === biologySchemeFamily(finalTopic));
+      if (coherent) finalSubtopic = requestedSub;
+    }
+
+    const topicRow = {
+      topic: finalTopic,
+      subtopic: finalSubtopic,
+      specificCompetence: finalCompetence,
+      learningActivities: finalActivities || (finalTopic ? `Introduction and discussion of ${finalTopic}; Group/individual activities on ${finalSubtopic || finalTopic}` : ''),
+      expectedStandards: finalStandards || (finalCompetence ? `Learners demonstrate the competence: ${finalCompetence}.` : ''),
+      resources: finalResources,
+      strategies: finalStrategies,
+      reference: finalReference,
+      knowledge: match?.knowledge || topicObj.knowledge || '',
+      skills: match?.skills || topicObj.skills || '',
+      values: match?.values || topicObj.values || ''
+    };
+
+    return {
+      ...week,
+      week: weekNumber,
+      topic: topicRow.topic,
+      subTopic: topicRow.subtopic,
+      specificCompetences: topicRow.specificCompetence,
+      learningActivities: topicRow.learningActivities,
+      expectedStandards: topicRow.expectedStandards,
+      resources: topicRow.resources,
+      strategies: topicRow.strategies,
+      reference: topicRow.reference,
+      topics: [topicRow]
+    };
+  });
+}
 
 function generateCBCScheme(grade, subject, term, user, customTopics = {}) {
   const weeks = [];
@@ -1824,10 +2101,14 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       let prompt;
       
       curriculumContext = await getCurriculumContextAsync({ curriculum: curriculumType, grade, subject, term, topic, subtopic });
+      const onlineResearch = await getOnlineResearchContext({ curriculum: curriculumType, grade, subject, term, topic, subtopic });
       if (curriculumType === 'cbc') {
         prompt = generateCBCPrompt(topic, grade, subject, classSize, user, subtopic, term, curriculumContext);
       } else {
         prompt = generateOBCPrompt(topic, grade, subject, classSize, user, subtopic, term, curriculumContext);
+      }
+      if (onlineResearch) {
+        prompt += `\n\nONLINE RESEARCH ENRICHMENT (use only for examples, explanations, classroom activities and current context):\n${onlineResearch}\nRULE: Online research must NOT override the official curriculum topic, subtopic, competence, standard, code, sequence or CBC/OBC terminology.\n`;
       }
 
       console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson with DeepSeek...`);
@@ -1954,8 +2235,7 @@ Return ONLY the JSON object, no other text.
       aiContent = repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term, curriculumContext, getCBCSubjectProfile(subject));
     }
 
-    // HARD FORMAT ISOLATION: CBC follows the user's CBC sample; OBC follows the user's OBC sample.
-    // Never send fields from the other curriculum format to the frontend/exporters.
+    // HARD FORMAT ISOLATION: preserve the user's OBC format while preventing cross-format leakage.
     if (curriculumType === 'cbc') {
       delete aiContent.lessonDevelopment;
       delete aiContent.specificOutcome;
@@ -1964,7 +2244,7 @@ Return ONLY the JSON object, no other text.
       delete aiContent.curriculumKnowledge;
       delete aiContent.curriculumSkills;
       delete aiContent.curriculumValues;
-    } else {
+    } else if (curriculumType === 'obc') {
       delete aiContent.lessonProgression;
       delete aiContent.generalCompetences;
       delete aiContent.specificCompetence;
@@ -2119,22 +2399,11 @@ Return ONLY the JSON object, no other text.
     };
 
     if (curriculumType === 'cbc') {
-      delete responseData.lessonDevelopment;
-      delete responseData.specificOutcome;
-      delete responseData.learnersEvaluationText;
       responseData.lessonProgression = lessonProgressionArray;
       responseData.curriculumSourceStatus = curriculumContext?.sourceStatus || 'SOURCE_NOT_FOUND';
       responseData.curriculumSource = curriculumContext?.source || null;
       responseData.curriculumMatch = curriculumContext?.match || null;
     } else {
-      delete responseData.lessonProgression;
-      delete responseData.generalCompetences;
-      delete responseData.specificCompetence;
-      delete responseData.lessonGoal;
-      delete responseData.expectedStandard;
-      delete responseData.learningEnvironment;
-      delete responseData.materials;
-      delete responseData.homework;
       responseData.lessonDevelopment = lessonDevelopmentArray;
       responseData.curriculumSourceStatus = curriculumContext?.sourceStatus || 'OBC_SOURCE_NOT_FOUND';
       responseData.curriculumSource = curriculumContext?.source || null;
@@ -2218,15 +2487,26 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       try {
         const cdcResources = await listCDCResources({ grade, subject, term });
         const cdcRows = await loadCDCRows({ grade, subject, term });
-        if (cdcResources.length) {
-          sourcePacks = cdcResources.map((r) => ({
-            curriculum: 'cbc', subject, grade, term, sourceType: 'cdc_digital_library',
-            sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia',
-            officialSource: r.url, file: `cdc:${r.id}`,
-            title: r.title, resourceUrl: r.url, topics: [...new Set(cdcRows.filter(x => x.cdcResourceUrl === r.url || x.cdcResourceTitle === r.title).map(x => x.topic).filter(Boolean))],
-            subtopics: [...new Set(cdcRows.filter(x => x.cdcResourceUrl === r.url || x.cdcResourceTitle === r.title).map(x => x.subTopic).filter(Boolean))]
-          }));
-          if (cdcRows.length) sourceRowsDetailed = cdcRows.map((row) => ({ ...row, _source: { subject, grade, term, sourceType: 'cdc_digital_library', sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia', officialSource: row.cdcResourceUrl || '', file: `cdc:${row.cdcResourceTitle || ''}` } }));
+        if (cdcRows.length || cdcResources.length) {
+          sourcePacks = cdcResources.length
+            ? cdcResources.map((r) => ({
+                curriculum: 'cbc', subject, grade, term, sourceType: 'cdc_digital_library',
+                sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia',
+                officialSource: r.url, file: `cdc:${r.id}`,
+                title: r.title, resourceUrl: r.url, topics: [...new Set(cdcRows.filter(x => x.cdcResourceUrl === r.url || x.cdcResourceTitle === r.title).map(x => x.topic).filter(Boolean))],
+                subtopics: [...new Set(cdcRows.filter(x => x.cdcResourceUrl === r.url || x.cdcResourceTitle === r.title).map(x => x.subTopic).filter(Boolean))]
+              }))
+            : [{
+                curriculum: 'cbc', subject, grade, term,
+                sourceType: 'ministry_dcd_syllabus',
+                sourceBasis: 'Ministry of Education, Directorate of Curriculum Development — finalized syllabus',
+                officialSource: cdcRows[0]?.officialSource || '', file: 'ministry:dcd',
+                title: cdcRows[0]?.cdcResourceTitle || `${subject} ${grade} finalized syllabus`,
+                resourceUrl: cdcRows[0]?.cdcResourceUrl || cdcRows[0]?.officialSource || '',
+                topics: [...new Set(cdcRows.map(x => x.topic).filter(Boolean))],
+                subtopics: [...new Set(cdcRows.map(x => x.subTopic || x.subtopic).filter(Boolean))]
+              }];
+          if (cdcRows.length) sourceRowsDetailed = cdcRows.map((row) => ({ ...row, _source: { subject, grade, term, sourceType: row.sourceType || (cdcResources.length ? 'cdc_digital_library' : 'ministry_dcd_syllabus'), sourceBasis: row.sourceBasis || (cdcResources.length ? 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia' : 'Ministry of Education, Directorate of Curriculum Development — finalized syllabus'), officialSource: row.cdcResourceUrl || row.officialSource || '', file: `${cdcResources.length ? 'cdc' : 'ministry'}:${row.cdcResourceTitle || ''}` } }));
         }
       } catch (error) {
         console.warn(`⚠️ CDC scheme source lookup failed: ${error.message}`);
@@ -2274,6 +2554,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
     
     try {
       let prompt;
+      const schemeResearch = await getOnlineResearchContext({ curriculum: curriculumType, grade, subject, term, topic: Object.values(customTopics).filter(Boolean).join(' '), subtopic: Object.values(customSubtopics).filter(Boolean).join(' ') });
       
       if (curriculumType === 'cbc') {
         let customTopicsString = '';
@@ -2399,6 +2680,10 @@ Return ONLY valid JSON with this OBC scheme structure:
 `;
       }
 
+      if (schemeResearch) {
+        prompt += `\n\nONLINE RESEARCH ENRICHMENT (supporting evidence only):\n${schemeResearch}\nRULE: Online research may enrich activities, examples, explanations and learner tasks, but it MUST NOT override the official curriculum source, topic, subtopic, competence, standard, code, sequence, or CBC/OBC syllabus family.\n`;
+      }
+
       const messages = [
         {
           role: "system",
@@ -2492,7 +2777,7 @@ Return ONLY the JSON object, no other text.
         const finalStandards = sourceMatch?.expectedStandard || sourceMatch?.expectedStandards || standards;
         const finalResources = sourceMatch?.resources || sourceMatch?.aids || resources;
         const finalStrategies = sourceMatch?.strategies || sourceMatch?.methods || strategies;
-        const officialReferenceText = getReferenceTitles({ subject, grade, term, context: curriculumContext }).join('; ');
+        const officialReferenceText = getReferenceTitles({ subject, grade, term }).join('; ');
         const aiReferenceIsGeneric = !reference || /teacher-provided curriculum materials/i.test(String(reference));
         const finalReference = sourceMatch?.reference || sourceMatch?.references ||
           (aiReferenceIsGeneric ? officialReferenceText : reference) ||
@@ -2534,6 +2819,17 @@ Return ONLY the JSON object, no other text.
         isAssessment: week.isAssessment || false
       };
     });
+
+    // Final CBC scheme alignment gate: prevent DeepSeek or manual subtopics
+    // from creating topic/subtopic/competence mismatches. Verified source rows
+    // take priority; Biology also gets a deterministic subject-family guard.
+    if (curriculumType === 'cbc') {
+      const repairedWeeks = repairCBCSchemeAlignment(weeks, {
+        sourceRowsDetailed, customTopics, customSubtopics, assessmentWeeksList, subject
+      });
+      weeks.splice(0, weeks.length, ...repairedWeeks);
+    }
+
     if (subtopicsList.length > 0) {
       let weekIndex = 0;
       for (let i = 0; i < weeks.length; i++) {
@@ -2544,16 +2840,22 @@ Return ONLY the JSON object, no other text.
             // It belongs in the Sub-topic column, while the verified topic,
             // competence and standard remain intact.
             if (curriculumType === 'cbc') {
-              weeks[i].subTopic = manualSubtopic;
-              weeks[i].topics[0].subtopic = manualSubtopic;
+              // Do not blindly overwrite a repaired/verified CBC subtopic.
+              // The alignment gate above has already accepted the manual value
+              // only when it is coherent with the topic.
+              const current = weeks[i].subTopic || weeks[i].topics[0].subtopic || '';
+              if (!current) {
+                weeks[i].subTopic = manualSubtopic;
+                weeks[i].topics[0].subtopic = manualSubtopic;
+              }
               if (!weeks[i].specificCompetences) {
-                weeks[i].specificCompetences = `By the end of this lesson, learners will be able to understand and explain ${manualSubtopic}`;
+                weeks[i].specificCompetences = `By the end of this lesson, learners will be able to understand and explain ${weeks[i].subTopic || manualSubtopic}`;
               }
               if (!weeks[i].topics[0].specificCompetence) {
                 weeks[i].topics[0].specificCompetence = weeks[i].specificCompetences;
               }
               if (!weeks[i].expectedStandards) {
-                weeks[i].expectedStandards = `Learners explain and apply ${manualSubtopic} correctly.`;
+                weeks[i].expectedStandards = `Learners explain and apply ${weeks[i].subTopic || manualSubtopic} correctly.`;
               }
             } else {
               weeks[i].topics[0].subtopic = manualSubtopic;
@@ -4067,9 +4369,11 @@ app.get('/api/curriculum/topics', async (req, res) => {
       try {
         const cdcResources = await listCDCResources({ grade, subject, term });
         const cdcRows = await loadCDCRows({ grade, subject, term });
-        if (cdcResources.length) {
-          sources = cdcResources.map((r) => ({ curriculum: 'cbc', subject, grade, term, sourceType: 'cdc_digital_library', sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia', officialSource: r.url, title: r.title, file: `cdc:${r.id}` }));
-          rows = cdcRows.map((r) => ({ ...r, _source: { subject, grade, term, sourceType: 'cdc_digital_library', sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia', officialSource: r.cdcResourceUrl || '', file: `cdc:${r.cdcResourceTitle || ''}` } }));
+        if (cdcResources.length || cdcRows.length) {
+          sources = cdcResources.length
+            ? cdcResources.map((r) => ({ curriculum: 'cbc', subject, grade, term, sourceType: 'cdc_digital_library', sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia', officialSource: r.url, title: r.title, file: `cdc:${r.id}` }))
+            : [{ curriculum: 'cbc', subject, grade, term, sourceType: 'ministry_dcd_syllabus', sourceBasis: 'Ministry of Education, Directorate of Curriculum Development — finalized syllabus', officialSource: cdcRows[0]?.officialSource || '', title: cdcRows[0]?.cdcResourceTitle || `${subject} ${grade} finalized syllabus`, file: 'ministry:dcd' }];
+          rows = cdcRows.map((r) => ({ ...r, _source: { subject, grade, term, sourceType: r.sourceType || (cdcResources.length ? 'cdc_digital_library' : 'ministry_dcd_syllabus'), sourceBasis: r.sourceBasis || (cdcResources.length ? 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia' : 'Ministry of Education, Directorate of Curriculum Development — finalized syllabus'), officialSource: r.cdcResourceUrl || r.officialSource || '', file: `${cdcResources.length ? 'cdc' : 'ministry'}:${r.cdcResourceTitle || ''}` } }));
         }
       } catch (error) { console.warn(`⚠️ CDC topics unavailable: ${error.message}`); }
     }
