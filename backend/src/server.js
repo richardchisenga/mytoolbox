@@ -17,6 +17,20 @@ const { listCDCResources, loadCDCRows } = require('./utils/cdcLibrary');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Safe term label used by Word/PDF exporters.
+function termWord(term) {
+  const raw = String(term ?? '').trim();
+  const n = raw.match(/\d+/)?.[0];
+  if (n === '1') return 'ONE';
+  if (n === '2') return 'TWO';
+  if (n === '3') return 'THREE';
+  if (/^first$/i.test(raw)) return 'ONE';
+  if (/^second$/i.test(raw)) return 'TWO';
+  if (/^third$/i.test(raw)) return 'THREE';
+  return raw || '';
+}
+
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -1224,6 +1238,157 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
 }
 
 // ============ CBC SCHEME GENERATOR ============
+
+
+function normaliseSchemeText(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function schemeTokens(value) {
+  const stop = new Set(['the','and','of','in','to','for','on','a','an','with','by','from','use','using','understanding','demonstrate','explain','apply','learners','learner']);
+  return new Set(normaliseSchemeText(value).split(/\s+/).filter(t => t.length > 2 && !stop.has(t)));
+}
+
+function schemeTextScore(a, b) {
+  const aa = schemeTokens(a), bb = schemeTokens(b);
+  if (!aa.size || !bb.size) return 0;
+  let common = 0;
+  for (const t of aa) if (bb.has(t)) common++;
+  return common / Math.max(1, Math.min(aa.size, bb.size));
+}
+
+function biologySchemeFamily(text) {
+  const t = normaliseSchemeText(text);
+  if (/cell|microscop|organelle|diffusion|osmosis|mitosis|meiosis|cellular/.test(t)) return 'cellular';
+  if (/reproduc|sexual|asexual|fertilis|gamete|embryo|development/.test(t)) return 'continuity';
+  if (/response|tropic|taxic|stimulus|coordination|nervous|hormone|excretion|homeostasis|photosynthesis|nutrition|digest|transport/.test(t)) return 'maintenance';
+  if (/science|inquiry|branch|organisation|organization|characteristics of living|nature of science/.test(t)) return 'concepts';
+  return '';
+}
+
+function biologyTopicForFamily(family) {
+  return {
+    concepts: '1.1.0 Concepts and Methods in Biology',
+    cellular: '1.2.0 Principles of Cellular Life',
+    maintenance: '1.3.0 Maintenance of the Organism',
+    continuity: '1.4.0 Continuity of Life'
+  }[family] || '';
+}
+
+function repairCBCSchemeAlignment(weeks, options = {}) {
+  const {
+    sourceRowsDetailed = [], customTopics = {}, customSubtopics = {},
+    assessmentWeeksList = [3, 6, 9, 12], subject = ''
+  } = options;
+  if (!Array.isArray(weeks)) return [];
+
+  const sourceRows = Array.isArray(sourceRowsDetailed) ? sourceRowsDetailed.filter(r => r && (r.topic || r.subTopic || r.subtopic)) : [];
+  const subjectIsBiology = /biology/i.test(String(subject));
+  const usableSource = sourceRows.filter(r => !/assessment/i.test(String(r.topic || '')));
+
+  return weeks.map((week, index) => {
+    const weekNumber = Number(week.week || index + 1);
+    if (assessmentWeeksList.includes(weekNumber) || week.isAssessment || week.isRevision) return week;
+
+    const topicObj = Array.isArray(week.topics) && week.topics.length ? week.topics[0] : week;
+    const currentTopic = topicObj.topic || week.topic || '';
+    const currentSub = topicObj.subtopic || week.subTopic || week.subtopic || '';
+    const requestedTopic = customTopics[weekNumber] || customTopics[String(weekNumber)] || '';
+    const requestedSub = customSubtopics[weekNumber] || customSubtopics[String(weekNumber)] || '';
+
+    // Prefer an exact verified source row for this week/topic/subtopic.
+    let match = usableSource.find(r => Number(r.week) === weekNumber);
+    if (!match && requestedTopic) {
+      match = usableSource.find(r => schemeTextScore(r.topic, requestedTopic) >= 0.65);
+    }
+    if (!match && requestedSub) {
+      match = usableSource.find(r => schemeTextScore(r.subTopic || r.subtopic, requestedSub) >= 0.65);
+    }
+    if (!match && currentTopic) {
+      match = usableSource.find(r => schemeTextScore(r.topic, currentTopic) >= 0.75);
+    }
+
+    let finalTopic = match?.topic || requestedTopic || currentTopic;
+    let finalSubtopic = match?.subTopic || match?.subtopic || requestedSub || currentSub;
+    let finalCompetence = match?.specificCompetence || match?.specificCompetences || topicObj.specificCompetence || topicObj.specificCompetences || '';
+    let finalActivities = match?.learningActivities || match?.activities || topicObj.learningActivities || topicObj.activities || '';
+    let finalStandards = match?.expectedStandard || match?.expectedStandards || topicObj.expectedStandard || topicObj.expectedStandards || '';
+    let finalResources = match?.resources || match?.aids || topicObj.resources || topicObj.aids || '';
+    let finalStrategies = match?.strategies || match?.methods || topicObj.strategies || topicObj.methods || '';
+    let finalReference = match?.reference || match?.references || topicObj.reference || topicObj.references || '';
+
+    // Biology has a small deterministic guard against the exact failure seen
+    // in generated schemes: plant/animal responses, photosynthesis, transport,
+    // digestion and related maintenance topics must not be placed under the
+    // cellular-life topic merely because the language model did so.
+    if (subjectIsBiology) {
+      const family = biologySchemeFamily(`${finalSubtopic} ${finalCompetence} ${finalActivities}`);
+      const familyTopic = biologyTopicForFamily(family);
+      if (familyTopic) {
+        const topicNorm = normaliseSchemeText(finalTopic);
+        const familyNorm = normaliseSchemeText(familyTopic);
+        const clearlyWrong = (family === 'maintenance' && /cellular life|principles of cellular life/.test(topicNorm)) ||
+          (family === 'cellular' && /maintenance of the organism|continuity of life/.test(topicNorm)) ||
+          (family === 'continuity' && /cellular life|maintenance of the organism/.test(topicNorm)) ||
+          (family === 'concepts' && /cellular life|maintenance of the organism|continuity of life/.test(topicNorm));
+        if (clearlyWrong) {
+          finalTopic = familyTopic;
+          // If the verified source has a matching family, use its complete row.
+          const familyMatch = usableSource.find(r => normaliseSchemeText(r.topic).includes(familyNorm) &&
+            schemeTextScore(r.subTopic || r.subtopic, finalSubtopic) >= 0.45);
+          if (familyMatch) {
+            finalTopic = familyMatch.topic || finalTopic;
+            finalSubtopic = familyMatch.subTopic || familyMatch.subtopic || finalSubtopic;
+            finalCompetence = familyMatch.specificCompetence || familyMatch.specificCompetences || finalCompetence;
+            finalActivities = familyMatch.learningActivities || familyMatch.activities || finalActivities;
+            finalStandards = familyMatch.expectedStandard || familyMatch.expectedStandards || finalStandards;
+            finalResources = familyMatch.resources || familyMatch.aids || finalResources;
+            finalStrategies = familyMatch.strategies || familyMatch.methods || finalStrategies;
+            finalReference = familyMatch.reference || familyMatch.references || finalReference;
+          }
+        }
+      }
+    }
+
+    // Never allow a user subtopic to overwrite a verified source subtopic.
+    // If there is no source match, only accept the requested subtopic when it
+    // is reasonably coherent with the selected topic; otherwise retain the AI
+    // subtopic instead of creating an obviously contradictory row.
+    if (requestedSub && !match) {
+      const coherent = schemeTextScore(finalTopic, requestedSub) >= 0.25 ||
+        (subjectIsBiology && biologySchemeFamily(requestedSub) === biologySchemeFamily(finalTopic));
+      if (coherent) finalSubtopic = requestedSub;
+    }
+
+    const topicRow = {
+      topic: finalTopic,
+      subtopic: finalSubtopic,
+      specificCompetence: finalCompetence,
+      learningActivities: finalActivities || (finalTopic ? `Introduction and discussion of ${finalTopic}; Group/individual activities on ${finalSubtopic || finalTopic}` : ''),
+      expectedStandards: finalStandards || (finalCompetence ? `Learners demonstrate the competence: ${finalCompetence}.` : ''),
+      resources: finalResources,
+      strategies: finalStrategies,
+      reference: finalReference,
+      knowledge: match?.knowledge || topicObj.knowledge || '',
+      skills: match?.skills || topicObj.skills || '',
+      values: match?.values || topicObj.values || ''
+    };
+
+    return {
+      ...week,
+      week: weekNumber,
+      topic: topicRow.topic,
+      subTopic: topicRow.subtopic,
+      specificCompetences: topicRow.specificCompetence,
+      learningActivities: topicRow.learningActivities,
+      expectedStandards: topicRow.expectedStandards,
+      resources: topicRow.resources,
+      strategies: topicRow.strategies,
+      reference: topicRow.reference,
+      topics: [topicRow]
+    };
+  });
+}
 
 function generateCBCScheme(grade, subject, term, user, customTopics = {}) {
   const weeks = [];
@@ -2485,7 +2650,7 @@ Return ONLY the JSON object, no other text.
         const finalStandards = sourceMatch?.expectedStandard || sourceMatch?.expectedStandards || standards;
         const finalResources = sourceMatch?.resources || sourceMatch?.aids || resources;
         const finalStrategies = sourceMatch?.strategies || sourceMatch?.methods || strategies;
-        const officialReferenceText = getReferenceTitles({ subject, grade, term }).join('; ');
+        const officialReferenceText = getReferenceTitles({ subject, grade, term, context: curriculumContext }).join('; ');
         const aiReferenceIsGeneric = !reference || /teacher-provided curriculum materials/i.test(String(reference));
         const finalReference = sourceMatch?.reference || sourceMatch?.references ||
           (aiReferenceIsGeneric ? officialReferenceText : reference) ||
@@ -2527,6 +2692,17 @@ Return ONLY the JSON object, no other text.
         isAssessment: week.isAssessment || false
       };
     });
+
+    // Final CBC scheme alignment gate: prevent DeepSeek or manual subtopics
+    // from creating topic/subtopic/competence mismatches. Verified source rows
+    // take priority; Biology also gets a deterministic subject-family guard.
+    if (curriculumType === 'cbc') {
+      const repairedWeeks = repairCBCSchemeAlignment(weeks, {
+        sourceRowsDetailed, customTopics, customSubtopics, assessmentWeeksList, subject
+      });
+      weeks.splice(0, weeks.length, ...repairedWeeks);
+    }
+
     if (subtopicsList.length > 0) {
       let weekIndex = 0;
       for (let i = 0; i < weeks.length; i++) {
@@ -2537,16 +2713,22 @@ Return ONLY the JSON object, no other text.
             // It belongs in the Sub-topic column, while the verified topic,
             // competence and standard remain intact.
             if (curriculumType === 'cbc') {
-              weeks[i].subTopic = manualSubtopic;
-              weeks[i].topics[0].subtopic = manualSubtopic;
+              // Do not blindly overwrite a repaired/verified CBC subtopic.
+              // The alignment gate above has already accepted the manual value
+              // only when it is coherent with the topic.
+              const current = weeks[i].subTopic || weeks[i].topics[0].subtopic || '';
+              if (!current) {
+                weeks[i].subTopic = manualSubtopic;
+                weeks[i].topics[0].subtopic = manualSubtopic;
+              }
               if (!weeks[i].specificCompetences) {
-                weeks[i].specificCompetences = `By the end of this lesson, learners will be able to understand and explain ${manualSubtopic}`;
+                weeks[i].specificCompetences = `By the end of this lesson, learners will be able to understand and explain ${weeks[i].subTopic || manualSubtopic}`;
               }
               if (!weeks[i].topics[0].specificCompetence) {
                 weeks[i].topics[0].specificCompetence = weeks[i].specificCompetences;
               }
               if (!weeks[i].expectedStandards) {
-                weeks[i].expectedStandards = `Learners explain and apply ${manualSubtopic} correctly.`;
+                weeks[i].expectedStandards = `Learners explain and apply ${weeks[i].subTopic || manualSubtopic} correctly.`;
               }
             } else {
               weeks[i].topics[0].subtopic = manualSubtopic;
