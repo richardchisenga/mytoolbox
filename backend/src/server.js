@@ -2485,7 +2485,7 @@ Return ONLY the JSON object, no other text.
         const finalStandards = sourceMatch?.expectedStandard || sourceMatch?.expectedStandards || standards;
         const finalResources = sourceMatch?.resources || sourceMatch?.aids || resources;
         const finalStrategies = sourceMatch?.strategies || sourceMatch?.methods || strategies;
-        const officialReferenceText = getReferenceTitles({ subject, grade, term, context: curriculumContext }).join('; ');
+        const officialReferenceText = getReferenceTitles({ subject, grade, term }).join('; ');
         const aiReferenceIsGeneric = !reference || /teacher-provided curriculum materials/i.test(String(reference));
         const finalReference = sourceMatch?.reference || sourceMatch?.references ||
           (aiReferenceIsGeneric ? officialReferenceText : reference) ||
