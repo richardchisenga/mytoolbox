@@ -198,10 +198,38 @@ async function downloadPdfText(url) {
   const key = `pdf-${safeName(url)}`;
   const cached = readCache(key);
   if (cached) return cached.text || '';
-  const response = await fetch(url, { headers: { 'User-Agent': 'MyToolbox-CBC-Curriculum/1.0' } });
+
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': 'MyToolbox-CBC-Curriculum/1.0',
+      'Accept': 'application/pdf,application/octet-stream;q=0.9,*/*;q=0.1'
+    },
+    redirect: 'follow'
+  });
   if (!response.ok) throw new Error(`CDC PDF HTTP ${response.status}`);
+
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
   const buffer = Buffer.from(await response.arrayBuffer());
-  const parsed = await pdfParse(buffer);
+
+  // CDC occasionally returns an HTML error/resource page with a 200 status.
+  // pdf-parse then emits misleading "invalid character" / "invalid PDF"
+  // warnings. Validate both the MIME type and the PDF magic header first.
+  const isPdfSignature = buffer.length >= 5 && buffer.subarray(0, 5).toString('ascii') === '%PDF-';
+  const looksHtml = /^text\/html|application\/(xhtml\+xml)/i.test(contentType) ||
+    /^\s*<(?:!doctype\s+html|html|head|body)\b/i.test(buffer.toString('utf8', 0, Math.min(buffer.length, 512)));
+
+  if (!isPdfSignature || looksHtml) {
+    const detail = contentType ? `content-type ${contentType}` : 'unknown content-type';
+    throw new Error(`CDC file is not a valid PDF (${detail})`);
+  }
+
+  let parsed;
+  try {
+    parsed = await pdfParse(buffer);
+  } catch (error) {
+    throw new Error(`CDC PDF parse failed: ${error.message}`);
+  }
+
   const text = String(parsed.text || '').replace(/\s+/g, ' ').trim().slice(0, 500000);
   writeCache(key, { text, pages: parsed.numpages || 0 });
   return text;
@@ -278,8 +306,14 @@ async function loadCDCRows({ grade, subject, term = '' } = {}) {
   for (const item of ordered) {
     try {
       const detail = await getCDCResource(item.id);
-      const downloadUrl = detail.downloadUrl || item.url;
-      if (!downloadUrl) continue;
+      // Never treat the CDC resource HTML page itself as a PDF. If the
+      // resource page does not expose a downloadable/viewable file URL,
+      // skip it and continue with the next CDC resource.
+      const downloadUrl = detail.downloadUrl;
+      if (!downloadUrl) {
+        console.warn(`⚠️ CDC resource ${item.id} has no downloadable file; skipped`);
+        continue;
+      }
       const text = await downloadPdfText(downloadUrl);
       const resource = { ...item, pageUrl: detail.pageUrl, downloadUrl };
       rows.push(...extractRowsFromText(text, resource));
