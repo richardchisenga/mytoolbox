@@ -31,6 +31,82 @@ function termWord(term) {
   return raw || '';
 }
 
+
+
+// ============ ONLINE RESEARCH ENRICHMENT ============
+// Online sources enrich examples, explanations and activities only. They never
+// override the selected official CBC/OBC curriculum source or its terminology.
+async function getOnlineResearchContext({ curriculum, grade, subject, term = '', topic = '', subtopic = '' } = {}) {
+  const query = [
+    'Zambia', String(subject || ''), String(grade || ''), String(term || ''),
+    String(topic || ''), String(subtopic || ''), 'education lesson teaching'
+  ].filter(Boolean).join(' ');
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 7000);
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'MyToolbox-Online-Research/1.0' },
+      signal: controller.signal,
+      redirect: 'follow'
+    });
+    clearTimeout(timer);
+    if (!response.ok) throw new Error(`Search HTTP ${response.status}`);
+    const html = await response.text();
+    const clean = (v) => String(v || '')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').replace(/&#39;/gi, "'")
+      .replace(/\s+/g, ' ').trim();
+    const results = [];
+    const re = /<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    let m;
+    while ((m = re.exec(html)) && results.length < 5) {
+      const title = clean(m[2]);
+      let href = m[1];
+      try { href = new URL(href, 'https://html.duckduckgo.com').toString(); } catch {}
+      if (!title || !href) continue;
+      const snippetStart = m.index;
+      const tail = html.slice(snippetStart, snippetStart + 5000);
+      const sm = tail.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i) || tail.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/div>/i);
+      results.push({ title, url: href, snippet: sm ? clean(sm[1]).slice(0, 700) : '' });
+    }
+    // Prefer official Zambian education sources when present.
+    results.sort((a,b) => {
+      const score = (r) => /edu\.gov\.zm|cdcrepository\.info/i.test(r.url) ? 100 : (/ac\.|org\./i.test(r.url) ? 20 : 0);
+      return score(b) - score(a);
+    });
+    const selected = results.slice(0, 4);
+    if (!selected.length) return '';
+    const enriched = [];
+    for (const r of selected) {
+      let pageText = '';
+      try {
+        const pageController = new AbortController();
+        const pageTimer = setTimeout(() => pageController.abort(), 5000);
+        const pageResponse = await fetch(r.url, {
+          headers: { 'User-Agent': 'MyToolbox-Online-Research/1.0' },
+          signal: pageController.signal,
+          redirect: 'follow'
+        });
+        clearTimeout(pageTimer);
+        if (pageResponse.ok) {
+          const type = String(pageResponse.headers.get('content-type') || '').toLowerCase();
+          if (type.includes('text/html') || type.includes('text/plain')) {
+            pageText = clean(await pageResponse.text()).slice(0, 1800);
+          }
+        }
+      } catch (error) {}
+      enriched.push({ ...r, pageText });
+    }
+    return enriched.map((r, i) => `${i + 1}. ${r.title}\\nURL: ${r.url}\\nSearch summary: ${r.snippet || 'No snippet available.'}${r.pageText ? `\\nPage evidence: ${r.pageText}` : ''}`).join('\\n\\n');
+  } catch (error) {
+    console.warn(`⚠️ Online research unavailable: ${error.message}`);
+    return '';
+  }
+}
+
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -2014,10 +2090,14 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       let prompt;
       
       curriculumContext = await getCurriculumContextAsync({ curriculum: curriculumType, grade, subject, term, topic, subtopic });
+      const onlineResearch = await getOnlineResearchContext({ curriculum: curriculumType, grade, subject, term, topic, subtopic });
       if (curriculumType === 'cbc') {
         prompt = generateCBCPrompt(topic, grade, subject, classSize, user, subtopic, term, curriculumContext);
       } else {
         prompt = generateOBCPrompt(topic, grade, subject, classSize, user, subtopic, term, curriculumContext);
+      }
+      if (onlineResearch) {
+        prompt += `\n\nONLINE RESEARCH ENRICHMENT (use only for examples, explanations, classroom activities and current context):\n${onlineResearch}\nRULE: Online research must NOT override the official curriculum topic, subtopic, competence, standard, code, sequence or CBC/OBC terminology.\n`;
       }
 
       console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson with DeepSeek...`);
@@ -2376,15 +2456,26 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       try {
         const cdcResources = await listCDCResources({ grade, subject, term });
         const cdcRows = await loadCDCRows({ grade, subject, term });
-        if (cdcResources.length) {
-          sourcePacks = cdcResources.map((r) => ({
-            curriculum: 'cbc', subject, grade, term, sourceType: 'cdc_digital_library',
-            sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia',
-            officialSource: r.url, file: `cdc:${r.id}`,
-            title: r.title, resourceUrl: r.url, topics: [...new Set(cdcRows.filter(x => x.cdcResourceUrl === r.url || x.cdcResourceTitle === r.title).map(x => x.topic).filter(Boolean))],
-            subtopics: [...new Set(cdcRows.filter(x => x.cdcResourceUrl === r.url || x.cdcResourceTitle === r.title).map(x => x.subTopic).filter(Boolean))]
-          }));
-          if (cdcRows.length) sourceRowsDetailed = cdcRows.map((row) => ({ ...row, _source: { subject, grade, term, sourceType: 'cdc_digital_library', sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia', officialSource: row.cdcResourceUrl || '', file: `cdc:${row.cdcResourceTitle || ''}` } }));
+        if (cdcRows.length || cdcResources.length) {
+          sourcePacks = cdcResources.length
+            ? cdcResources.map((r) => ({
+                curriculum: 'cbc', subject, grade, term, sourceType: 'cdc_digital_library',
+                sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia',
+                officialSource: r.url, file: `cdc:${r.id}`,
+                title: r.title, resourceUrl: r.url, topics: [...new Set(cdcRows.filter(x => x.cdcResourceUrl === r.url || x.cdcResourceTitle === r.title).map(x => x.topic).filter(Boolean))],
+                subtopics: [...new Set(cdcRows.filter(x => x.cdcResourceUrl === r.url || x.cdcResourceTitle === r.title).map(x => x.subTopic).filter(Boolean))]
+              }))
+            : [{
+                curriculum: 'cbc', subject, grade, term,
+                sourceType: 'ministry_dcd_syllabus',
+                sourceBasis: 'Ministry of Education, Directorate of Curriculum Development — finalized syllabus',
+                officialSource: cdcRows[0]?.officialSource || '', file: 'ministry:dcd',
+                title: cdcRows[0]?.cdcResourceTitle || `${subject} ${grade} finalized syllabus`,
+                resourceUrl: cdcRows[0]?.cdcResourceUrl || cdcRows[0]?.officialSource || '',
+                topics: [...new Set(cdcRows.map(x => x.topic).filter(Boolean))],
+                subtopics: [...new Set(cdcRows.map(x => x.subTopic || x.subtopic).filter(Boolean))]
+              }];
+          if (cdcRows.length) sourceRowsDetailed = cdcRows.map((row) => ({ ...row, _source: { subject, grade, term, sourceType: row.sourceType || (cdcResources.length ? 'cdc_digital_library' : 'ministry_dcd_syllabus'), sourceBasis: row.sourceBasis || (cdcResources.length ? 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia' : 'Ministry of Education, Directorate of Curriculum Development — finalized syllabus'), officialSource: row.cdcResourceUrl || row.officialSource || '', file: `${cdcResources.length ? 'cdc' : 'ministry'}:${row.cdcResourceTitle || ''}` } }));
         }
       } catch (error) {
         console.warn(`⚠️ CDC scheme source lookup failed: ${error.message}`);
@@ -2432,6 +2523,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
     
     try {
       let prompt;
+      const schemeResearch = await getOnlineResearchContext({ curriculum: curriculumType, grade, subject, term, topic: Object.values(customTopics).filter(Boolean).join(' '), subtopic: Object.values(customSubtopics).filter(Boolean).join(' ') });
       
       if (curriculumType === 'cbc') {
         let customTopicsString = '';
@@ -2557,6 +2649,10 @@ Return ONLY valid JSON with this OBC scheme structure:
 `;
       }
 
+      if (schemeResearch) {
+        prompt += `\n\nONLINE RESEARCH ENRICHMENT (supporting evidence only):\n${schemeResearch}\nRULE: Online research may enrich activities, examples, explanations and learner tasks, but it MUST NOT override the official curriculum source, topic, subtopic, competence, standard, code, sequence, or CBC/OBC syllabus family.\n`;
+      }
+
       const messages = [
         {
           role: "system",
@@ -2650,7 +2746,7 @@ Return ONLY the JSON object, no other text.
         const finalStandards = sourceMatch?.expectedStandard || sourceMatch?.expectedStandards || standards;
         const finalResources = sourceMatch?.resources || sourceMatch?.aids || resources;
         const finalStrategies = sourceMatch?.strategies || sourceMatch?.methods || strategies;
-        const officialReferenceText = getReferenceTitles({ subject, grade, term, context: curriculumContext }).join('; ');
+        const officialReferenceText = getReferenceTitles({ subject, grade, term }).join('; ');
         const aiReferenceIsGeneric = !reference || /teacher-provided curriculum materials/i.test(String(reference));
         const finalReference = sourceMatch?.reference || sourceMatch?.references ||
           (aiReferenceIsGeneric ? officialReferenceText : reference) ||
@@ -4242,9 +4338,11 @@ app.get('/api/curriculum/topics', async (req, res) => {
       try {
         const cdcResources = await listCDCResources({ grade, subject, term });
         const cdcRows = await loadCDCRows({ grade, subject, term });
-        if (cdcResources.length) {
-          sources = cdcResources.map((r) => ({ curriculum: 'cbc', subject, grade, term, sourceType: 'cdc_digital_library', sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia', officialSource: r.url, title: r.title, file: `cdc:${r.id}` }));
-          rows = cdcRows.map((r) => ({ ...r, _source: { subject, grade, term, sourceType: 'cdc_digital_library', sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia', officialSource: r.cdcResourceUrl || '', file: `cdc:${r.cdcResourceTitle || ''}` } }));
+        if (cdcResources.length || cdcRows.length) {
+          sources = cdcResources.length
+            ? cdcResources.map((r) => ({ curriculum: 'cbc', subject, grade, term, sourceType: 'cdc_digital_library', sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia', officialSource: r.url, title: r.title, file: `cdc:${r.id}` }))
+            : [{ curriculum: 'cbc', subject, grade, term, sourceType: 'ministry_dcd_syllabus', sourceBasis: 'Ministry of Education, Directorate of Curriculum Development — finalized syllabus', officialSource: cdcRows[0]?.officialSource || '', title: cdcRows[0]?.cdcResourceTitle || `${subject} ${grade} finalized syllabus`, file: 'ministry:dcd' }];
+          rows = cdcRows.map((r) => ({ ...r, _source: { subject, grade, term, sourceType: r.sourceType || (cdcResources.length ? 'cdc_digital_library' : 'ministry_dcd_syllabus'), sourceBasis: r.sourceBasis || (cdcResources.length ? 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia' : 'Ministry of Education, Directorate of Curriculum Development — finalized syllabus'), officialSource: r.cdcResourceUrl || r.officialSource || '', file: `${cdcResources.length ? 'cdc' : 'ministry'}:${r.cdcResourceTitle || ''}` } }));
         }
       } catch (error) { console.warn(`⚠️ CDC topics unavailable: ${error.message}`); }
     }
