@@ -37,86 +37,9 @@ function termWord(term) {
 // Online sources enrich examples, explanations and activities only. They never
 // override the selected official CBC/OBC curriculum source or its terminology.
 async function getOnlineResearchContext({ curriculum, grade, subject, term = '', topic = '', subtopic = '' } = {}) {
-  const query = [
-    'Zambia', String(subject || ''), String(grade || ''), String(term || ''),
-    String(topic || ''), String(subtopic || ''), 'education lesson teaching'
-  ].filter(Boolean).join(' ');
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15000);
-    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-    let response;
-    try {
-      response = await fetch(url, {
-        headers: { 'User-Agent': 'MyToolbox-Online-Research/1.0' },
-        signal: controller.signal,
-        redirect: 'follow'
-      });
-    } finally {
-      clearTimeout(timer);
-    }
-    if (!response.ok) throw new Error(`Search HTTP ${response.status}`);
-    const html = await response.text();
-    const clean = (v) => String(v || '')
-      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').replace(/&#39;/gi, "'")
-      .replace(/\s+/g, ' ').trim();
-    const results = [];
-    const re = /<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-    let m;
-    while ((m = re.exec(html)) && results.length < 5) {
-      const title = clean(m[2]);
-      let href = m[1];
-      try { href = new URL(href, 'https://html.duckduckgo.com').toString(); } catch {}
-      if (!title || !href) continue;
-      const snippetStart = m.index;
-      const tail = html.slice(snippetStart, snippetStart + 5000);
-      const sm = tail.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i) || tail.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/div>/i);
-      results.push({ title, url: href, snippet: sm ? clean(sm[1]).slice(0, 700) : '' });
-    }
-    // Prefer official Zambian education sources when present.
-    results.sort((a,b) => {
-      const score = (r) => /edu\.gov\.zm|cdcrepository\.info/i.test(r.url) ? 100 : (/ac\.|org\./i.test(r.url) ? 20 : 0);
-      return score(b) - score(a);
-    });
-    const selected = results.slice(0, 4);
-    if (!selected.length) return '';
-    const enriched = [];
-    for (const r of selected) {
-      let pageText = '';
-      try {
-        const pageController = new AbortController();
-        const pageTimer = setTimeout(() => pageController.abort(), 7000);
-        let pageResponse;
-        try {
-          pageResponse = await fetch(r.url, {
-            headers: { 'User-Agent': 'MyToolbox-Online-Research/1.0' },
-            signal: pageController.signal,
-            redirect: 'follow'
-          });
-        } finally {
-          clearTimeout(pageTimer);
-        }
-        if (pageResponse && pageResponse.ok) {
-          const type = String(pageResponse.headers.get('content-type') || '').toLowerCase();
-          if (type.includes('text/html') || type.includes('text/plain')) {
-            pageText = clean(await pageResponse.text()).slice(0, 1800);
-          }
-        }
-      } catch (error) {}
-      enriched.push({ ...r, pageText });
-    }
-    return enriched.map((r, i) => `${i + 1}. ${r.title}\\nURL: ${r.url}\\nSearch summary: ${r.snippet || 'No snippet available.'}${r.pageText ? `\\nPage evidence: ${r.pageText}` : ''}`).join('\\n\\n');
-  } catch (error) {
-    const msg = String(error?.message || 'unknown error');
-    if (!getOnlineResearchContext._lastFailure || Date.now() - getOnlineResearchContext._lastFailure > 60000) {
-      console.warn(`⚠️ Online research unavailable: ${msg}`);
-      getOnlineResearchContext._lastFailure = Date.now();
-    }
-    return '';
-  }
+  // External web research is intentionally disabled. Curriculum generation must
+  // rely only on the application's official/local curriculum sources.
+  return '';
 }
 
 const prisma = new PrismaClient();
