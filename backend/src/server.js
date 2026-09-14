@@ -43,14 +43,18 @@ async function getOnlineResearchContext({ curriculum, grade, subject, term = '',
   ].filter(Boolean).join(' ');
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 7000);
+    const timer = setTimeout(() => controller.abort(), 15000);
     const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-    const response = await fetch(url, {
-      headers: { 'User-Agent': 'MyToolbox-Online-Research/1.0' },
-      signal: controller.signal,
-      redirect: 'follow'
-    });
-    clearTimeout(timer);
+    let response;
+    try {
+      response = await fetch(url, {
+        headers: { 'User-Agent': 'MyToolbox-Online-Research/1.0' },
+        signal: controller.signal,
+        redirect: 'follow'
+      });
+    } finally {
+      clearTimeout(timer);
+    }
     if (!response.ok) throw new Error(`Search HTTP ${response.status}`);
     const html = await response.text();
     const clean = (v) => String(v || '')
@@ -84,14 +88,18 @@ async function getOnlineResearchContext({ curriculum, grade, subject, term = '',
       let pageText = '';
       try {
         const pageController = new AbortController();
-        const pageTimer = setTimeout(() => pageController.abort(), 5000);
-        const pageResponse = await fetch(r.url, {
-          headers: { 'User-Agent': 'MyToolbox-Online-Research/1.0' },
-          signal: pageController.signal,
-          redirect: 'follow'
-        });
-        clearTimeout(pageTimer);
-        if (pageResponse.ok) {
+        const pageTimer = setTimeout(() => pageController.abort(), 7000);
+        let pageResponse;
+        try {
+          pageResponse = await fetch(r.url, {
+            headers: { 'User-Agent': 'MyToolbox-Online-Research/1.0' },
+            signal: pageController.signal,
+            redirect: 'follow'
+          });
+        } finally {
+          clearTimeout(pageTimer);
+        }
+        if (pageResponse && pageResponse.ok) {
           const type = String(pageResponse.headers.get('content-type') || '').toLowerCase();
           if (type.includes('text/html') || type.includes('text/plain')) {
             pageText = clean(await pageResponse.text()).slice(0, 1800);
