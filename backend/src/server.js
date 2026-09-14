@@ -17,66 +17,6 @@ const { listCDCResources, loadCDCRows } = require('./utils/cdcLibrary');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// Safe term label used by Word/PDF exporters.
-function termWord(term) {
-  const raw = String(term ?? '').trim();
-  const n = raw.match(/\d+/)?.[0];
-  if (n === '1') return 'ONE';
-  if (n === '2') return 'TWO';
-  if (n === '3') return 'THREE';
-  if (/^first$/i.test(raw)) return 'ONE';
-  if (/^second$/i.test(raw)) return 'TWO';
-  if (/^third$/i.test(raw)) return 'THREE';
-  return raw || '';
-}
-
-
-
-// ============ ONLINE RESEARCH ENRICHMENT ============
-// Online sources are enrichment only. Official CBC/OBC curriculum sources remain authoritative.
-async function getOnlineResearchContext({ curriculum, grade, subject, term = '', topic = '', subtopic = '' } = {}) {
-  const query = ['Zambia', subject, grade, term, topic, subtopic, 'education lesson teaching']
-    .filter(Boolean).join(' ');
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 7000);
-    const response = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
-      headers: { 'User-Agent': 'MyToolbox-Online-Research/1.0' },
-      signal: controller.signal,
-      redirect: 'follow'
-    });
-    clearTimeout(timeout);
-    if (!response.ok) throw new Error(`Search HTTP ${response.status}`);
-    const html = await response.text();
-    const clean = (v) => String(v || '')
-      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').replace(/&#39;/gi, "'")
-      .replace(/\s+/g, ' ').trim();
-    const results = [];
-    const re = /<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-    let m;
-    while ((m = re.exec(html)) && results.length < 6) {
-      let href = m[1];
-      try { href = new URL(href, 'https://html.duckduckgo.com').toString(); } catch {}
-      const title = clean(m[2]);
-      const tail = html.slice(m.index, m.index + 5000);
-      const sm = tail.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/(?:a|div)>/i);
-      if (title && href) results.push({ title, url: href, snippet: sm ? clean(sm[1]).slice(0, 700) : '' });
-    }
-    results.sort((a,b) => {
-      const score = r => /edu\.gov\.zm|cdcrepository\.info/i.test(r.url) ? 100 : (/\.edu\.|\.ac\.|\.org\./i.test(r.url) ? 20 : 0);
-      return score(b)-score(a);
-    });
-    return results.slice(0,4).map((r,i) => `${i+1}. ${r.title}\nURL: ${r.url}\nSummary: ${r.snippet || 'No snippet available.'}`).join('\n\n');
-  } catch (error) {
-    console.warn(`⚠️ Online research unavailable: ${error.message}`);
-    return '';
-  }
-}
-
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -735,60 +675,35 @@ function generateVerifiedCBCProgression(topic, subtopic, subject, grade, cm = {}
   const exactTopic = String(topic || cm.topic || '').trim();
   const exactSubtopic = String(subtopic || cm.subTopic || cm.subtopic || '').trim();
   const focus = exactSubtopic || exactTopic;
+  const key = `${exactTopic} ${exactSubtopic}`.toLowerCase();
   const knowledge = String(cm.knowledge || '').trim();
   const standard = String(cm.expectedStandard || cm.expectedStandards || '').trim();
   const competence = String(cm.specificCompetence || cm.specificCompetences || '').trim();
-  const resources = Array.isArray(cm.resources) ? cm.resources.filter(Boolean) : [];
 
-  const contentEvidence = knowledge
-    ? `Use the verified curriculum content as the starting point: ${knowledge.slice(0, 900)}`
-    : `Develop the lesson around the selected curriculum focus: ${focus}. Do not introduce unrelated content.`;
+  // CBC sample supplied by the user uses this progression structure:
+  // INTRODUCTION, LESSON DEVELOPMENT, ACTIVITY 1, ACTIVITY 2,
+  // EXERCISE and CONCLUSION, with teacher role, learner role and assessment criteria.
+  // Use topic-specific activities rather than generic AI placeholders.
+  if (String(subject).toLowerCase() === 'biology' && /ecosystem|ecological|biotic|abiotic|food chain|food web/i.test(key)) {
+    return [
+      { stage: 'INTRODUCTION', time: '5 min', teacherRole: 'Ask learners what living and non-living things they can identify in the school environment. Introduce the lesson on ecosystems and connect responses to the topic.', learnerRole: 'Observe the surroundings, answer questions and mention examples of living and non-living components.', assessmentCriteria: 'Learners correctly identify at least one living and one non-living component.' },
+      { stage: 'LESSON DEVELOPMENT', time: '10 min', teacherRole: 'Explain the meaning of an ecosystem and distinguish biotic components from abiotic components using familiar local examples.', learnerRole: 'Listen, ask questions, give examples and record the meanings of ecosystem, biotic and abiotic components.', assessmentCriteria: 'Learners distinguish biotic from abiotic components using correct examples.' },
+      { stage: 'ACTIVITY 1', time: '15 min', teacherRole: 'Organise groups to observe the school garden or a local environment. Guide learners to list and classify organisms and physical factors observed.', learnerRole: 'Work in groups to observe, list and classify organisms and physical factors as biotic or abiotic.', assessmentCriteria: 'Learners correctly classify the majority of observed components.' },
+      { stage: 'ACTIVITY 2', time: '15 min', teacherRole: 'Guide learners to construct simple food chains and discuss producers, consumers and decomposers and their interdependence.', learnerRole: 'Construct food chains from local examples and identify producers, consumers and decomposers.', assessmentCriteria: 'Learners construct a logical food chain and correctly identify the roles of organisms.' },
+      { stage: 'EXERCISE', time: '25 min', teacherRole: 'Give individual questions and a short application task on ecosystem components, interactions and the effect of removing one component. Mark and discuss responses.', learnerRole: 'Complete the questions independently, explain relationships in the ecosystem and correct errors after feedback.', assessmentCriteria: 'Learners accurately answer the questions and explain at least one interaction in an ecosystem.' },
+      { stage: 'CONCLUSION', time: '10 min', teacherRole: 'Summarise the meaning of an ecosystem, biotic and abiotic components, food chains and interdependence. Ask brief review questions.', learnerRole: 'State key points, answer review questions and give one example of how organisms depend on their environment.', assessmentCriteria: 'Learners accurately state the key concepts and give a relevant example.' }
+    ];
+  }
 
-  const competenceText = competence || `demonstrate understanding of ${focus} through appropriate ${subject} activities`;
-
+  const contentEvidence = knowledge ? `Use the verified curriculum content as the starting point: ${knowledge.slice(0, 900)}` : `Develop the lesson around ${focus} without introducing unrelated content.`;
+  const competenceText = competence || `demonstrate the stated competence in ${focus}`;
   return [
-    {
-      stage: 'INTRODUCTION / ACTIVATION OF PRIOR KNOWLEDGE',
-      time: '5 min',
-      teacherRole: `Elicit learners' prior knowledge directly related to ${focus}. Ask 2–3 focused questions and connect their responses to today's lesson.`,
-      learnerRole: `Respond to questions, share relevant prior knowledge and state what they already know about ${focus}.`,
-      assessmentCriteria: `Learners give relevant responses about ${focus}.`
-    },
-    {
-      stage: 'EXPLORATION / DISCOVERY',
-      time: '15 min',
-      teacherRole: `Present an appropriate stimulus, example, text, diagram, specimen, data set or practical situation for ${focus}, using only resources suitable for ${subject}. Guide learners to observe, investigate and identify the key ideas.`,
-      learnerRole: `Work individually or in small groups to observe, investigate, discuss and record findings about ${focus}.`,
-      assessmentCriteria: `Learners identify and discuss the main ideas relevant to ${focus}.`
-    },
-    {
-      stage: 'CONCEPT DEVELOPMENT',
-      time: '20 min',
-      teacherRole: `Facilitate discussion and clarify the concepts arising from the exploration. Use the verified curriculum content and correct misconceptions. ${contentEvidence}`,
-      learnerRole: `Explain their findings, compare ideas, ask questions and construct accurate subject-specific understanding of ${focus}.`,
-      assessmentCriteria: `Learners explain the key concept(s) accurately and correct misconceptions.`
-    },
-    {
-      stage: 'APPLICATION / COLLABORATIVE TASK',
-      time: '20 min',
-      teacherRole: `Give a structured task requiring learners to apply the lesson knowledge to ${focus}. Circulate, question learners and provide support without giving the answers.`,
-      learnerRole: `Apply their understanding of ${focus} to the task, collaborate with peers and justify their responses using subject-specific evidence or reasoning.`,
-      assessmentCriteria: `Learners correctly apply the knowledge to the task and justify their responses.`
-    },
-    {
-      stage: 'ASSESSMENT / CONSOLIDATION',
-      time: '15 min',
-      teacherRole: `Administer short individual assessment questions/tasks directly aligned to the specific competence. Give feedback and address common errors.`,
-      learnerRole: `Complete the assessment independently, explain selected answers and make corrections from feedback.`,
-      assessmentCriteria: standard ? `Evidence shows progress towards the expected standard: ${standard.slice(0, 500)}` : `Evidence shows progress towards the specific competence: ${competenceText}.`
-    },
-    {
-      stage: 'CONCLUSION / EXIT CHECK',
-      time: '5 min',
-      teacherRole: `Summarise the essential learning from ${focus}. Ask learners to state one key idea and one way they can apply it.`,
-      learnerRole: `State the key learning point and complete a brief exit response related to ${focus}.`,
-      assessmentCriteria: `Learners accurately state the key learning and its application.`
-    }
+    { stage: 'INTRODUCTION', time: '5 min', teacherRole: `Ask focused questions to activate prior knowledge directly related to ${focus}. Introduce the lesson and link learners' responses to the new learning.`, learnerRole: `Answer questions and share relevant prior knowledge about ${focus}.`, assessmentCriteria: `Learners give relevant responses related to ${focus}.` },
+    { stage: 'LESSON DEVELOPMENT', time: '10 min', teacherRole: `Explain the key ideas of ${focus} using appropriate subject-specific examples, diagrams or demonstrations. ${contentEvidence}`, learnerRole: `Listen, observe, ask questions and record the important points about ${focus}.`, assessmentCriteria: `Learners identify the main ideas of ${focus}.` },
+    { stage: 'ACTIVITY 1', time: '15 min', teacherRole: `Organise a learner-centred activity in which learners investigate or classify information related to ${focus}. Guide groups and check understanding.`, learnerRole: `Work individually or in groups to investigate, classify, discuss and record findings about ${focus}.`, assessmentCriteria: `Learners complete the activity accurately and participate appropriately.` },
+    { stage: 'ACTIVITY 2', time: '15 min', teacherRole: `Provide a second practical, discussion or application activity directly related to ${focus}. Correct misconceptions and encourage learners to justify their answers.`, learnerRole: `Apply the new knowledge to the activity, discuss findings and justify responses.`, assessmentCriteria: `Learners apply the concept correctly and justify their responses.` },
+    { stage: 'EXERCISE', time: '25 min', teacherRole: `Set individual questions/tasks aligned to ${competenceText}. Supervise, mark selected responses and provide feedback.`, learnerRole: `Complete the exercise independently and correct errors after feedback.`, assessmentCriteria: standard ? `Learner responses provide evidence towards the expected standard: ${standard.slice(0, 500)}` : `Learners demonstrate the stated competence through accurate responses.` },
+    { stage: 'CONCLUSION', time: '10 min', teacherRole: `Summarise the essential learning from ${focus}, ask review questions and identify learners needing remedial support.`, learnerRole: `State the key learning points and answer the review/exit questions.`, assessmentCriteria: `Learners accurately state the key learning and its application.` }
   ];
 }
 
@@ -1084,31 +999,31 @@ function generateVerifiedOBCDevelopment(topic, subtopic, subject, grade) {
       methods: 'Question and Answer, Teacher Exposition'
     },
     {
-      time: '20 min',
+      time: '25 min',
       learningPoints: `MAIN CONTENT: ${t.toUpperCase()}\n\nTeacher explains the main concepts, terms, processes or structures related to ${t}, using appropriate examples for ${subject}.`,
-      teacherActivities: `Teacher explains the main content of ${st || t}, demonstrates subject-appropriate examples and checks understanding through focused questions.`,
-      pupilActivities: `Learners observe, take notes, answer questions and contribute examples related to ${st || t}.`,
+      teacherActivities: `Teacher explains the main content of ${t}, demonstrates relevant examples and checks understanding through questions.`,
+      pupilActivities: `Learners observe, take notes, answer questions and contribute examples related to ${t}.`,
       methods: 'Teacher Exposition, Demonstration, Question and Answer'
     },
     {
       time: '20 min',
-      learningPoints: `GUIDED PRACTICE\n\nLearners apply the concepts of ${st || t} to structured questions, examples or a subject-appropriate activity.`,
-      teacherActivities: `Teacher organises guided practice on ${st || t}, monitors learners and corrects misconceptions.`,
-      pupilActivities: `Learners work in pairs or groups, apply the concepts and present responses related to ${st || t}.`,
+      learningPoints: `GUIDED PRACTICE\n\nLearners apply the concepts of ${t} to structured questions, examples or a subject-appropriate activity.`,
+      teacherActivities: `Teacher organises guided practice on ${t}, monitors learners and corrects misconceptions.`,
+      pupilActivities: `Learners work in pairs or groups, apply the concepts and present their responses.`,
       methods: 'Group Work, Discussion, Guided Practice'
     },
     {
       time: '15 min',
-      learningPoints: `INDIVIDUAL ASSESSMENT\n\nLearners answer short questions that test knowledge, understanding and application of ${st || t}.`,
-      teacherActivities: `Teacher gives an individual assessment on ${st || t}, supervises the work and provides feedback.`,
+      learningPoints: `INDIVIDUAL ASSESSMENT\n\nLearners answer short questions that test knowledge, understanding and application of ${t}.`,
+      teacherActivities: `Teacher gives an individual assessment, supervises the work and provides feedback.`,
       pupilActivities: `Learners complete the assessment individually and correct errors after feedback.`,
       methods: 'Individual Work, Question and Answer, Assessment'
     },
     {
-      time: '15 min',
+      time: '10 min',
       learningPoints: `SUMMARY AND CONCLUSION\n\nTeacher and learners review the key points of ${t} and identify areas requiring further practice.`,
-      teacherActivities: `Teacher summarises ${st || t}, asks an exit question and identifies learners requiring remedial support.`,
-      pupilActivities: `Learners state the main points learned about ${st || t} and answer the exit question.`,
+      teacherActivities: `Teacher summarises ${t}, asks an exit question and identifies learners requiring remedial support.`,
+      pupilActivities: `Learners state the main points learned and answer the exit question.`,
       methods: 'Review, Question and Answer, Consolidation'
     }
   ];
@@ -1258,12 +1173,12 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
       "By the end of this lesson, learners should be able to:",
       `Define ${topic}`,
       `Explain the concept of ${topic}`,
-      `Apply knowledge of ${topic} to a relevant subject activity`,
-      `Explain the importance or application of ${topic}`
+      `Apply ${topic} to solve problems`,
+      `Analyze real-world applications of ${topic}`
     ],
     prerequisiteKnowledge: "Learners have ideas about the topic being taught.",
     lessonIntroduction: "Teacher revises through the previous lesson",
-    lessonDevelopment: generateVerifiedOBCDevelopment(topic, '', subject, grade),
+    lessonDevelopment: generateLessonContent(topic, subject, grade),
     learnersEvaluation: [
       `Define ${topic} in your own words`,
       `Give two examples of ${topic}`,
@@ -1273,7 +1188,7 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
     expectedAnswers: [
       `Correct definition of ${topic}`,
       `Two valid examples of ${topic}`,
-      `A correct response showing appropriate application of ${topic}`,
+      `Correct solution to the ${topic} problem`,
       `Clear explanation of the importance of ${topic}`
     ],
     lessonConclusion: "Teacher concludes lesson by revising through the lesson with learners to help remedial learners",
@@ -1284,157 +1199,6 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
 }
 
 // ============ CBC SCHEME GENERATOR ============
-
-
-function normaliseSchemeText(value) {
-  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-}
-
-function schemeTokens(value) {
-  const stop = new Set(['the','and','of','in','to','for','on','a','an','with','by','from','use','using','understanding','demonstrate','explain','apply','learners','learner']);
-  return new Set(normaliseSchemeText(value).split(/\s+/).filter(t => t.length > 2 && !stop.has(t)));
-}
-
-function schemeTextScore(a, b) {
-  const aa = schemeTokens(a), bb = schemeTokens(b);
-  if (!aa.size || !bb.size) return 0;
-  let common = 0;
-  for (const t of aa) if (bb.has(t)) common++;
-  return common / Math.max(1, Math.min(aa.size, bb.size));
-}
-
-function biologySchemeFamily(text) {
-  const t = normaliseSchemeText(text);
-  if (/cell|microscop|organelle|diffusion|osmosis|mitosis|meiosis|cellular/.test(t)) return 'cellular';
-  if (/reproduc|sexual|asexual|fertilis|gamete|embryo|development/.test(t)) return 'continuity';
-  if (/response|tropic|taxic|stimulus|coordination|nervous|hormone|excretion|homeostasis|photosynthesis|nutrition|digest|transport/.test(t)) return 'maintenance';
-  if (/science|inquiry|branch|organisation|organization|characteristics of living|nature of science/.test(t)) return 'concepts';
-  return '';
-}
-
-function biologyTopicForFamily(family) {
-  return {
-    concepts: '1.1.0 Concepts and Methods in Biology',
-    cellular: '1.2.0 Principles of Cellular Life',
-    maintenance: '1.3.0 Maintenance of the Organism',
-    continuity: '1.4.0 Continuity of Life'
-  }[family] || '';
-}
-
-function repairCBCSchemeAlignment(weeks, options = {}) {
-  const {
-    sourceRowsDetailed = [], customTopics = {}, customSubtopics = {},
-    assessmentWeeksList = [3, 6, 9, 12], subject = ''
-  } = options;
-  if (!Array.isArray(weeks)) return [];
-
-  const sourceRows = Array.isArray(sourceRowsDetailed) ? sourceRowsDetailed.filter(r => r && (r.topic || r.subTopic || r.subtopic)) : [];
-  const subjectIsBiology = /biology/i.test(String(subject));
-  const usableSource = sourceRows.filter(r => !/assessment/i.test(String(r.topic || '')));
-
-  return weeks.map((week, index) => {
-    const weekNumber = Number(week.week || index + 1);
-    if (assessmentWeeksList.includes(weekNumber) || week.isAssessment || week.isRevision) return week;
-
-    const topicObj = Array.isArray(week.topics) && week.topics.length ? week.topics[0] : week;
-    const currentTopic = topicObj.topic || week.topic || '';
-    const currentSub = topicObj.subtopic || week.subTopic || week.subtopic || '';
-    const requestedTopic = customTopics[weekNumber] || customTopics[String(weekNumber)] || '';
-    const requestedSub = customSubtopics[weekNumber] || customSubtopics[String(weekNumber)] || '';
-
-    // Prefer an exact verified source row for this week/topic/subtopic.
-    let match = usableSource.find(r => Number(r.week) === weekNumber);
-    if (!match && requestedTopic) {
-      match = usableSource.find(r => schemeTextScore(r.topic, requestedTopic) >= 0.65);
-    }
-    if (!match && requestedSub) {
-      match = usableSource.find(r => schemeTextScore(r.subTopic || r.subtopic, requestedSub) >= 0.65);
-    }
-    if (!match && currentTopic) {
-      match = usableSource.find(r => schemeTextScore(r.topic, currentTopic) >= 0.75);
-    }
-
-    let finalTopic = match?.topic || requestedTopic || currentTopic;
-    let finalSubtopic = match?.subTopic || match?.subtopic || requestedSub || currentSub;
-    let finalCompetence = match?.specificCompetence || match?.specificCompetences || topicObj.specificCompetence || topicObj.specificCompetences || '';
-    let finalActivities = match?.learningActivities || match?.activities || topicObj.learningActivities || topicObj.activities || '';
-    let finalStandards = match?.expectedStandard || match?.expectedStandards || topicObj.expectedStandard || topicObj.expectedStandards || '';
-    let finalResources = match?.resources || match?.aids || topicObj.resources || topicObj.aids || '';
-    let finalStrategies = match?.strategies || match?.methods || topicObj.strategies || topicObj.methods || '';
-    let finalReference = match?.reference || match?.references || topicObj.reference || topicObj.references || '';
-
-    // Biology has a small deterministic guard against the exact failure seen
-    // in generated schemes: plant/animal responses, photosynthesis, transport,
-    // digestion and related maintenance topics must not be placed under the
-    // cellular-life topic merely because the language model did so.
-    if (subjectIsBiology) {
-      const family = biologySchemeFamily(`${finalSubtopic} ${finalCompetence} ${finalActivities}`);
-      const familyTopic = biologyTopicForFamily(family);
-      if (familyTopic) {
-        const topicNorm = normaliseSchemeText(finalTopic);
-        const familyNorm = normaliseSchemeText(familyTopic);
-        const clearlyWrong = (family === 'maintenance' && /cellular life|principles of cellular life/.test(topicNorm)) ||
-          (family === 'cellular' && /maintenance of the organism|continuity of life/.test(topicNorm)) ||
-          (family === 'continuity' && /cellular life|maintenance of the organism/.test(topicNorm)) ||
-          (family === 'concepts' && /cellular life|maintenance of the organism|continuity of life/.test(topicNorm));
-        if (clearlyWrong) {
-          finalTopic = familyTopic;
-          // If the verified source has a matching family, use its complete row.
-          const familyMatch = usableSource.find(r => normaliseSchemeText(r.topic).includes(familyNorm) &&
-            schemeTextScore(r.subTopic || r.subtopic, finalSubtopic) >= 0.45);
-          if (familyMatch) {
-            finalTopic = familyMatch.topic || finalTopic;
-            finalSubtopic = familyMatch.subTopic || familyMatch.subtopic || finalSubtopic;
-            finalCompetence = familyMatch.specificCompetence || familyMatch.specificCompetences || finalCompetence;
-            finalActivities = familyMatch.learningActivities || familyMatch.activities || finalActivities;
-            finalStandards = familyMatch.expectedStandard || familyMatch.expectedStandards || finalStandards;
-            finalResources = familyMatch.resources || familyMatch.aids || finalResources;
-            finalStrategies = familyMatch.strategies || familyMatch.methods || finalStrategies;
-            finalReference = familyMatch.reference || familyMatch.references || finalReference;
-          }
-        }
-      }
-    }
-
-    // Never allow a user subtopic to overwrite a verified source subtopic.
-    // If there is no source match, only accept the requested subtopic when it
-    // is reasonably coherent with the selected topic; otherwise retain the AI
-    // subtopic instead of creating an obviously contradictory row.
-    if (requestedSub && !match) {
-      const coherent = schemeTextScore(finalTopic, requestedSub) >= 0.25 ||
-        (subjectIsBiology && biologySchemeFamily(requestedSub) === biologySchemeFamily(finalTopic));
-      if (coherent) finalSubtopic = requestedSub;
-    }
-
-    const topicRow = {
-      topic: finalTopic,
-      subtopic: finalSubtopic,
-      specificCompetence: finalCompetence,
-      learningActivities: finalActivities || (finalTopic ? `Introduction and discussion of ${finalTopic}; Group/individual activities on ${finalSubtopic || finalTopic}` : ''),
-      expectedStandards: finalStandards || (finalCompetence ? `Learners demonstrate the competence: ${finalCompetence}.` : ''),
-      resources: finalResources,
-      strategies: finalStrategies,
-      reference: finalReference,
-      knowledge: match?.knowledge || topicObj.knowledge || '',
-      skills: match?.skills || topicObj.skills || '',
-      values: match?.values || topicObj.values || ''
-    };
-
-    return {
-      ...week,
-      week: weekNumber,
-      topic: topicRow.topic,
-      subTopic: topicRow.subtopic,
-      specificCompetences: topicRow.specificCompetence,
-      learningActivities: topicRow.learningActivities,
-      expectedStandards: topicRow.expectedStandards,
-      resources: topicRow.resources,
-      strategies: topicRow.strategies,
-      reference: topicRow.reference,
-      topics: [topicRow]
-    };
-  });
-}
 
 function generateCBCScheme(grade, subject, term, user, customTopics = {}) {
   const weeks = [];
@@ -2060,14 +1824,10 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       let prompt;
       
       curriculumContext = await getCurriculumContextAsync({ curriculum: curriculumType, grade, subject, term, topic, subtopic });
-      const onlineResearch = await getOnlineResearchContext({ curriculum: curriculumType, grade, subject, term, topic, subtopic });
       if (curriculumType === 'cbc') {
         prompt = generateCBCPrompt(topic, grade, subject, classSize, user, subtopic, term, curriculumContext);
       } else {
         prompt = generateOBCPrompt(topic, grade, subject, classSize, user, subtopic, term, curriculumContext);
-      }
-      if (onlineResearch) {
-        prompt += `\n\nONLINE RESEARCH ENRICHMENT (use for examples, explanations, classroom activities and current context only):\n${onlineResearch}\nRULE: Online research MUST NOT override the official curriculum topic, subtopic, competence, standard, code, sequence, or CBC/OBC terminology.\n`;
       }
 
       console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson with DeepSeek...`);
@@ -2194,6 +1954,27 @@ Return ONLY the JSON object, no other text.
       aiContent = repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term, curriculumContext, getCBCSubjectProfile(subject));
     }
 
+    // HARD FORMAT ISOLATION: CBC follows the user's CBC sample; OBC follows the user's OBC sample.
+    // Never send fields from the other curriculum format to the frontend/exporters.
+    if (curriculumType === 'cbc') {
+      delete aiContent.lessonDevelopment;
+      delete aiContent.specificOutcome;
+      delete aiContent.learnersEvaluationText;
+      delete aiContent.curriculumMethods;
+      delete aiContent.curriculumKnowledge;
+      delete aiContent.curriculumSkills;
+      delete aiContent.curriculumValues;
+    } else {
+      delete aiContent.lessonProgression;
+      delete aiContent.generalCompetences;
+      delete aiContent.specificCompetence;
+      delete aiContent.lessonGoal;
+      delete aiContent.expectedStandard;
+      delete aiContent.learningEnvironment;
+      delete aiContent.materials;
+      delete aiContent.homework;
+    }
+
     // Guarantee the displayed lesson duration is internally consistent.
     if (curriculumType === 'cbc' && Array.isArray(aiContent.lessonProgression)) {
       const parseMinutes = (value) => {
@@ -2220,8 +2001,8 @@ Return ONLY the JSON object, no other text.
       const officialRefs = getReferenceTitles({ subject, grade, term, context: curriculumContext });
       if (officialRefs.length) referencesArray = officialRefs;
       else if (!referencesArray.length) referencesArray = ['No verified official reference is loaded for this selection'];
-    } else if (!referencesArray.length || referencesArray.some(r => /teacher-provided curriculum materials/i.test(String(r)))) {
-      referencesArray = [`Progress in ${subject} Grade ${grade}`, "Teacher's Guide"];
+    } else if (!referencesArray.length) {
+      referencesArray = ['Teacher-provided curriculum materials'];
     }
 
     const materialsArray = Array.isArray(aiContent.materials) 
@@ -2254,7 +2035,7 @@ Return ONLY the JSON object, no other text.
 
     if (lessonDevelopmentArray.length === 0) {
       console.log('📝 lessonDevelopment was empty, populating with default content...');
-      lessonDevelopmentArray = generateVerifiedOBCDevelopment(topic, subtopic, subject, grade);
+      lessonDevelopmentArray = generateLessonContent(topic, subject, grade);
     }
 
     // Normalize OBC development field names so both the AI response and
@@ -2322,22 +2103,6 @@ Return ONLY the JSON object, no other text.
       data: { lessonsUsed: user.lessonsUsed + 1 }
     });
 
-    // HARD FORMAT ISOLATION: CBC and OBC use different Ministry lesson-plan layouts.
-    // Never return fields from the other curriculum family to the frontend/exporters.
-    if (curriculumType === 'cbc') {
-      delete aiContent.lessonDevelopment;
-      delete aiContent.learnersEvaluationText;
-    } else {
-      delete aiContent.lessonProgression;
-      delete aiContent.generalCompetences;
-      delete aiContent.specificCompetence;
-      delete aiContent.lessonGoal;
-      delete aiContent.expectedStandard;
-      delete aiContent.learningEnvironment;
-      delete aiContent.materials;
-      delete aiContent.homework;
-    }
-
     const responseData = {
       ...aiContent,
       id: lesson.id,
@@ -2354,11 +2119,22 @@ Return ONLY the JSON object, no other text.
     };
 
     if (curriculumType === 'cbc') {
+      delete responseData.lessonDevelopment;
+      delete responseData.specificOutcome;
+      delete responseData.learnersEvaluationText;
       responseData.lessonProgression = lessonProgressionArray;
       responseData.curriculumSourceStatus = curriculumContext?.sourceStatus || 'SOURCE_NOT_FOUND';
       responseData.curriculumSource = curriculumContext?.source || null;
       responseData.curriculumMatch = curriculumContext?.match || null;
     } else {
+      delete responseData.lessonProgression;
+      delete responseData.generalCompetences;
+      delete responseData.specificCompetence;
+      delete responseData.lessonGoal;
+      delete responseData.expectedStandard;
+      delete responseData.learningEnvironment;
+      delete responseData.materials;
+      delete responseData.homework;
       responseData.lessonDevelopment = lessonDevelopmentArray;
       responseData.curriculumSourceStatus = curriculumContext?.sourceStatus || 'OBC_SOURCE_NOT_FOUND';
       responseData.curriculumSource = curriculumContext?.source || null;
@@ -2452,16 +2228,6 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
           }));
           if (cdcRows.length) sourceRowsDetailed = cdcRows.map((row) => ({ ...row, _source: { subject, grade, term, sourceType: 'cdc_digital_library', sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia', officialSource: row.cdcResourceUrl || '', file: `cdc:${row.cdcResourceTitle || ''}` } }));
         }
-        // If the CDC Digital Library is unavailable, use the Ministry of Education
-        // official syllabus parser as the CBC source rather than silently falling back
-        // to unrelated/local content.
-        if (!cdcRows.length && typeof loadMinistryRows === 'function') {
-          const ministryRows = await loadMinistryRows({ grade, subject, term });
-          if (ministryRows.length) {
-            sourceRowsDetailed = ministryRows.map((row) => ({ ...row, _source: { subject, grade, term, sourceType: 'ministry_official', sourceBasis: 'Ministry of Education, Zambia — Directorate of Curriculum Development', officialSource: row.officialSource || '', file: row.file || `ministry:${subject}:${grade}` } }));
-            sourcePacks = [{ curriculum: 'cbc', subject, grade, term, sourceType: 'ministry_official', sourceBasis: 'Ministry of Education, Zambia — Directorate of Curriculum Development', officialSource: 'https://www.edu.gov.zm/?page_id=1142', file: `ministry:${subject}:${grade}` }];
-          }
-        }
       } catch (error) {
         console.warn(`⚠️ CDC scheme source lookup failed: ${error.message}`);
       }
@@ -2508,7 +2274,6 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
     
     try {
       let prompt;
-      const schemeResearch = await getOnlineResearchContext({ curriculum: curriculumType, grade, subject, term, topic: Object.values(customTopics).filter(Boolean).join(' '), subtopic: Object.values(customSubtopics).filter(Boolean).join(' ') });
       
       if (curriculumType === 'cbc') {
         let customTopicsString = '';
@@ -2634,10 +2399,6 @@ Return ONLY valid JSON with this OBC scheme structure:
 `;
       }
 
-      if (schemeResearch) {
-        prompt += `\n\nONLINE RESEARCH ENRICHMENT (supporting evidence only):\n${schemeResearch}\nRULE: Online research may enrich activities, examples and explanations, but MUST NOT override the official curriculum source, topic, subtopic, competence, standard, code, sequence, or CBC/OBC syllabus family.\n`;
-      }
-
       const messages = [
         {
           role: "system",
@@ -2731,7 +2492,7 @@ Return ONLY the JSON object, no other text.
         const finalStandards = sourceMatch?.expectedStandard || sourceMatch?.expectedStandards || standards;
         const finalResources = sourceMatch?.resources || sourceMatch?.aids || resources;
         const finalStrategies = sourceMatch?.strategies || sourceMatch?.methods || strategies;
-        const officialReferenceText = getReferenceTitles({ subject, grade, term }).join('; ');
+        const officialReferenceText = getReferenceTitles({ subject, grade, term, context: curriculumContext }).join('; ');
         const aiReferenceIsGeneric = !reference || /teacher-provided curriculum materials/i.test(String(reference));
         const finalReference = sourceMatch?.reference || sourceMatch?.references ||
           (aiReferenceIsGeneric ? officialReferenceText : reference) ||
@@ -2773,17 +2534,6 @@ Return ONLY the JSON object, no other text.
         isAssessment: week.isAssessment || false
       };
     });
-
-    // Final CBC scheme alignment gate: prevent DeepSeek or manual subtopics
-    // from creating topic/subtopic/competence mismatches. Verified source rows
-    // take priority; Biology also gets a deterministic subject-family guard.
-    if (curriculumType === 'cbc') {
-      const repairedWeeks = repairCBCSchemeAlignment(weeks, {
-        sourceRowsDetailed, customTopics, customSubtopics, assessmentWeeksList, subject
-      });
-      weeks.splice(0, weeks.length, ...repairedWeeks);
-    }
-
     if (subtopicsList.length > 0) {
       let weekIndex = 0;
       for (let i = 0; i < weeks.length; i++) {
@@ -2794,22 +2544,16 @@ Return ONLY the JSON object, no other text.
             // It belongs in the Sub-topic column, while the verified topic,
             // competence and standard remain intact.
             if (curriculumType === 'cbc') {
-              // Do not blindly overwrite a repaired/verified CBC subtopic.
-              // The alignment gate above has already accepted the manual value
-              // only when it is coherent with the topic.
-              const current = weeks[i].subTopic || weeks[i].topics[0].subtopic || '';
-              if (!current) {
-                weeks[i].subTopic = manualSubtopic;
-                weeks[i].topics[0].subtopic = manualSubtopic;
-              }
+              weeks[i].subTopic = manualSubtopic;
+              weeks[i].topics[0].subtopic = manualSubtopic;
               if (!weeks[i].specificCompetences) {
-                weeks[i].specificCompetences = `By the end of this lesson, learners will be able to understand and explain ${weeks[i].subTopic || manualSubtopic}`;
+                weeks[i].specificCompetences = `By the end of this lesson, learners will be able to understand and explain ${manualSubtopic}`;
               }
               if (!weeks[i].topics[0].specificCompetence) {
                 weeks[i].topics[0].specificCompetence = weeks[i].specificCompetences;
               }
               if (!weeks[i].expectedStandards) {
-                weeks[i].expectedStandards = `Learners explain and apply ${weeks[i].subTopic || manualSubtopic} correctly.`;
+                weeks[i].expectedStandards = `Learners explain and apply ${manualSubtopic} correctly.`;
               }
             } else {
               weeks[i].topics[0].subtopic = manualSubtopic;
@@ -4327,14 +4071,7 @@ app.get('/api/curriculum/topics', async (req, res) => {
           sources = cdcResources.map((r) => ({ curriculum: 'cbc', subject, grade, term, sourceType: 'cdc_digital_library', sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia', officialSource: r.url, title: r.title, file: `cdc:${r.id}` }));
           rows = cdcRows.map((r) => ({ ...r, _source: { subject, grade, term, sourceType: 'cdc_digital_library', sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia', officialSource: r.cdcResourceUrl || '', file: `cdc:${r.cdcResourceTitle || ''}` } }));
         }
-        if (!cdcRows.length && typeof loadMinistryRows === 'function') {
-          const ministryRows = await loadMinistryRows({ grade, subject, term });
-          if (ministryRows.length) {
-            rows = ministryRows;
-            sources = [{ curriculum: 'cbc', subject, grade, term, sourceType: 'ministry_official', sourceBasis: 'Ministry of Education, Zambia — Directorate of Curriculum Development', officialSource: 'https://www.edu.gov.zm/?page_id=1142', file: `ministry:${subject}:${grade}` }];
-          }
-        }
-      } catch (error) { console.warn(`⚠️ CBC topics unavailable: ${error.message}`); }
+      } catch (error) { console.warn(`⚠️ CDC topics unavailable: ${error.message}`); }
     }
     const topics = [...new Set(rows.map((r) => r.topic).filter(Boolean))];
     const subtopics = [...new Set(rows.map((r) => r.subTopic || r.subtopic).filter(Boolean))];
