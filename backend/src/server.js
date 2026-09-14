@@ -34,23 +34,19 @@ function termWord(term) {
 
 
 // ============ ONLINE RESEARCH ENRICHMENT ============
-// Online sources enrich examples, explanations and activities only. They never
-// override the selected official CBC/OBC curriculum source or its terminology.
+// Online sources are enrichment only. Official CBC/OBC curriculum sources remain authoritative.
 async function getOnlineResearchContext({ curriculum, grade, subject, term = '', topic = '', subtopic = '' } = {}) {
-  const query = [
-    'Zambia', String(subject || ''), String(grade || ''), String(term || ''),
-    String(topic || ''), String(subtopic || ''), 'education lesson teaching'
-  ].filter(Boolean).join(' ');
+  const query = ['Zambia', subject, grade, term, topic, subtopic, 'education lesson teaching']
+    .filter(Boolean).join(' ');
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 7000);
-    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-    const response = await fetch(url, {
+    const timeout = setTimeout(() => controller.abort(), 7000);
+    const response = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
       headers: { 'User-Agent': 'MyToolbox-Online-Research/1.0' },
       signal: controller.signal,
       redirect: 'follow'
     });
-    clearTimeout(timer);
+    clearTimeout(timeout);
     if (!response.ok) throw new Error(`Search HTTP ${response.status}`);
     const html = await response.text();
     const clean = (v) => String(v || '')
@@ -62,45 +58,19 @@ async function getOnlineResearchContext({ curriculum, grade, subject, term = '',
     const results = [];
     const re = /<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
     let m;
-    while ((m = re.exec(html)) && results.length < 5) {
-      const title = clean(m[2]);
+    while ((m = re.exec(html)) && results.length < 6) {
       let href = m[1];
       try { href = new URL(href, 'https://html.duckduckgo.com').toString(); } catch {}
-      if (!title || !href) continue;
-      const snippetStart = m.index;
-      const tail = html.slice(snippetStart, snippetStart + 5000);
-      const sm = tail.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i) || tail.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/div>/i);
-      results.push({ title, url: href, snippet: sm ? clean(sm[1]).slice(0, 700) : '' });
+      const title = clean(m[2]);
+      const tail = html.slice(m.index, m.index + 5000);
+      const sm = tail.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/(?:a|div)>/i);
+      if (title && href) results.push({ title, url: href, snippet: sm ? clean(sm[1]).slice(0, 700) : '' });
     }
-    // Prefer official Zambian education sources when present.
     results.sort((a,b) => {
-      const score = (r) => /edu\.gov\.zm|cdcrepository\.info/i.test(r.url) ? 100 : (/ac\.|org\./i.test(r.url) ? 20 : 0);
-      return score(b) - score(a);
+      const score = r => /edu\.gov\.zm|cdcrepository\.info/i.test(r.url) ? 100 : (/\.edu\.|\.ac\.|\.org\./i.test(r.url) ? 20 : 0);
+      return score(b)-score(a);
     });
-    const selected = results.slice(0, 4);
-    if (!selected.length) return '';
-    const enriched = [];
-    for (const r of selected) {
-      let pageText = '';
-      try {
-        const pageController = new AbortController();
-        const pageTimer = setTimeout(() => pageController.abort(), 5000);
-        const pageResponse = await fetch(r.url, {
-          headers: { 'User-Agent': 'MyToolbox-Online-Research/1.0' },
-          signal: pageController.signal,
-          redirect: 'follow'
-        });
-        clearTimeout(pageTimer);
-        if (pageResponse.ok) {
-          const type = String(pageResponse.headers.get('content-type') || '').toLowerCase();
-          if (type.includes('text/html') || type.includes('text/plain')) {
-            pageText = clean(await pageResponse.text()).slice(0, 1800);
-          }
-        }
-      } catch (error) {}
-      enriched.push({ ...r, pageText });
-    }
-    return enriched.map((r, i) => `${i + 1}. ${r.title}\\nURL: ${r.url}\\nSearch summary: ${r.snippet || 'No snippet available.'}${r.pageText ? `\\nPage evidence: ${r.pageText}` : ''}`).join('\\n\\n');
+    return results.slice(0,4).map((r,i) => `${i+1}. ${r.title}\nURL: ${r.url}\nSummary: ${r.snippet || 'No snippet available.'}`).join('\n\n');
   } catch (error) {
     console.warn(`⚠️ Online research unavailable: ${error.message}`);
     return '';
@@ -1114,31 +1084,31 @@ function generateVerifiedOBCDevelopment(topic, subtopic, subject, grade) {
       methods: 'Question and Answer, Teacher Exposition'
     },
     {
-      time: '25 min',
+      time: '20 min',
       learningPoints: `MAIN CONTENT: ${t.toUpperCase()}\n\nTeacher explains the main concepts, terms, processes or structures related to ${t}, using appropriate examples for ${subject}.`,
-      teacherActivities: `Teacher explains the main content of ${t}, demonstrates relevant examples and checks understanding through questions.`,
-      pupilActivities: `Learners observe, take notes, answer questions and contribute examples related to ${t}.`,
+      teacherActivities: `Teacher explains the main content of ${st || t}, demonstrates subject-appropriate examples and checks understanding through focused questions.`,
+      pupilActivities: `Learners observe, take notes, answer questions and contribute examples related to ${st || t}.`,
       methods: 'Teacher Exposition, Demonstration, Question and Answer'
     },
     {
       time: '20 min',
-      learningPoints: `GUIDED PRACTICE\n\nLearners apply the concepts of ${t} to structured questions, examples or a subject-appropriate activity.`,
-      teacherActivities: `Teacher organises guided practice on ${t}, monitors learners and corrects misconceptions.`,
-      pupilActivities: `Learners work in pairs or groups, apply the concepts and present their responses.`,
+      learningPoints: `GUIDED PRACTICE\n\nLearners apply the concepts of ${st || t} to structured questions, examples or a subject-appropriate activity.`,
+      teacherActivities: `Teacher organises guided practice on ${st || t}, monitors learners and corrects misconceptions.`,
+      pupilActivities: `Learners work in pairs or groups, apply the concepts and present responses related to ${st || t}.`,
       methods: 'Group Work, Discussion, Guided Practice'
     },
     {
       time: '15 min',
-      learningPoints: `INDIVIDUAL ASSESSMENT\n\nLearners answer short questions that test knowledge, understanding and application of ${t}.`,
-      teacherActivities: `Teacher gives an individual assessment, supervises the work and provides feedback.`,
+      learningPoints: `INDIVIDUAL ASSESSMENT\n\nLearners answer short questions that test knowledge, understanding and application of ${st || t}.`,
+      teacherActivities: `Teacher gives an individual assessment on ${st || t}, supervises the work and provides feedback.`,
       pupilActivities: `Learners complete the assessment individually and correct errors after feedback.`,
       methods: 'Individual Work, Question and Answer, Assessment'
     },
     {
-      time: '10 min',
+      time: '15 min',
       learningPoints: `SUMMARY AND CONCLUSION\n\nTeacher and learners review the key points of ${t} and identify areas requiring further practice.`,
-      teacherActivities: `Teacher summarises ${t}, asks an exit question and identifies learners requiring remedial support.`,
-      pupilActivities: `Learners state the main points learned and answer the exit question.`,
+      teacherActivities: `Teacher summarises ${st || t}, asks an exit question and identifies learners requiring remedial support.`,
+      pupilActivities: `Learners state the main points learned about ${st || t} and answer the exit question.`,
       methods: 'Review, Question and Answer, Consolidation'
     }
   ];
@@ -1288,12 +1258,12 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
       "By the end of this lesson, learners should be able to:",
       `Define ${topic}`,
       `Explain the concept of ${topic}`,
-      `Apply ${topic} to solve problems`,
-      `Analyze real-world applications of ${topic}`
+      `Apply knowledge of ${topic} to a relevant subject activity`,
+      `Explain the importance or application of ${topic}`
     ],
     prerequisiteKnowledge: "Learners have ideas about the topic being taught.",
     lessonIntroduction: "Teacher revises through the previous lesson",
-    lessonDevelopment: generateLessonContent(topic, subject, grade),
+    lessonDevelopment: generateVerifiedOBCDevelopment(topic, '', subject, grade),
     learnersEvaluation: [
       `Define ${topic} in your own words`,
       `Give two examples of ${topic}`,
@@ -1303,7 +1273,7 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
     expectedAnswers: [
       `Correct definition of ${topic}`,
       `Two valid examples of ${topic}`,
-      `Correct solution to the ${topic} problem`,
+      `A correct response showing appropriate application of ${topic}`,
       `Clear explanation of the importance of ${topic}`
     ],
     lessonConclusion: "Teacher concludes lesson by revising through the lesson with learners to help remedial learners",
@@ -2097,7 +2067,7 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
         prompt = generateOBCPrompt(topic, grade, subject, classSize, user, subtopic, term, curriculumContext);
       }
       if (onlineResearch) {
-        prompt += `\n\nONLINE RESEARCH ENRICHMENT (use only for examples, explanations, classroom activities and current context):\n${onlineResearch}\nRULE: Online research must NOT override the official curriculum topic, subtopic, competence, standard, code, sequence or CBC/OBC terminology.\n`;
+        prompt += `\n\nONLINE RESEARCH ENRICHMENT (use for examples, explanations, classroom activities and current context only):\n${onlineResearch}\nRULE: Online research MUST NOT override the official curriculum topic, subtopic, competence, standard, code, sequence, or CBC/OBC terminology.\n`;
       }
 
       console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson with DeepSeek...`);
@@ -2250,8 +2220,8 @@ Return ONLY the JSON object, no other text.
       const officialRefs = getReferenceTitles({ subject, grade, term, context: curriculumContext });
       if (officialRefs.length) referencesArray = officialRefs;
       else if (!referencesArray.length) referencesArray = ['No verified official reference is loaded for this selection'];
-    } else if (!referencesArray.length) {
-      referencesArray = ['Teacher-provided curriculum materials'];
+    } else if (!referencesArray.length || referencesArray.some(r => /teacher-provided curriculum materials/i.test(String(r)))) {
+      referencesArray = [`Progress in ${subject} Grade ${grade}`, "Teacher's Guide"];
     }
 
     const materialsArray = Array.isArray(aiContent.materials) 
@@ -2284,7 +2254,7 @@ Return ONLY the JSON object, no other text.
 
     if (lessonDevelopmentArray.length === 0) {
       console.log('📝 lessonDevelopment was empty, populating with default content...');
-      lessonDevelopmentArray = generateLessonContent(topic, subject, grade);
+      lessonDevelopmentArray = generateVerifiedOBCDevelopment(topic, subtopic, subject, grade);
     }
 
     // Normalize OBC development field names so both the AI response and
@@ -2351,6 +2321,22 @@ Return ONLY the JSON object, no other text.
       where: { id: req.userId },
       data: { lessonsUsed: user.lessonsUsed + 1 }
     });
+
+    // HARD FORMAT ISOLATION: CBC and OBC use different Ministry lesson-plan layouts.
+    // Never return fields from the other curriculum family to the frontend/exporters.
+    if (curriculumType === 'cbc') {
+      delete aiContent.lessonDevelopment;
+      delete aiContent.learnersEvaluationText;
+    } else {
+      delete aiContent.lessonProgression;
+      delete aiContent.generalCompetences;
+      delete aiContent.specificCompetence;
+      delete aiContent.lessonGoal;
+      delete aiContent.expectedStandard;
+      delete aiContent.learningEnvironment;
+      delete aiContent.materials;
+      delete aiContent.homework;
+    }
 
     const responseData = {
       ...aiContent,
@@ -2456,26 +2442,25 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       try {
         const cdcResources = await listCDCResources({ grade, subject, term });
         const cdcRows = await loadCDCRows({ grade, subject, term });
-        if (cdcRows.length || cdcResources.length) {
-          sourcePacks = cdcResources.length
-            ? cdcResources.map((r) => ({
-                curriculum: 'cbc', subject, grade, term, sourceType: 'cdc_digital_library',
-                sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia',
-                officialSource: r.url, file: `cdc:${r.id}`,
-                title: r.title, resourceUrl: r.url, topics: [...new Set(cdcRows.filter(x => x.cdcResourceUrl === r.url || x.cdcResourceTitle === r.title).map(x => x.topic).filter(Boolean))],
-                subtopics: [...new Set(cdcRows.filter(x => x.cdcResourceUrl === r.url || x.cdcResourceTitle === r.title).map(x => x.subTopic).filter(Boolean))]
-              }))
-            : [{
-                curriculum: 'cbc', subject, grade, term,
-                sourceType: 'ministry_dcd_syllabus',
-                sourceBasis: 'Ministry of Education, Directorate of Curriculum Development — finalized syllabus',
-                officialSource: cdcRows[0]?.officialSource || '', file: 'ministry:dcd',
-                title: cdcRows[0]?.cdcResourceTitle || `${subject} ${grade} finalized syllabus`,
-                resourceUrl: cdcRows[0]?.cdcResourceUrl || cdcRows[0]?.officialSource || '',
-                topics: [...new Set(cdcRows.map(x => x.topic).filter(Boolean))],
-                subtopics: [...new Set(cdcRows.map(x => x.subTopic || x.subtopic).filter(Boolean))]
-              }];
-          if (cdcRows.length) sourceRowsDetailed = cdcRows.map((row) => ({ ...row, _source: { subject, grade, term, sourceType: row.sourceType || (cdcResources.length ? 'cdc_digital_library' : 'ministry_dcd_syllabus'), sourceBasis: row.sourceBasis || (cdcResources.length ? 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia' : 'Ministry of Education, Directorate of Curriculum Development — finalized syllabus'), officialSource: row.cdcResourceUrl || row.officialSource || '', file: `${cdcResources.length ? 'cdc' : 'ministry'}:${row.cdcResourceTitle || ''}` } }));
+        if (cdcResources.length) {
+          sourcePacks = cdcResources.map((r) => ({
+            curriculum: 'cbc', subject, grade, term, sourceType: 'cdc_digital_library',
+            sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia',
+            officialSource: r.url, file: `cdc:${r.id}`,
+            title: r.title, resourceUrl: r.url, topics: [...new Set(cdcRows.filter(x => x.cdcResourceUrl === r.url || x.cdcResourceTitle === r.title).map(x => x.topic).filter(Boolean))],
+            subtopics: [...new Set(cdcRows.filter(x => x.cdcResourceUrl === r.url || x.cdcResourceTitle === r.title).map(x => x.subTopic).filter(Boolean))]
+          }));
+          if (cdcRows.length) sourceRowsDetailed = cdcRows.map((row) => ({ ...row, _source: { subject, grade, term, sourceType: 'cdc_digital_library', sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia', officialSource: row.cdcResourceUrl || '', file: `cdc:${row.cdcResourceTitle || ''}` } }));
+        }
+        // If the CDC Digital Library is unavailable, use the Ministry of Education
+        // official syllabus parser as the CBC source rather than silently falling back
+        // to unrelated/local content.
+        if (!cdcRows.length && typeof loadMinistryRows === 'function') {
+          const ministryRows = await loadMinistryRows({ grade, subject, term });
+          if (ministryRows.length) {
+            sourceRowsDetailed = ministryRows.map((row) => ({ ...row, _source: { subject, grade, term, sourceType: 'ministry_official', sourceBasis: 'Ministry of Education, Zambia — Directorate of Curriculum Development', officialSource: row.officialSource || '', file: row.file || `ministry:${subject}:${grade}` } }));
+            sourcePacks = [{ curriculum: 'cbc', subject, grade, term, sourceType: 'ministry_official', sourceBasis: 'Ministry of Education, Zambia — Directorate of Curriculum Development', officialSource: 'https://www.edu.gov.zm/?page_id=1142', file: `ministry:${subject}:${grade}` }];
+          }
         }
       } catch (error) {
         console.warn(`⚠️ CDC scheme source lookup failed: ${error.message}`);
@@ -2650,7 +2635,7 @@ Return ONLY valid JSON with this OBC scheme structure:
       }
 
       if (schemeResearch) {
-        prompt += `\n\nONLINE RESEARCH ENRICHMENT (supporting evidence only):\n${schemeResearch}\nRULE: Online research may enrich activities, examples, explanations and learner tasks, but it MUST NOT override the official curriculum source, topic, subtopic, competence, standard, code, sequence, or CBC/OBC syllabus family.\n`;
+        prompt += `\n\nONLINE RESEARCH ENRICHMENT (supporting evidence only):\n${schemeResearch}\nRULE: Online research may enrich activities, examples and explanations, but MUST NOT override the official curriculum source, topic, subtopic, competence, standard, code, sequence, or CBC/OBC syllabus family.\n`;
       }
 
       const messages = [
@@ -4338,13 +4323,18 @@ app.get('/api/curriculum/topics', async (req, res) => {
       try {
         const cdcResources = await listCDCResources({ grade, subject, term });
         const cdcRows = await loadCDCRows({ grade, subject, term });
-        if (cdcResources.length || cdcRows.length) {
-          sources = cdcResources.length
-            ? cdcResources.map((r) => ({ curriculum: 'cbc', subject, grade, term, sourceType: 'cdc_digital_library', sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia', officialSource: r.url, title: r.title, file: `cdc:${r.id}` }))
-            : [{ curriculum: 'cbc', subject, grade, term, sourceType: 'ministry_dcd_syllabus', sourceBasis: 'Ministry of Education, Directorate of Curriculum Development — finalized syllabus', officialSource: cdcRows[0]?.officialSource || '', title: cdcRows[0]?.cdcResourceTitle || `${subject} ${grade} finalized syllabus`, file: 'ministry:dcd' }];
-          rows = cdcRows.map((r) => ({ ...r, _source: { subject, grade, term, sourceType: r.sourceType || (cdcResources.length ? 'cdc_digital_library' : 'ministry_dcd_syllabus'), sourceBasis: r.sourceBasis || (cdcResources.length ? 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia' : 'Ministry of Education, Directorate of Curriculum Development — finalized syllabus'), officialSource: r.cdcResourceUrl || r.officialSource || '', file: `${cdcResources.length ? 'cdc' : 'ministry'}:${r.cdcResourceTitle || ''}` } }));
+        if (cdcResources.length) {
+          sources = cdcResources.map((r) => ({ curriculum: 'cbc', subject, grade, term, sourceType: 'cdc_digital_library', sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia', officialSource: r.url, title: r.title, file: `cdc:${r.id}` }));
+          rows = cdcRows.map((r) => ({ ...r, _source: { subject, grade, term, sourceType: 'cdc_digital_library', sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia', officialSource: r.cdcResourceUrl || '', file: `cdc:${r.cdcResourceTitle || ''}` } }));
         }
-      } catch (error) { console.warn(`⚠️ CDC topics unavailable: ${error.message}`); }
+        if (!cdcRows.length && typeof loadMinistryRows === 'function') {
+          const ministryRows = await loadMinistryRows({ grade, subject, term });
+          if (ministryRows.length) {
+            rows = ministryRows;
+            sources = [{ curriculum: 'cbc', subject, grade, term, sourceType: 'ministry_official', sourceBasis: 'Ministry of Education, Zambia — Directorate of Curriculum Development', officialSource: 'https://www.edu.gov.zm/?page_id=1142', file: `ministry:${subject}:${grade}` }];
+          }
+        }
+      } catch (error) { console.warn(`⚠️ CBC topics unavailable: ${error.message}`); }
     }
     const topics = [...new Set(rows.map((r) => r.topic).filter(Boolean))];
     const subtopics = [...new Set(rows.map((r) => r.subTopic || r.subtopic).filter(Boolean))];
