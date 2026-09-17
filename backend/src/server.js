@@ -847,12 +847,14 @@ function repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term
     }
   }
 
-  // Preserve a detailed DeepSeek progression when it contains real content.
-  // Only rebuild when missing, too short, malformed, or obviously generic.
+  // Preserve a valid, detailed DeepSeek progression. Do NOT replace it merely
+  // because one phrase is generic; doing that can destroy otherwise excellent
+  // topic-specific content. Rebuild only when the progression is missing, too
+  // short, or structurally malformed. The final specificity gate below handles
+  // genuinely generic content and requests a targeted regeneration.
   const lp = Array.isArray(aiContent.lessonProgression) ? aiContent.lessonProgression : [];
-  const lpText = lp.map(x => `${x?.teacherRole || ''} ${x?.learnerRole || ''} ${x?.assessmentCriteria || ''}`).join(' ');
-  const genericCBC = /appropriate classroom task|appropriate examples|key ideas of .* using appropriate|investigate or classify information related to|apply the new knowledge to the activity/i.test(lpText);
-  if (lp.length < 6 || genericCBC) {
+  const validLP = lp.length >= 6 && lp.every(x => x && x.stage && x.time && x.teacherRole && x.learnerRole && x.assessmentCriteria);
+  if (!validLP) {
     aiContent.lessonProgression = generateVerifiedCBCProgression(topic, subtopic, subject, grade, cm);
   }
   return aiContent;
@@ -956,8 +958,15 @@ Return ONLY valid JSON matching this structure. Do not add markdown or commentar
 // considered specific only when its learning points, activities and assessment
 // repeatedly refer to the actual topic/subtopic and contain concrete content.
 function lessonSpecificityTerms(topic, subtopic) {
-  const raw = `${topic || ''} ${subtopic || ''}`.toLowerCase();
-  return [...new Set(raw.split(/[^a-z0-9]+/).filter(w => w.length >= 4))];
+  const raw = `${subtopic || ''} ${topic || ''}`.toLowerCase();
+  const words = raw.split(/[^a-z0-9]+/).filter(w => w.length >= 4);
+  const variants = [];
+  for (const w of words) {
+    variants.push(w);
+    if (w.endsWith('ies') && w.length > 4) variants.push(w.slice(0, -3) + 'y');
+    if (w.endsWith('s') && !w.endsWith('ss') && w.length > 4) variants.push(w.slice(0, -1));
+  }
+  return [...new Set(variants)];
 }
 
 function hasGenericLessonFiller(text) {
@@ -973,10 +982,21 @@ function isTopicSpecificLesson(content, topic, subtopic, curriculumType) {
   const combined = rows.map(r => JSON.stringify(r)).join(' ').toLowerCase();
   if (hasGenericLessonFiller(combined)) return false;
 
-  // Require repeated evidence of the selected topic/subtopic. This catches
-  // generic lessons even when the model changes the wording of the filler.
-  const hits = terms.reduce((n, term) => n + (combined.match(new RegExp(`\\b${term.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\b`, 'g')) || []).length, 0);
-  if (terms.length && hits < Math.max(4, terms.length * 2)) return false;
+  // Require clear evidence of the selected content without demanding that
+  // every word of a multi-word topic be repeated many times. This avoids false
+  // rejections for natural wording such as "plant responses to gravity" when
+  // the selected subtopic is "Geotropism". Prefer the subtopic, then topic.
+  const focusWords = lessonSpecificityTerms(subtopic || topic, '');
+  const topicWords = lessonSpecificityTerms(topic, '');
+  const countHits = (words) => words.reduce((n, term) => {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return n + ((combined.match(new RegExp(`\\b${escaped}\\b`, 'g')) || []).length);
+  }, 0);
+  const focusHits = countHits(focusWords);
+  const topicHits = countHits(topicWords);
+  if ((subtopic && focusWords.length && focusHits < 2) && topicHits < 3) return false;
+  if (!subtopic && topicWords.length && topicHits < 3) return false;
+
 
   return rows.every(r => {
     const values = curriculumType === 'cbc'
@@ -2359,8 +2379,20 @@ Return ONLY the JSON object, no other text.
     if (curriculumType === 'cbc') {
       aiContent = repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term, curriculumContext, getCBCSubjectProfile(subject));
       if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'cbc')) {
+        console.log('⚠️ Final CBC specificity check failed; requesting one final content-only regeneration...');
+        try {
+          const finalRepair = await generateDeepSeekJSON([
+            { role: 'system', content: 'You are a strict Zambian CBC lesson-plan specialist. Return ONLY valid JSON. The lesson must contain concrete content for the exact selected topic and subtopic. Never use generic placeholders.' },
+            { role: 'user', content: buildSpecificityRepairPrompt(topic, subtopic, subject, grade, 'cbc', curriculumContext) }
+          ], { max_tokens: 10000, temperature: 0.15 });
+          if (finalRepair && typeof finalRepair === 'object') aiContent = { ...aiContent, ...finalRepair };
+        } catch (finalRepairError) {
+          console.log(`⚠️ Final CBC regeneration failed: ${finalRepairError.message}`);
+        }
+      }
+      if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'cbc')) {
         return res.status(422).json({
-          error: 'The selected topic/subtopic did not produce sufficiently topic-specific CBC lesson content. Please retry or select a verified curriculum source match.',
+          error: 'The lesson generator could not produce sufficiently topic-specific CBC content after automatic regeneration. No generic lesson was saved.',
           code: 'LESSON_CONTENT_NOT_TOPIC_SPECIFIC'
         });
       }
