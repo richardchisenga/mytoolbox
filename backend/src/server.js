@@ -950,6 +950,72 @@ Return ONLY valid JSON matching this structure. Do not add markdown or commentar
 `;
 }
 // ============ OBC LESSON PROMPT ============
+
+// ============ LESSON QUALITY GATE ============
+// Prevents generic/template text from reaching the saved lesson. A lesson is
+// considered specific only when its learning points, activities and assessment
+// repeatedly refer to the actual topic/subtopic and contain concrete content.
+function lessonSpecificityTerms(topic, subtopic) {
+  const raw = `${topic || ''} ${subtopic || ''}`.toLowerCase();
+  return [...new Set(raw.split(/[^a-z0-9]+/).filter(w => w.length >= 4))];
+}
+
+function hasGenericLessonFiller(text) {
+  return /using appropriate examples|subject-appropriate examples|relevant subject questions or activities|appropriate classroom task|appropriate task|key points of .* and identify|main concepts, terms, processes or structures related to|apply knowledge of .* to relevant|learners have ideas about the topic|teacher revises through the previous lesson|teacher explains the main content of/i.test(String(text || ''));
+}
+
+function isTopicSpecificLesson(content, topic, subtopic, curriculumType) {
+  if (!content || typeof content !== 'object') return false;
+  const rows = curriculumType === 'cbc' ? content.lessonProgression : content.lessonDevelopment;
+  if (!Array.isArray(rows) || rows.length < (curriculumType === 'cbc' ? 6 : 5)) return false;
+
+  const terms = lessonSpecificityTerms(topic, subtopic);
+  const combined = rows.map(r => JSON.stringify(r)).join(' ').toLowerCase();
+  if (hasGenericLessonFiller(combined)) return false;
+
+  // Require repeated evidence of the selected topic/subtopic. This catches
+  // generic lessons even when the model changes the wording of the filler.
+  const hits = terms.reduce((n, term) => n + (combined.match(new RegExp(`\\b${term.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\b`, 'g')) || []).length, 0);
+  if (terms.length && hits < Math.max(4, terms.length * 2)) return false;
+
+  return rows.every(r => {
+    const values = curriculumType === 'cbc'
+      ? [r.stage, r.time, r.teacherRole, r.learnerRole, r.assessmentCriteria]
+      : [r.time, r.learningPoints, r.teacherActivities, r.pupilActivities, r.methods];
+    return values.every(v => String(v || '').trim().length >= 10);
+  });
+}
+
+function buildSpecificityRepairPrompt(topic, subtopic, subject, grade, curriculumType, curriculumContext) {
+  const isCBC = curriculumType === 'cbc';
+  return `
+REPAIR THIS LESSON PLAN. The previous response was rejected because it contained generic/template teaching language.
+
+Selected curriculum: ${curriculumType.toUpperCase()}
+Subject: ${subject}
+Grade/Class: ${grade}
+Topic: ${topic}
+Subtopic: ${subtopic || '[none supplied]'}
+
+SOURCE CONTEXT:
+${formatContext(curriculumContext)}
+
+NON-NEGOTIABLE RULES:
+1. Write ONLY about the exact selected topic/subtopic. Do not teach the broader subject instead.
+2. Every learning point must contain concrete facts, definitions, principles, processes, formulas, examples, cases, procedures, diagrams to draw, calculations, experiments or other actual content appropriate to ${subject}.
+3. Every teacher activity must state exactly what the teacher explains, writes, demonstrates, displays, asks or corrects.
+4. Every learner activity must state exactly what learners answer, calculate, classify, draw, discuss, practise, investigate or produce.
+5. Assessment must contain actual questions/tasks about ${subtopic || topic}.
+6. NEVER write phrases such as "appropriate examples", "relevant subject questions", "apply the concept", "key points", "subject-appropriate activity", or "main concepts" without immediately specifying the actual content.
+7. Do not invent official curriculum wording. Use source context when supplied; otherwise label generated pedagogical content as ordinary lesson content, not as an official syllabus statement.
+8. Do not copy content from another subject.
+9. Return ONLY valid JSON.
+
+REQUIRED DEVELOPMENT FORMAT:
+${isCBC ? `lessonProgression: exactly 6 stages with these times: INTRODUCTION 5 min; LESSON DEVELOPMENT 10 min; ACTIVITY 1 15 min; ACTIVITY 2 15 min; EXERCISE 25 min; CONCLUSION 10 min. Each object requires stage, time, teacherRole, learnerRole and assessmentCriteria.` : `lessonDevelopment: exactly 5 stages with these times: 10 min, 25 min, 20 min, 15 min, 10 min. Each object requires time, learningPoints, teacherActivities, pupilActivities and methods.`}
+`;
+}
+
 function generateOBCPrompt(topic, grade, subject, classSize, user, subtopic, term = '', curriculumContext = null) {
   const size = parseInt(classSize) || 40;
   const boys = Math.floor(size / 2) || 18;
@@ -972,12 +1038,14 @@ CURRICULUM PRIORITY RULES:
 4. Do not invent official OBC codes, page numbers, textbook titles or source claims.
 5. If no verified OBC source match exists, generate pedagogically useful legacy OBC content but clearly avoid claiming it is an official syllabus statement.
 6. DETAIL STANDARD: The plan must be fully teachable and content-rich for the exact topic and subtopic.
-7. Learning Points must contain actual subject content: definitions, facts, principles, procedures, worked examples, calculations, cases, texts, practical steps or other concrete material relevant to the topic.
-8. Teacher Activities must describe exactly what the teacher explains, demonstrates, asks, writes, displays, checks or corrects.
-9. Pupil Activities must describe exactly what learners do, answer, calculate, discuss, draw, classify, practise, demonstrate or produce.
-10. Include real topic-specific questions/tasks in guided practice and individual assessment. Do not use generic filler or empty placeholders.
-11. Use genuine methods for the selected subject; do not force Biology, laboratory or generic group activities into unrelated subjects.
-12. Make the lesson detailed enough that another teacher could teach the 80-minute lesson directly from the generated plan.
+7. TOPIC LOCK: The subtopic controls the lesson content. If topic='Sense Organs' and subtopic='Eye Disorders', teach eye disorders—not sense organs generally.
+8. CONTENT DENSITY: Each learningPoints entry must contain at least 2-4 concrete topic facts, relationships, examples, procedures or questions.
+9. Learning Points must contain actual subject content: definitions, facts, principles, procedures, worked examples, calculations, cases, texts, practical steps or other concrete material relevant to the topic.
+10. Teacher Activities must describe exactly what the teacher explains, demonstrates, asks, writes, displays, checks or corrects.
+11. Pupil Activities must describe exactly what learners do, answer, calculate, discuss, draw, classify, practise, demonstrate or produce.
+12. Include real topic-specific questions/tasks in guided practice and individual assessment. Do not use generic filler or empty placeholders.
+13. Use genuine methods for the selected subject; do not force Biology, laboratory or generic group activities into unrelated subjects.
+14. Make the lesson detailed enough that another teacher could teach the 80-minute lesson directly from the generated plan.
 
 ⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this OBC lesson structure. The lessonDevelopment array MUST have content with all required fields including content, teacherActivity, pupilActivity, and methods. The content field MUST contain actual lesson content with examples, not empty placeholders.
 
@@ -2125,6 +2193,24 @@ Return ONLY the JSON object, no other text.
       }
       aiContent = { ...fallback, ...aiContent };
 
+      // HARD QUALITY GATE: reject generic AI output and ask DeepSeek to repair it
+      // using the exact topic/subtopic before any fallback/template is accepted.
+      if (!isTopicSpecificLesson(aiContent, topic, subtopic, curriculumType)) {
+        console.log(`⚠️ ${curriculumType.toUpperCase()} lesson failed topic-specificity check; requesting repair...`);
+        const repairPrompt = buildSpecificityRepairPrompt(topic, subtopic, subject, grade, curriculumType, curriculumContext);
+        try {
+          const repaired = await generateDeepSeekJSON([
+            { role: 'system', content: 'You are a strict lesson-plan editor. Reject generic educational filler. Return only a fully topic-specific JSON lesson plan.' },
+            { role: 'user', content: repairPrompt }
+          ], { max_tokens: 9000, temperature: 0.2 });
+          if (repaired && typeof repaired === 'object') {
+            aiContent = { ...aiContent, ...repaired };
+          }
+        } catch (repairError) {
+          console.log(`⚠️ Topic-specific repair failed: ${repairError.message}`);
+        }
+      }
+
       // FORCE populate if empty - THIS IS THE CRITICAL FIX
       if (curriculumType === 'cbc' && (!aiContent.lessonProgression || aiContent.lessonProgression.length === 0)) {
         console.log('📝 CBC lessonProgression was empty, FORCE populating with content...');
@@ -2197,12 +2283,24 @@ Return ONLY the JSON object, no other text.
     // generic mathematics-style template contamination from generated lessons.
     if (curriculumType === 'obc') {
       aiContent = repairOBCLessonContent(aiContent, topic, subtopic, subject, grade, term);
+      if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'obc')) {
+        return res.status(422).json({
+          error: 'The selected topic/subtopic did not produce sufficiently topic-specific lesson content. Please retry or select a curriculum source match.',
+          code: 'LESSON_CONTENT_NOT_TOPIC_SPECIFIC'
+        });
+      }
     }
 
     // Final CBC quality gate: rebuild the progression and clean generated fields
     // from the selected CDC curriculum context before saving the lesson.
     if (curriculumType === 'cbc') {
       aiContent = repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term, curriculumContext, getCBCSubjectProfile(subject));
+      if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'cbc')) {
+        return res.status(422).json({
+          error: 'The selected topic/subtopic did not produce sufficiently topic-specific CBC lesson content. Please retry or select a verified curriculum source match.',
+          code: 'LESSON_CONTENT_NOT_TOPIC_SPECIFIC'
+        });
+      }
     }
 
     // HARD FORMAT ISOLATION: preserve the user's OBC format while preventing cross-format leakage.
