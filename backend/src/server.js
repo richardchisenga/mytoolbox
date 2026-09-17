@@ -1015,9 +1015,7 @@ function isTopicSpecificLesson(content, topic, subtopic, curriculumType) {
   const focusWords = lessonSpecificityTerms(focus, '');
   const topicWords = lessonSpecificityTerms(topicText, '');
 
-  // Reject obvious template filler only when it is actually being used as the
-  // lesson content. A word such as "appropriate" elsewhere is not enough.
-  if (hasGenericLessonFiller(combined)) return false;
+  const genericFiller = hasGenericLessonFiller(combined);
 
   const countHits = (words) => words.reduce((n, term) => {
     const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1033,7 +1031,11 @@ function isTopicSpecificLesson(content, topic, subtopic, curriculumType) {
   const concreteEvidence = /\b(defin|explain|identify|state|describe|compare|predict|observe|measure|draw|label|calculate|classif|investigat|experiment|demonstrat|analyse|analyz|apply|solve|differentiat|discuss|construct|plot|name)\w*/i.test(combined);
   const focusPass = focusWords.length ? focusHits >= Math.min(3, Math.max(2, focusWords.length)) : false;
   const topicPass = topicWords.length ? topicHits >= 3 : false;
+  // Generic wording is acceptable only when the lesson also contains strong
+  // concrete evidence and repeated selected-topic terminology. This prevents
+  // a harmless phrase from rejecting an otherwise valid lesson.
   if (!concreteEvidence || (!focusPass && !topicPass)) return false;
+  if (genericFiller && !concreteEvidence) return false;
 
   if (curriculumType === 'cbc') {
     const normalizedRows = normalizeCBCProgressionRows(rows);
@@ -2451,7 +2453,22 @@ Return ONLY the JSON object, no other text.
         aiContent.lessonProgression = normalizeCBCProgressionRows(aiContent.lessonProgression);
       }
       if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'cbc')) {
-        console.log('❌ CBC FINAL REJECT DIAGNOSTICS', JSON.stringify({ topic, subtopic, focusText: String(subtopic || topic || ''), rows: Array.isArray(aiContent.lessonProgression) ? aiContent.lessonProgression.length : 0, contentSample: Array.isArray(aiContent.lessonProgression) ? aiContent.lessonProgression.map(r => ({ stage:r?.stage, time:r?.time, teacherRole:r?.teacherRole || r?.teacherActivities, learnerRole:r?.learnerRole || r?.learnerActivities || r?.pupilActivities, assessmentCriteria:r?.assessmentCriteria || r?.assessment })).slice(0,6) : [] }, null, 2));
+        const finalRows = Array.isArray(aiContent.lessonProgression) ? aiContent.lessonProgression : [];
+        const finalCombined = finalRows.map(r => JSON.stringify(r)).join(' ').toLowerCase();
+        const finalFocusWords = lessonSpecificityTerms(String(subtopic || topic || ''), '');
+        const finalTopicWords = lessonSpecificityTerms(String(topic || ''), '');
+        const finalHits = (words) => words.reduce((n, term) => {
+          const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          return n + ((finalCombined.match(new RegExp(`\\b${escaped}\\b`, 'gi')) || []).length);
+        }, 0);
+        console.log('❌ CBC FINAL REJECT DIAGNOSTICS', JSON.stringify({
+          topic, subtopic, focusText: String(subtopic || topic || ''), rows: finalRows.length,
+          focusHits: finalHits(finalFocusWords), topicHits: finalHits(finalTopicWords),
+          genericFiller: hasGenericLessonFiller(finalCombined),
+          concreteEvidence: /\b(defin|explain|identify|state|describe|compare|predict|observe|measure|draw|label|calculate|classif|investigat|experiment|demonstrat|analyse|analyz|apply|solve|differentiat|discuss|construct|plot|name)\w*/i.test(finalCombined),
+          stages: finalRows.map(r => r?.stage),
+          contentSample: finalRows.map(r => ({ stage:r?.stage, time:r?.time, teacherRole:r?.teacherRole || r?.teacherActivities, learnerRole:r?.learnerRole || r?.learnerActivities || r?.pupilActivities, assessmentCriteria:r?.assessmentCriteria || r?.assessment })).slice(0,6)
+        }, null, 2));
         return res.status(422).json({
           error: 'The lesson generator could not produce sufficiently topic-specific CBC content after automatic regeneration. No generic lesson was saved.',
           code: 'LESSON_CONTENT_NOT_TOPIC_SPECIFIC'
