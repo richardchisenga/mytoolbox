@@ -31,14 +31,8 @@ function termWord(term) {
   return raw || '';
 }
 
-
-
 // ============ ONLINE RESEARCH ENRICHMENT ============
-// Online sources enrich examples, explanations and activities only. They never
-// override the selected official CBC/OBC curriculum source or its terminology.
 async function getOnlineResearchContext({ curriculum, grade, subject, term = '', topic = '', subtopic = '' } = {}) {
-  // External web research is intentionally disabled. Curriculum generation must
-  // rely only on the application's official/local curriculum sources.
   return '';
 }
 
@@ -73,11 +67,8 @@ const corsOptions = {
   credentials: true,
   optionsSuccessStatus: 200
 };
-// ============ MIDDLEWARE ============
-// Disable helmet completely to avoid CSP issues
-// app.use(helmet());
 
-// Use helmet with CSP disabled
+// ============ MIDDLEWARE ============
 app.use(
   helmet({
     contentSecurityPolicy: false,
@@ -113,6 +104,7 @@ const notesUpload = multer({
     cb(new Error('Unsupported file type. Upload PDF, DOC, DOCX, TXT, MD, CSV or JSON.'));
   }
 });
+
 // ============ AUTHENTICATION MIDDLEWARE ============
 const authenticate = (req, res, next) => {
   try {
@@ -143,19 +135,14 @@ app.get('/', (req, res) => {
 });
 
 // ============ ROBUST DEEPSEEK JSON PARSER ============
-
 function safeParseJSON(content) {
   if (!content || typeof content !== 'string') {
     console.error('❌ DeepSeek returned empty or invalid content');
     return null;
   }
-
-  try {
-    return JSON.parse(content.trim());
-  } catch (firstError) {
+  try { return JSON.parse(content.trim()); } catch (firstError) {
     console.warn('⚠️ Direct JSON.parse failed:', firstError.message);
   }
-
   try {
     let cleaned = content
       .trim()
@@ -163,26 +150,17 @@ function safeParseJSON(content) {
       .replace(/^```\s*/i, '')
       .replace(/\s*```$/i, '')
       .trim();
-
     const firstBrace = cleaned.indexOf('{');
     const lastBrace = cleaned.lastIndexOf('}');
-
     if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
       console.error('❌ No JSON object found in DeepSeek response');
-      console.error('Response:', content.substring(0, 1000));
       return null;
     }
-
     cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-
-    try {
-      return JSON.parse(cleaned);
-    } catch (secondError) {
+    try { return JSON.parse(cleaned); } catch (secondError) {
       console.warn('⚠️ Cleaned JSON.parse failed:', secondError.message);
-      console.error('Cleaned response:', cleaned.substring(0, 1500));
       return null;
     }
-
   } catch (error) {
     console.error('❌ JSON cleanup failed:', error.message);
     return null;
@@ -190,16 +168,12 @@ function safeParseJSON(content) {
 }
 
 // ============ IMPROVED DEEPSEEK GENERATE FUNCTION ============
-
 async function generateDeepSeekJSON(messages, options = {}) {
   const maxAttempts = 3;
-
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       console.log(`🤖 DeepSeek attempt ${attempt}/${maxAttempts}`);
-
       const maxTokens = options.max_tokens || 4000;
-      
       const response = await deepseek.chat.completions.create({
         model: options.model || 'deepseek-chat',
         messages,
@@ -207,10 +181,8 @@ async function generateDeepSeekJSON(messages, options = {}) {
         max_tokens: maxTokens,
         response_format: { type: 'json_object' },
       });
-
       const choices = Array.isArray(response?.choices) ? response.choices : [];
       const choice = choices[0];
-
       if (!choice) {
         const responseKeys = response && typeof response === 'object' ? Object.keys(response).join(', ') : typeof response;
         const status = response?.status || response?.status_code || 'unknown';
@@ -218,492 +190,1016 @@ async function generateDeepSeekJSON(messages, options = {}) {
         console.error(`❌ DeepSeek response contained no choices (status=${status}, finish=${finish}, keys=${responseKeys})`);
         throw new Error('DeepSeek returned no choices; API response was incomplete');
       }
-
       console.log(`🤖 Finish reason: ${choice.finish_reason || 'unknown'}`);
-
       if (choice.finish_reason === 'length') {
         console.warn('⚠️ DeepSeek response was truncated, trying to parse partial response...');
       }
-
       const content = choice?.message?.content;
-
-      if (!content) {
-        throw new Error('DeepSeek returned empty content');
-      }
-
+      if (!content) throw new Error('DeepSeek returned empty content');
       let parsed = null;
-      try {
-        parsed = JSON.parse(content.trim());
-      } catch (parseError) {
+      try { parsed = JSON.parse(content.trim()); }
+      catch (parseError) {
         console.warn('⚠️ Direct JSON.parse failed, trying to clean...');
-        
         let cleaned = content
           .trim()
           .replace(/^```json\s*/i, '')
           .replace(/^```\s*/i, '')
           .replace(/\s*```$/i, '')
           .trim();
-        
         const firstBrace = cleaned.indexOf('{');
         const lastBrace = cleaned.lastIndexOf('}');
-        
         if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
           cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-          try {
-            parsed = JSON.parse(cleaned);
-          } catch (e) {
-            console.error('❌ Cleaned JSON.parse also failed:', e.message);
-          }
+          try { parsed = JSON.parse(cleaned); }
+          catch (e) { console.error('❌ Cleaned JSON.parse also failed:', e.message); }
         }
       }
-
-      if (!parsed) {
-        throw new Error('DeepSeek returned invalid JSON');
-      }
-
+      if (!parsed) throw new Error('DeepSeek returned invalid JSON');
       return parsed;
-
     } catch (error) {
       console.error(`⚠️ DeepSeek attempt ${attempt} failed:`, error.message);
-
-      if (attempt === maxAttempts) {
-        throw error;
-      }
-
+      if (attempt === maxAttempts) throw error;
       await new Promise(resolve => setTimeout(resolve, 1500 * attempt));
     }
   }
 }
 
-// ============ GENERATE CBC LESSON PROGRESSION ============
-function generateLessonProgression(topic, subject, grade) {
-  const topicLower = topic.toLowerCase();
-  
-  // Sets topic
-  if (topicLower.includes('sets') || topicLower.includes('set')) {
-    return [
-      {
-        stage: "INTRODUCTION",
-        time: "5 min",
-        teacherRole: "Ask: 'What is a set?' Explain that a set is a collection of well-defined objects. Give examples: set of books, set of students in class. Introduce set notation: { }.",
-        learnerRole: "Listen, participate, give examples of sets they see around them.",
-        assessmentCriteria: "Observation of participation"
-      },
-      {
-        stage: "LESSON DEVELOPMENT",
-        time: "10 min",
-        teacherRole: "Put learners into groups of 4-5. Give each group different objects. Ask them to group the objects and define the set. Introduce terminology: elements/members, universal set, empty set.",
-        learnerRole: "In groups, sort objects and define the set. Discuss what elements belong to the set.",
-        assessmentCriteria: "Group collaboration and correct classification"
-      },
-      {
-        stage: "ACTIVITY 1",
-        time: "11 min",
-        teacherRole: "Display different sets on the board. Introduce set notation: A = {1, 2, 3, 4, 5}. Explain that elements are written inside curly brackets. Introduce ∈ (belongs to) and ∉ (does not belong to).",
-        learnerRole: "Observe, discuss, practice writing sets using proper notation. Identify whether an element belongs to a set or not.",
-        assessmentCriteria: "Correct use of set notation"
-      },
-      {
-        stage: "ACTIVITY 2",
-        time: "16 min",
-        teacherRole: "Introduce types of sets: Finite set, Infinite set, Empty set, Equal sets, Equivalent sets. Provide examples for each.",
-        learnerRole: "Present findings; correct own work. Practice identifying different types of sets.",
-        assessmentCriteria: "Accurate identification and classification of set types"
-      },
-      {
-        stage: "EXERCISE",
-        time: "20 min",
-        teacherRole: "Give a worksheet with exercises on set notation and types of sets.",
-        learnerRole: "Complete worksheet individually.",
-        assessmentCriteria: "Correct answers on worksheet"
-      },
-      {
-        stage: "CONCLUSION",
-        time: "10 min",
-        teacherRole: "Summarise key points: A set is a collection of well-defined objects. Sets are written using curly brackets { }. Types of sets: Finite, Infinite, Empty, Equal, Equivalent.",
-        learnerRole: "Share one thing they learned about sets.",
-        assessmentCriteria: "Verbal explanation of at least one set concept"
-      }
-    ];
+// ============================================================
+// GENERIC CONTENT DETECTION (shared by CBC + OBC quality gate)
+// ============================================================
+const GENERIC_PHRASES = [
+  /using appropriate examples/i,
+  /appropriate examples/i,
+  /appropriate classroom task/i,
+  /appropriate activities/i,
+  /subject-appropriate activity/i,
+  /subject-appropriate learning activities/i,
+  /relevant subject questions or activities/i,
+  /relevant subject question or activity/i,
+  /main concepts, terms, processes/i,
+  /key ideas of .* using appropriate/i,
+  /investigate or classify information related to/i,
+  /apply the new knowledge to the activity/i,
+  /main content of .* using appropriate examples/i,
+  /key points of .* and identify/i,
+  /appropriate OBC teaching methods/i,
+  /demonstrate understanding of .* through subject-appropriate/i,
+  /application task based on/i,
+  /complete an application task/i,
+  /apply the concept correctly/i,
+  /apply your knowledge of .* to a relevant/i,
+  /explain the main idea, relationship or process/i,
+  /give evidence that demonstrates the stated competence/i,
+  /complete an appropriate .* task/i,
+  /appropriate teaching methods/i,
+  /various teaching methods/i,
+  /relevant examples? of/i,
+  /discuss the topic/i,
+  /explain the concept of \w+$/i,
+  /apply the concepts? to/i,
+  /important topic in/i,
+  /essential topic in/i,
+  /key points covered in the lesson/i,
+  /common applications in daily life/i,
+  /develops critical thinking and problem-solving skills/i,
+  /work through detailed examples showing how to apply/i,
+  /identify the key information/i,
+  /apply the appropriate formula\/method/i,
+  /solve step by step/i,
+  /check your answer/i,
+];
+
+function countGenericMatches(text) {
+  const t = String(text || '');
+  let hits = 0;
+  for (const re of GENERIC_PHRASES) {
+    if (re.test(t)) hits++;
   }
-  
-  // Calculus - Differentiation
-  if (topicLower.includes('calculus') || topicLower.includes('differentiation')) {
-    return [
-      {
-        stage: "INTRODUCTION",
-        time: "5 min",
-        teacherRole: "Ask: 'What is the meaning of differentiation?' Explain that differentiation is the process of finding the rate at which a quantity changes. Define calculus and differentiation.",
-        learnerRole: "Listen, participate, give examples of rates of change in daily life (speed of a car, growth of plants).",
-        assessmentCriteria: "Observation of participation"
-      },
-      {
-        stage: "LESSON DEVELOPMENT",
-        time: "10 min",
-        teacherRole: "Put learners into groups of 4-5. Ask them to identify the concept of gradient/slope of a curve. Explain that differentiation is finding the gradient of a curve at any point.",
-        learnerRole: "In groups, discuss what they know about gradient. Identify that straight lines have constant gradient while curves have varying gradient.",
-        assessmentCriteria: "Group collaboration"
-      },
-      {
-        stage: "ACTIVITY 1",
-        time: "11 min",
-        teacherRole: "Display different graphs (linear, quadratic, cubic). Ask groups to find the gradient at different points using the formula: gradient = (y₂-y₁)/(x₂-x₁). Introduce the idea of a tangent to a curve.",
-        learnerRole: "Observe graphs, discuss, use rulers to draw tangents and calculate gradients. Fill chart with gradient values.",
-        assessmentCriteria: "Correct recording of gradient values"
-      },
-      {
-        stage: "ACTIVITY 2",
-        time: "16 min",
-        teacherRole: "Introduce the differentiation notation: dy/dx = lim(Δx→0) [f(x+Δx)-f(x)]/Δx. Show the power rule: d/dx(xⁿ) = nxⁿ⁻¹. Work through examples: d/dx(x²) = 2x, d/dx(3x⁴) = 12x³.",
-        learnerRole: "Present findings; correct own work. Practice differentiating simple functions: x³, 5x², 4x⁵.",
-        assessmentCriteria: "Accurate presentation and correct differentiation"
-      },
-      {
-        stage: "EXERCISE",
-        time: "20 min",
-        teacherRole: "Give a quiz: Differentiate the following: a) y = x⁴ b) y = 3x³ c) y = 2x⁵ d) y = x² + 3x",
-        learnerRole: "Complete quiz individually.",
-        assessmentCriteria: "Correct differentiation of each function"
-      },
-      {
-        stage: "CONCLUSION",
-        time: "10 min",
-        teacherRole: "Summarise key points: Differentiation is the process of finding the gradient of a curve. The power rule: d/dx(xⁿ) = nxⁿ⁻¹. Differentiation has many applications in physics, economics, and engineering.",
-        learnerRole: "Share one thing they learned about differentiation.",
-        assessmentCriteria: "Verbal explanation of at least one differentiation concept"
-      }
-    ];
-  }
-  
-  // Mensuration - Areas
-  if (topicLower.includes('mensuration') || topicLower.includes('area')) {
-    return [
-      {
-        stage: "INTRODUCTION",
-        time: "5 min",
-        teacherRole: "Ask: 'What is mensuration?' Explain that mensuration is the branch of mathematics dealing with measurement of geometric figures. Define area and its importance.",
-        learnerRole: "Listen, participate, give examples of where area is used in daily life.",
-        assessmentCriteria: "Observation of participation"
-      },
-      {
-        stage: "LESSON DEVELOPMENT",
-        time: "10 min",
-        teacherRole: "Put learners into groups of 4-5. Display different shapes (rectangle, triangle, circle, parallelogram, trapezium). Ask them to identify the formula for each shape's area.",
-        learnerRole: "In groups, discuss and write down the area formulas for each shape.",
-        assessmentCriteria: "Group collaboration"
-      },
-      {
-        stage: "ACTIVITY 1",
-        time: "11 min",
-        teacherRole: "Display different objects and ask groups to measure and calculate their areas using the correct formula.",
-        learnerRole: "Measure objects, record dimensions, and calculate areas. Fill chart with measurements and calculations.",
-        assessmentCriteria: "Correct recording of measurements and calculations"
-      },
-      {
-        stage: "ACTIVITY 2",
-        time: "16 min",
-        teacherRole: "Ask each group to present their findings. Consolidate by listing all area formulas on the board. Work through examples: Rectangle, Triangle, Circle, Trapezium.",
-        learnerRole: "Present findings to class; correct own work. Write down consolidated formulas.",
-        assessmentCriteria: "Accurate presentation and correct formula identification"
-      },
-      {
-        stage: "EXERCISE",
-        time: "20 min",
-        teacherRole: "Give a quiz: Find the area of: a) Rectangle L=12cm, W=8cm b) Triangle base=10cm, height=6cm c) Circle radius=7cm",
-        learnerRole: "Complete quiz individually.",
-        assessmentCriteria: "Correct area calculations"
-      },
-      {
-        stage: "CONCLUSION",
-        time: "10 min",
-        teacherRole: "Summarise key points: Area formulas for different shapes. Emphasize the importance of using correct units.",
-        learnerRole: "Share one thing they learned about mensuration.",
-        assessmentCriteria: "Verbal explanation"
-      }
-    ];
-  }
-  
-  // Quadratic Equations
-  if (topicLower.includes('quadratic')) {
-    return [
-      {
-        stage: "INTRODUCTION",
-        time: "5 min",
-        teacherRole: "Ask: 'What is a quadratic equation?' Explain that a quadratic equation is of the form ax² + bx + c = 0.",
-        learnerRole: "Listen, participate, give examples of quadratic equations.",
-        assessmentCriteria: "Observation of participation"
-      },
-      {
-        stage: "LESSON DEVELOPMENT",
-        time: "10 min",
-        teacherRole: "Put learners into groups. Explain the three methods of solving quadratic equations: Factorization, Completing the Square, Quadratic Formula.",
-        learnerRole: "In groups, discuss the methods and their applications.",
-        assessmentCriteria: "Group collaboration"
-      },
-      {
-        stage: "ACTIVITY 1",
-        time: "11 min",
-        teacherRole: "Demonstrate solving quadratic equations using the quadratic formula: x = [-b ± √(b²-4ac)] / 2a",
-        learnerRole: "Practice using the formula with different equations.",
-        assessmentCriteria: "Correct application of formula"
-      },
-      {
-        stage: "ACTIVITY 2",
-        time: "16 min",
-        teacherRole: "Show how to solve using factorization and completing the square. Work through examples.",
-        learnerRole: "Practice solving equations using different methods.",
-        assessmentCriteria: "Accurate solutions"
-      },
-      {
-        stage: "EXERCISE",
-        time: "20 min",
-        teacherRole: "Give exercises: Solve x²+5x+6=0, x²-5x+6=0",
-        learnerRole: "Complete exercises individually.",
-        assessmentCriteria: "Correct solutions"
-      },
-      {
-        stage: "CONCLUSION",
-        time: "10 min",
-        teacherRole: "Summarise methods of solving quadratic equations.",
-        learnerRole: "Share one thing they learned.",
-        assessmentCriteria: "Verbal explanation"
-      }
-    ];
-  }
-  
-  // Default - Generic
-  return [
-    {
-      stage: "INTRODUCTION",
-      time: "5 min",
-      teacherRole: `Ask engaging questions to introduce ${topic}. Explain the importance of ${topic} in ${subject}.`,
-      learnerRole: "Listen, participate, give examples of ${topic} in daily life.",
-      assessmentCriteria: "Observation of participation"
-    },
-    {
-      stage: "LESSON DEVELOPMENT",
-      time: "10 min",
-      teacherRole: `Put learners into groups of 4-5. Ask them to identify key concepts of ${topic} using displayed materials.`,
-      learnerRole: "In groups, handle materials and identify key concepts.",
-      assessmentCriteria: "Group collaboration"
-    },
-    {
-      stage: "ACTIVITY 1",
-      time: "11 min",
-      teacherRole: `Display different materials. Ask groups to record key information about ${topic}.`,
-      learnerRole: "Observe, discuss, fill chart with information.",
-      assessmentCriteria: "Correct recording of content"
-    },
-    {
-      stage: "ACTIVITY 2",
-      time: "16 min",
-      teacherRole: `Ask each group to present findings. Consolidate by listing key points on the board.`,
-      learnerRole: "Present chart to class; correct own work.",
-      assessmentCriteria: "Accurate presentation and participation"
-    },
-    {
-      stage: "EXERCISE",
-      time: "20 min",
-      teacherRole: `Give a quiz on ${topic}.`,
-      learnerRole: "Complete quiz individually.",
-      assessmentCriteria: "Correct answers"
-    },
-    {
-      stage: "CONCLUSION",
-      time: "10 min",
-      teacherRole: `Summarise key points of ${topic}.`,
-      learnerRole: "Share what they learned.",
-      assessmentCriteria: "Verbal explanation"
-    }
-  ];
+  return hits;
 }
 
-// ============ GENERATE LESSON CONTENT (OBC) ============
-function generateLessonContent(topic, subject, grade) {
-  const topicLower = topic.toLowerCase();
-  
-  // Sets topic
-  if (topicLower.includes('sets') || topicLower.includes('set')) {
-    return [
-      {
-        content: `INTRODUCTION TO SETS\n\nA set is a collection of well-defined objects. Sets are fundamental in mathematics and are used in statistics, probability, and computer science.\n\nKEY CONCEPTS:\n- A set is a collection of well-defined objects\n- Elements are the objects in a set\n- Sets are written using curly brackets { }\n- ∈ means 'belongs to'\n- ∉ means 'does not belong to'\n\nTYPES OF SETS:\n1. Finite set - countable number of elements\n2. Infinite set - uncountable number of elements\n3. Empty set - no elements (∅ or { })\n4. Equal sets - exactly the same elements\n5. Equivalent sets - same number of elements`,
-        teacherActivity: "Teacher writes the definition and types of sets on the board. Teacher gives examples of each type. Teacher demonstrates set notation with examples.",
-        pupilActivity: "Learners to write the notes in their exercise books. Learners to listen attentively and give examples of sets.",
-        methods: "Teacher Exposition, Demonstration, Question and Answer"
-      },
-      {
-        content: `WORKED EXAMPLES\n\nEXAMPLE 1: Set Notation\nWrite the set of even numbers less than 10.\nSolution: A = {2, 4, 6, 8}\n\nEXAMPLE 2: Belongs to\nDetermine if 5 belongs to A = {1, 2, 3, 4, 5}\nSolution: 5 ∈ A (5 belongs to set A)\n\nEXAMPLE 3: Types of Sets\nIdentify the type of set: A = {1, 2, 3, 4, 5}\nSolution: Finite set (has 5 elements)\n\nEXAMPLE 4: Empty Set\nIdentify: C = { }\nSolution: Empty set (∅)`,
-        teacherActivity: "Teacher solves the examples on the board step by step. Teacher explains set notation clearly. Teacher asks learners to identify elements in sets.",
-        pupilActivity: "Learners to write the examples in their exercise books. Volunteer learners to go and solve on the board.",
-        methods: "Question and Answer, Demonstration, Group Discussion"
-      },
-      {
-        content: `PRACTICE EXERCISES\n\nEXERCISE:\n1. Write the set of vowels in the alphabet.\n2. Write the set of factors of 12.\n3. Identify whether the following are finite, infinite, or empty sets:\n   a) A = {2, 4, 6, 8}\n   b) B = {all prime numbers}\n   c) C = { }\n\nEXPECTED ANSWERS:\n1. {a, e, i, o, u}\n2. {1, 2, 3, 4, 6, 12}\n3. a) Finite set, b) Infinite set, c) Empty set`,
-        teacherActivity: "Teacher writes the exercise on the board. Teacher monitors progress and assists learners.",
-        pupilActivity: "Learners to write the exercise in their exercise books. Learners to work individually.",
-        methods: "Group Work, Individual Practice, Question and Answer"
-      },
-      {
-        content: `REAL-WORLD APPLICATIONS\n\nAPPLICATIONS OF SETS:\n1. Organizing data in statistics\n2. Probability calculations\n3. Database queries in computer science\n4. Classifying objects in daily life\n\nSUMMARY:\n- A set is a collection of well-defined objects\n- Sets are written using curly brackets { }\n- Types: Finite, Infinite, Empty, Equal, Equivalent\n- Set notation: ∈ and ∉\n- Sets are used in many areas of mathematics`,
-        teacherActivity: "Teacher consolidates learners' responses and writes the summary on the board. Teacher discusses applications and gives remedial work.",
-        pupilActivity: "Learners to listen attentively and write the summary. Learners to share examples of where sets are used.",
-        methods: "Review, Consolidation, Discussion"
-      }
-    ];
-  }
-  
-  // Calculus - Differentiation
-  if (topicLower.includes('calculus') || topicLower.includes('differentiation')) {
-    return [
-      {
-        content: `INTRODUCTION TO DIFFERENTIATION\n\nDifferentiation is the process of finding the rate at which a quantity changes. It is a fundamental concept in calculus.\n\nKEY CONCEPTS:\n- Differentiation finds the gradient of a curve at any point\n- The derivative represents the rate of change\n- Notation: dy/dx = f'(x)\n\nRULES OF DIFFERENTIATION:\n- Power Rule: d/dx(xⁿ) = nxⁿ⁻¹\n- Constant Rule: d/dx(c) = 0\n- Sum Rule: d/dx(f+g) = f' + g'`,
-        teacherActivity: "Teacher writes the definition and rules on the board. Teacher explains the concept of rate of change with real-life examples.",
-        pupilActivity: "Learners to write the notes in their exercise books. Learners to listen attentively and ask questions.",
-        methods: "Teacher Exposition, Demonstration, Question and Answer"
-      },
-      {
-        content: `WORKED EXAMPLES\n\nEXAMPLE 1: Power Rule\nDifferentiate y = x³\nSolution: dy/dx = 3x²\n\nEXAMPLE 2: Power Rule with Coefficient\nDifferentiate y = 5x⁴\nSolution: dy/dx = 20x³\n\nEXAMPLE 3: Sum Rule\nDifferentiate y = x² + 3x\nSolution: dy/dx = 2x + 3\n\nEXAMPLE 4: Finding Gradient\nFind the gradient of y = x² at x = 3\nSolution: dy/dx = 2x, at x = 3, gradient = 6`,
-        teacherActivity: "Teacher solves the examples on the board step by step. Teacher explains the reasoning behind each step.",
-        pupilActivity: "Learners to write the examples in their exercise books. Volunteer learners to go and solve on the board.",
-        methods: "Question and Answer, Demonstration, Group Discussion"
-      },
-      {
-        content: `PRACTICE EXERCISES\n\nEXERCISE:\n1. Differentiate y = x⁵\n2. Differentiate y = 3x³\n3. Differentiate y = 2x⁴ + 5x²\n4. Differentiate y = x³ - 4x + 7\n5. Find the gradient of y = x³ at x = 2\n\nEXPECTED ANSWERS:\n1. dy/dx = 5x⁴\n2. dy/dx = 9x²\n3. dy/dx = 8x³ + 10x\n4. dy/dx = 3x² - 4\n5. dy/dx = 3x², at x = 2, gradient = 12`,
-        teacherActivity: "Teacher writes the exercise on the board. Teacher monitors progress and assists learners.",
-        pupilActivity: "Learners to write the exercise in their exercise books. Learners to work individually.",
-        methods: "Group Work, Individual Practice, Question and Answer"
-      },
-      {
-        content: `REAL-WORLD APPLICATIONS\n\nAPPLICATIONS OF DIFFERENTIATION:\n1. Physics: Velocity and acceleration\n2. Economics: Marginal cost and revenue\n3. Engineering: Optimization problems\n4. Biology: Growth rates\n\nSUMMARY:\n- Differentiation finds the rate of change\n- Power rule: d/dx(xⁿ) = nxⁿ⁻¹\n- Gradient of a curve at a point = derivative at that point`,
-        teacherActivity: "Teacher consolidates learners' responses and writes the summary on the board. Teacher discusses applications.",
-        pupilActivity: "Learners to listen attentively and write the summary.",
-        methods: "Review, Consolidation, Discussion"
-      }
-    ];
-  }
-  
-  // Mensuration - Areas
-  if (topicLower.includes('mensuration') || topicLower.includes('area') || topicLower.includes('perimeter') || topicLower.includes('volume')) {
-    return [
-      {
-        content: `INTRODUCTION TO MENSURATION AREAS\n\nMensuration is the branch of mathematics that deals with the measurement of geometric figures such as length, area, and volume. Area is the measure of the surface enclosed by a plane figure.\n\nFORMULAE FOR AREAS:\n- Rectangle: A = L × W\n- Square: A = L²\n- Triangle: A = ½ × base × height\n- Circle: A = πr²\n- Parallelogram: A = base × height\n- Trapezium: A = ½(a+b)h`,
-        teacherActivity: "Teacher writes the formulae on the board and explains each formula with clear examples.",
-        pupilActivity: "Learners to write the formulae in their exercise books. Learners to listen attentively and identify shapes around them.",
-        methods: "Teacher Exposition, Demonstration, Question and Answer"
-      },
-      {
-        content: `WORKED EXAMPLES\n\nEXAMPLE 1: Rectangle\nFind the area of a rectangle with length 12cm and width 8cm.\nSolution: A = 12 × 8 = 96cm²\n\nEXAMPLE 2: Triangle\nFind the area of a triangle with base 10cm and height 6cm.\nSolution: A = ½ × 10 × 6 = 30cm²\n\nEXAMPLE 3: Circle\nFind the area of a circle with radius 7cm. (Take π = 22/7)\nSolution: A = 154cm²\n\nEXAMPLE 4: Trapezium\nFind the area of a trapezium with parallel sides 8cm and 12cm, and height 6cm.\nSolution: A = ½(8+12) × 6 = 60cm²`,
-        teacherActivity: "Teacher solves the examples on the board step by step. Teacher emphasizes the importance of using correct formulae and units.",
-        pupilActivity: "Learners to write the examples in their exercise books. Volunteer learners to go and solve similar problems on the board.",
-        methods: "Question and Answer, Demonstration, Group Discussion"
-      },
-      {
-        content: `PRACTICE EXERCISES\n\nEXERCISE:\n1. Find the area of a rectangle with length 15cm and width 10cm.\n2. Find the area of a triangle with base 14cm and height 8cm.\n3. Find the area of a circle with radius 10cm. (Take π = 3.142)\n4. Find the area of a parallelogram with base 12cm and height 7cm.\n5. Find the area of a trapezium with parallel sides 8cm and 12cm, and height 6cm.\n\nEXPECTED ANSWERS:\n1. A = 150cm²\n2. A = 56cm²\n3. A = 314.2cm²\n4. A = 84cm²\n5. A = 60cm²`,
-        teacherActivity: "Teacher writes the exercise on the board. Teacher moves around the class to monitor progress and assist learners.",
-        pupilActivity: "Learners to write the exercise in their exercise books. Learners to work individually or in pairs.",
-        methods: "Group Work, Individual Practice, Question and Answer"
-      },
-      {
-        content: `REAL-WORLD APPLICATIONS\n\nAPPLICATIONS:\n1. Calculating floor area for tiles/paint\n2. Calculating farm area for seed/fertilizer\n3. Calculating plot area for construction\n4. Calculating circular garden area\n\nSUMMARY:\n- Area is measured in square units (cm², m², km²)\n- Different shapes have different formulae\n- Always include the correct units`,
-        teacherActivity: "Teacher consolidates learners' responses and writes the summary on the board. Teacher discusses applications.",
-        pupilActivity: "Learners to listen attentively and write the summary.",
-        methods: "Review, Consolidation, Discussion"
-      }
-    ];
-  }
-  
-  // Quadratic Equations
-  if (topicLower.includes('quadratic')) {
-    return [
-      {
-        content: `INTRODUCTION TO QUADRATIC EQUATIONS\n\nA quadratic equation is an equation of the form ax² + bx + c = 0, where a, b, and c are constants and a ≠ 0.\n\nMETHODS OF SOLVING QUADRATIC EQUATIONS:\n1. Factorization Method\n2. Completing the Square Method\n3. Quadratic Formula Method\n\nQUADRATIC FORMULA:\nx = [-b ± √(b² - 4ac)] / 2a\n\nThe discriminant (b² - 4ac) determines the nature of roots.`,
-        teacherActivity: "Teacher writes the general form of quadratic equation on the board. Teacher explains each method and demonstrates the quadratic formula.",
-        pupilActivity: "Learners to write the notes in their exercise books. Learners to listen attentively and ask questions.",
-        methods: "Teacher Exposition, Demonstration, Question and Answer"
-      },
-      {
-        content: `WORKED EXAMPLES\n\nEXAMPLE 1: Using Quadratic Formula\nSolve: x² + 5x + 6 = 0\nSolution: x = -2 or x = -3\n\nEXAMPLE 2: Using Factorization\nSolve: x² - 5x + 6 = 0\nSolution: x = 2 or x = 3\n\nEXAMPLE 3: Using Completing the Square\nSolve: x² + 6x - 7 = 0\nSolution: x = 1 or x = -7`,
-        teacherActivity: "Teacher solves the examples on the board step by step. Teacher explains each method clearly.",
-        pupilActivity: "Learners to write the examples in their exercise books. Volunteer learners to go and solve on the board.",
-        methods: "Question and Answer, Demonstration, Group Discussion"
-      },
-      {
-        content: `PRACTICE EXERCISES\n\nSolve the following quadratic equations:\n1. x² + 7x + 12 = 0\n2. x² - 4x - 12 = 0\n3. 2x² + 5x - 3 = 0\n4. x² - 6x + 9 = 0\n5. 2x² - 7x + 3 = 0\n\nEXPECTED ANSWERS:\n1. x = -3 or x = -4\n2. x = 6 or x = -2\n3. x = ½ or x = -3\n4. x = 3 (repeated root)\n5. x = 3 or x = ½`,
-        teacherActivity: "Teacher writes the exercise on the board. Teacher monitors progress and assists learners.",
-        pupilActivity: "Learners to write the exercise in their exercise books. Learners to work individually.",
-        methods: "Group Work, Individual Practice, Question and Answer"
-      },
-      {
-        content: `SUMMARY AND APPLICATIONS\n\nSUMMARY:\n- Quadratic equations are of the form ax² + bx + c = 0\n- Three methods: Factorization, Completing Square, Quadratic Formula\n- Discriminant determines the nature of roots\n\nAPPLICATIONS:\n- Projectile motion in Physics\n- Profit and loss calculations in Business\n- Area problems in Geometry`,
-        teacherActivity: "Teacher consolidates learners' responses and writes the summary on the board.",
-        pupilActivity: "Learners to listen attentively and write the summary.",
-        methods: "Review and Consolidation"
-      }
-    ];
-  }
-
-  if (topicLower.includes('trig') || topicLower.includes('sine') || topicLower.includes('cosine') || topicLower.includes('tangent')) {
-    return [
-      {
-        content: `INTRODUCTION TO TRIGONOMETRY\n\nTrigonometry is the study of relationships between the sides and angles of triangles.\n\nTRIGONOMETRIC RATIOS:\n- sin θ = opposite / hypotenuse\n- cos θ = adjacent / hypotenuse\n- tan θ = opposite / adjacent\n\nSPECIAL ANGLES:\n- sin 30° = ½, cos 30° = √3/2, tan 30° = 1/√3\n- sin 45° = √2/2, cos 45° = √2/2, tan 45° = 1\n- sin 60° = √3/2, cos 60° = ½, tan 60° = √3`,
-        teacherActivity: "Teacher writes the trigonometric ratios on the board. Teacher explains using right-angled triangles.",
-        pupilActivity: "Learners to write the notes in their exercise books. Learners to listen attentively and identify opposite, adjacent, and hypotenuse.",
-        methods: "Teacher Exposition, Demonstration, Question and Answer"
-      },
-      {
-        content: `WORKED EXAMPLES\n\nEXAMPLE 1: Find sin θ, cos θ, and tan θ for a right triangle where opposite = 3, adjacent = 4, hypotenuse = 5.\nSolution: sin θ = 3/5 = 0.6, cos θ = 4/5 = 0.8, tan θ = 3/4 = 0.75\n\nEXAMPLE 2: In a right triangle, sin θ = ½. Find θ.\nSolution: θ = sin⁻¹(½) = 30°`,
-        teacherActivity: "Teacher solves the examples on the board step by step. Teacher emphasizes the importance of identifying sides correctly.",
-        pupilActivity: "Learners to write the examples in their exercise books. Volunteer learners to go and solve on the board.",
-        methods: "Question and Answer, Demonstration, Group Discussion"
-      },
-      {
-        content: `PRACTICE EXERCISES\n\n1. In a right triangle, opposite = 5, adjacent = 12. Find sin θ, cos θ, and tan θ.\n2. If cos θ = ¾, find sin θ and tan θ.\n3. If tan θ = 1, find the value of θ.\n\nEXPECTED ANSWERS:\n1. sin θ = 5/13, cos θ = 12/13, tan θ = 5/12\n2. sin θ = √7/4, tan θ = √7/3\n3. θ = 45°`,
-        teacherActivity: "Teacher writes the exercise on the board. Teacher monitors progress and assists learners.",
-        pupilActivity: "Learners to write the exercise in their exercise books. Learners to work individually.",
-        methods: "Individual Practice, Question and Answer"
-      },
-      {
-        content: `SUMMARY AND APPLICATIONS\n\nSUMMARY:\n- Trigonometry deals with triangle relationships\n- Three main ratios: sine, cosine, tangent\n- Use SOH CAH TOA to remember\n\nAPPLICATIONS:\n- Architecture and construction\n- Navigation and surveying\n- Engineering and physics`,
-        teacherActivity: "Teacher consolidates learners' responses and writes the summary on the board.",
-        pupilActivity: "Learners to listen attentively and write the summary.",
-        methods: "Review and Consolidation"
-      }
-    ];
-  }
-  
-  // Default - Generic content
-  return [
-    {
-      content: `INTRODUCTION TO ${topic.toUpperCase()}\n\n${topic} is an important concept in ${subject}. It involves understanding the fundamental principles and applications in real-life situations.\n\nKEY CONCEPTS:\n- Understanding the basic principles\n- Identifying different types and categories\n- Applying concepts to solve problems`,
-      teacherActivity: `Teacher writes the introduction on the board and explains the concept of ${topic}. Teacher asks learners to give examples of ${topic} in daily life.`,
-      pupilActivity: "Learners to write the notes in their exercise books. Learners to listen attentively and participate in class discussions.",
-      methods: "Teacher Exposition, Demonstration, Question and Answer"
-    },
-    {
-      content: `MAIN CONTENT AND EXAMPLES\n\nWork through detailed examples showing how to apply the concepts.\n\nStep 1: Identify the key information\nStep 2: Apply the appropriate formula/method\nStep 3: Solve step by step\nStep 4: Check your answer`,
-      teacherActivity: `Teacher solves ${topic} problems on the board step by step. Teacher allows learners to ask questions.`,
-      pupilActivity: "Learners to listen attentively and take notes. Volunteer learners to go and solve on the board.",
-      methods: "Question and Answer, Group Discussion, Demonstration"
-    },
-    {
-      content: `PRACTICE EXERCISES\n\nEXERCISE:\n1. Solve the following problems related to ${topic}\n2. Apply the concepts to solve real-world problems\n3. Identify and correct common mistakes\n\nEXPECTED ANSWERS:\nDetailed solutions showing all steps.`,
-      teacherActivity: `Teacher writes the exercise on the board. Teacher provides guidance and support to learners.`,
-      pupilActivity: "Learners to write the exercise in their exercise books. Learners to work individually or in groups.",
-      methods: "Group Work, Individual Practice, Question and Answer"
-    },
-    {
-      content: `SUMMARY AND CONCLUSION\n\nSUMMARY:\n- Key points covered in the lesson\n- Important formulae or concepts to remember\n- Common applications in daily life\n\nCONCLUSION:\n${topic} is an essential topic in ${subject} that helps develop critical thinking and problem-solving skills.`,
-      teacherActivity: "Teacher consolidates learners' responses and writes the summary on the board.",
-      pupilActivity: "Learners to listen attentively and write the summary. Learners to ask final questions.",
-      methods: "Review and Consolidation"
-    }
-  ];
+function normalizeForCompare(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
+function topicTokens(value) {
+  const stop = new Set([
+    'the','and','of','in','to','for','on','a','an','with','by','from','use','using',
+    'understanding','demonstrate','explain','apply','learners','learner','lesson',
+    'introduction','definition','concept','concepts','topic','subtopic','activities',
+    'activity','examples','example','state','identify','describe','discuss','their',
+    'this','that','these','those','which','what','when','where','who','why','how'
+  ]);
+  return new Set(
+    normalizeForCompare(value)
+      .split(' ')
+      .filter(t => t.length > 2 && !stop.has(t))
+  );
+}
+
+function topicOverlapScore(topic, subtopic, text) {
+  const focus = `${topic} ${subtopic}`.trim();
+  const focusTokens = topicTokens(focus);
+  if (!focusTokens.size) return 1;
+  const textTokens = topicTokens(text);
+  if (!textTokens.size) return 0;
+  let common = 0;
+  for (const t of focusTokens) if (textTokens.has(t)) common++;
+  return common / focusTokens.size;
+}
+
+function detectGenericLesson(aiContent, { curriculumType, topic, subtopic }) {
+  const reasons = [];
+  if (!aiContent || typeof aiContent !== 'object') {
+    return { generic: true, reasons: ['empty lesson object'] };
+  }
+
+  const focus = `${topic || ''} ${subtopic || ''}`.trim();
+
+  const parts = [];
+  const pushText = (v) => {
+    if (v == null) return;
+    if (Array.isArray(v)) { v.forEach(pushText); return; }
+    if (typeof v === 'object') { Object.values(v).forEach(pushText); return; }
+    parts.push(String(v));
+  };
+
+  if (curriculumType === 'cbc') {
+    pushText(aiContent.specificCompetence);
+    pushText(aiContent.expectedStandard);
+    pushText(aiContent.lessonGoal);
+    pushText(aiContent.rationale);
+    pushText(aiContent.priorKnowledge);
+    pushText(aiContent.learningOutcomes);
+    pushText(aiContent.learnersEvaluation);
+    pushText(aiContent.homework);
+    pushText(aiContent.lessonProgression);
+  } else {
+    pushText(aiContent.rationale);
+    pushText(aiContent.learningOutcomes);
+    pushText(aiContent.learnersEvaluation);
+    pushText(aiContent.expectedAnswers);
+    pushText(aiContent.prerequisiteKnowledge);
+    pushText(aiContent.lessonIntroduction);
+    pushText(aiContent.lessonConclusion);
+    pushText(aiContent.lessonDevelopment);
+  }
+
+  const combined = parts.join('\n');
+  const genericHits = countGenericMatches(combined);
+  if (genericHits >= 3) {
+    reasons.push(`filler phrases detected (${genericHits} matches)`);
+  }
+
+  if (curriculumType === 'cbc') {
+    const lp = Array.isArray(aiContent.lessonProgression) ? aiContent.lessonProgression : [];
+    if (lp.length < 6) reasons.push('CBC lessonProgression has fewer than 6 stages');
+    const emptyStages = lp.filter(r =>
+      !String(r?.teacherRole || '').trim() ||
+      !String(r?.learnerRole || '').trim() ||
+      !String(r?.assessmentCriteria || '').trim()
+    );
+    if (emptyStages.length) reasons.push('some CBC progression stages have empty roles or criteria');
+  } else {
+    const ld = Array.isArray(aiContent.lessonDevelopment) ? aiContent.lessonDevelopment : [];
+    if (ld.length < 4) reasons.push('OBC lessonDevelopment has fewer than 4 rows');
+    const emptyRows = ld.filter(r =>
+      !String(r?.learningPoints || r?.content || '').trim() ||
+      !String(r?.teacherActivities || r?.teacherActivity || '').trim() ||
+      !String(r?.pupilActivities || r?.pupilActivity || '').trim()
+    );
+    if (emptyRows.length) reasons.push('some OBC development rows are missing learning points, teacher or pupil activities');
+  }
+
+  const focusNorm = normalizeForCompare(focus);
+  const substantiveNorm = normalizeForCompare(parts.join(' '));
+  const overlap = topicOverlapScore(topic, subtopic, substantiveNorm);
+  const containsFocus =
+    focusNorm.length >= 4 &&
+    (substantiveNorm.includes(focusNorm) || overlap >= 0.5);
+  if (focusNorm && !containsFocus && overlap < 0.4) {
+    reasons.push(`content is not anchored to the selected topic/subtopic (overlap=${overlap.toFixed(2)})`);
+  }
+
+  return { generic: reasons.length > 0, reasons };
+}
+
+// ============================================================
+// STRICTER REPAIR PROMPT (sent back to DeepSeek)
+// ============================================================
+function buildStrictRepairPrompt({ curriculumType, topic, subtopic, grade, subject, term, previousContent, reasons }) {
+  const focus = subtopic ? `"${topic}" → sub-topic "${subtopic}"` : `"${topic}"`;
+  const structure = curriculumType === 'cbc'
+    ? `"lessonProgression": array of EXACTLY 6 stages named INTRODUCTION, LESSON DEVELOPMENT, ACTIVITY 1, ACTIVITY 2, EXERCISE, CONCLUSION (total = 80 minutes). Each stage MUST contain: stage, time, teacherRole, learnerRole, assessmentCriteria.`
+    : `"lessonDevelopment": array of 4-6 rows. Each row MUST contain: time, learningPoints, teacherActivities, pupilActivities, methods.`;
+
+  return `You previously produced a GENERIC lesson plan that was REJECTED by the quality gate.
+
+REJECTION REASONS:
+${reasons.map((r, i) => `${i + 1}. ${r}`).join('\n')}
+
+You MUST now rewrite the lesson so it is CONCRETE and TOPIC-SPECIFIC.
+
+FOCUS (do not drift from this):
+- Grade/Form: ${grade}
+- Subject: ${subject}
+- Term: ${term || 'not supplied'}
+- Topic: ${topic}
+- Sub-topic: ${subtopic || '(none — use the topic only)'}
+- Curriculum family: ${curriculumType.toUpperCase()}
+
+HARD RULES — ANY VIOLATION WILL BE REJECTED AGAIN:
+1. Every stage/row must contain ACTUAL subject content (definitions, facts, formulas, processes, examples, cases, worked calculations, texts, procedures) drawn from the exact topic and sub-topic.
+2. NEVER use these filler phrases (or anything similar):
+   - "using appropriate examples"
+   - "appropriate classroom task"
+   - "subject-appropriate activity"
+   - "relevant subject questions or activities"
+   - "main concepts, terms, processes"
+   - "key ideas of X using appropriate examples"
+   - "investigate or classify information related to"
+   - "apply the new knowledge to the activity"
+   - "apply your knowledge of X to a relevant subject question or activity"
+   - "explain the main idea, relationship or process"
+   - "give evidence that demonstrates the stated competence"
+   - "complete an application task"
+   - "discuss the topic"
+   - "work through detailed examples"
+3. Teacher roles must say EXACTLY what the teacher does, writes, draws, asks, demonstrates or corrects.
+4. Learner roles must say EXACTLY what learners do, calculate, draw, label, discuss, produce or answer.
+5. The EXERCISE stage must contain REAL questions/tasks with real values, terms, cases or items — not instructions to invent questions.
+6. If the sub-topic names a specific case (e.g. "Eye Disorders"), the content must stay inside that case for the whole lesson. Do not drift back to the parent topic.
+7. Return ONLY valid JSON matching the required structure for ${curriculumType.toUpperCase()}.
+8. Required structure: ${structure}
+9. Do not include any commentary, markdown fences, or explanation outside the JSON.
+
+PREVIOUS REJECTED OUTPUT (for reference — do NOT copy it):
+${JSON.stringify(previousContent).slice(0, 4000)}
+
+NOW RETURN THE REWRITTEN JSON ONLY.`;
+}
+
+// ============================================================
+// OFFLINE TOPIC-SPECIFIC TEMPLATES
+// ============================================================
+// Each family returns a full CBC-style progression (6 stages) and an
+// OBC-style development (5 rows). The focus (topic + subtopic) is injected
+// into every stage so the offline fallback is genuinely topic-anchored.
+
+function familyMatch(text, patterns) {
+  const t = String(text || '').toLowerCase();
+  return patterns.some(p => p.test(t));
+}
+
+// ---------- BIOLOGY ----------
+function biologyTemplate(focus) {
+  return {
+    cbc: [
+      { stage: 'INTRODUCTION', time: '5 min', teacherRole: `Ask learners what they already know about ${focus}. Write the term on the board and connect learner responses to the day's focus.`, learnerRole: `Answer the opening questions and share prior knowledge about ${focus}.`, assessmentCriteria: `Learners give at least one accurate statement about ${focus}.` },
+      { stage: 'LESSON DEVELOPMENT', time: '10 min', teacherRole: `Explain ${focus} using a labelled diagram on the board. Define the key terms and give one local Zambian example.`, learnerRole: `Listen, ask questions, copy the definition and label the diagram in their books.`, assessmentCriteria: `Learners copy the definition accurately and label the diagram correctly.` },
+      { stage: 'ACTIVITY 1', time: '15 min', teacherRole: `Give groups a chart or specimen related to ${focus}. Ask them to identify and describe the main features or processes.`, learnerRole: `In groups, examine the chart/specimen, identify features and record findings about ${focus}.`, assessmentCriteria: `Groups correctly identify at least two features of ${focus}.` },
+      { stage: 'ACTIVITY 2', time: '15 min', teacherRole: `Ask each group to present their findings about ${focus}. Correct misconceptions and reinforce the correct scientific language.`, learnerRole: `Present findings to the class, answer peer questions and correct their notes.`, assessmentCriteria: `Presentations use correct terms about ${focus} and answer questions.` },
+      { stage: 'EXERCISE', time: '25 min', teacherRole: `Give individual questions on ${focus}: definitions, labelling, short explanations and one application question. Mark and give feedback.`, learnerRole: `Answer the questions individually, then correct their work after feedback.`, assessmentCriteria: `Learners correctly answer most questions on ${focus}.` },
+      { stage: 'CONCLUSION', time: '10 min', teacherRole: `Summarise the key points about ${focus}, ask an exit question and identify learners who need remedial support.`, learnerRole: `State two key facts about ${focus} and answer the exit question.`, assessmentCriteria: `Learners state two accurate facts about ${focus}.` }
+    ],
+    obc: [
+      { time: '10 min', learningPoints: `INTRODUCTION TO ${focus.toUpperCase()}\n\nDefine ${focus} in biology. State why it is important in the study of living things. Give one everyday example.`, teacherActivities: `Teacher revises previous work, writes the definition of ${focus} on the board and gives one local example.`, pupilActivities: `Learners listen, write the definition and give their own examples of ${focus}.`, methods: 'Question and Answer, Teacher Exposition' },
+      { time: '25 min', learningPoints: `MAIN CONTENT: ${focus.toUpperCase()}\n\nExplain the structure, function or process involved in ${focus}. Use a labelled diagram. Give at least two examples relevant to Zambia.`, teacherActivities: `Teacher explains ${focus} using a labelled diagram, defines each key term and gives two Zambian examples.`, pupilActivities: `Learners draw and label the diagram, copy the notes and ask questions about ${focus}.`, methods: 'Teacher Exposition, Demonstration, Question and Answer' },
+      { time: '20 min', learningPoints: `GUIDED PRACTICE ON ${focus.toUpperCase()}\n\nLearners match terms to descriptions and complete a short table on ${focus}.`, teacherActivities: `Teacher gives a matching exercise on ${focus}, moves around the class and corrects misconceptions.`, pupilActivities: `Learners complete the matching exercise and table in pairs and present their answers.`, methods: 'Group Work, Discussion, Guided Practice' },
+      { time: '15 min', learningPoints: `INDIVIDUAL ASSESSMENT ON ${focus.toUpperCase()}\n\nShort questions: define, label, explain and apply ${focus}.`, teacherActivities: `Teacher sets individual questions on ${focus}, supervises and marks selected responses.`, pupilActivities: `Learners answer the questions individually and correct their work after marking.`, methods: 'Individual Work, Assessment' },
+      { time: '10 min', learningPoints: `SUMMARY: ${focus.toUpperCase()}\n\nRecap the definition, key features and one application of ${focus}.`, teacherActivities: `Teacher summarises the main points of ${focus}, asks an exit question and gives remedial work where needed.`, pupilActivities: `Learners state the key points of ${focus} and answer the exit question.`, methods: 'Review, Question and Answer' }
+    ]
+  };
+}
+
+// ---------- MATHEMATICS ----------
+function mathTemplate(focus, topic) {
+  const t = String(topic || '').toLowerCase();
+  const isSets = /set/.test(t);
+  const isQuadratic = /quadratic/.test(t);
+  const isMensuration = /mensuration|area|perimeter|volume/.test(t);
+  const isTrig = /trig|sine|cosine|tangent/.test(t);
+  const isCalculus = /calculus|differenti/.test(t);
+  const isLinear = /linear equation|simultaneous/.test(t);
+
+  let introduction, development, activity1, activity2, exercise, conclusion;
+  let obcIntro, obcMain, obcGuided, obcAssess, obcSummary;
+
+  if (isSets) {
+    introduction = `Ask: "What is a set?" Explain that a set is a collection of well-defined objects and introduce the notation { }.`;
+    development = `Define elements, universal set and empty set. Show A = {1,2,3,4,5} and introduce ∈ and ∉. Introduce finite, infinite, equal and equivalent sets.`;
+    activity1 = `Give groups different objects (bottle tops, stones, counters). Ask them to form a set, name it and list its elements.`;
+    activity2 = `Groups present their sets. Consolidate on the board: set notation, ∈, ∉ and the five types of sets with one example each.`;
+    exercise = `Individual exercise: 1) Write the set of even numbers less than 12. 2) Write the set of factors of 18. 3) State whether A={2,4,6,8}, B={all prime numbers}, C={ } are finite, infinite or empty. 4) If A={1,2,3,4,5}, state whether 5 ∈ A and 7 ∈ A.`;
+    conclusion = `Summarise: definition of a set, notation { }, ∈ and ∉, and the five types of sets.`;
+    obcIntro = `Define a set. Introduce the notation { } and elements.`;
+    obcMain = `Explain elements, universal set, empty set, ∈ and ∉. List finite, infinite, equal and equivalent sets with examples: A={1,2,3,4,5}, B={all prime numbers}, C={ }.`;
+    obcGuided = `Learners complete a table classifying sets as finite, infinite or empty and mark membership using ∈ and ∉.`;
+    obcAssess = `1) Write the set of vowels. 2) Write the set of factors of 12. 3) Classify A={2,4,6,8}, B={prime numbers}, C={ }. 4) State whether 6 ∈ {2,4,6,8}.`;
+    obcSummary = `Recap set definition, notation, ∈, ∉ and the five types of sets.`;
+  } else if (isQuadratic) {
+    introduction = `Ask: "What is a quadratic equation?" Write the general form ax² + bx + c = 0 with a ≠ 0.`;
+    development = `Explain the three methods: factorisation, completing the square and the quadratic formula x = [-b ± √(b²-4ac)] / 2a. Introduce the discriminant b²-4ac.`;
+    activity1 = `Work through x² + 5x + 6 = 0 by factorisation, showing (x+2)(x+3) = 0 so x = -2 or x = -3.`;
+    activity2 = `Work through x² - 5x + 6 = 0 by the quadratic formula and by completing the square. Compare answers.`;
+    exercise = `Solve: 1) x² + 7x + 12 = 0  2) x² - 4x - 12 = 0  3) 2x² + 5x - 3 = 0  4) x² - 6x + 9 = 0  5) 2x² - 7x + 3 = 0.`;
+    conclusion = `Summarise the three methods and the role of the discriminant.`;
+    obcIntro = `Define a quadratic equation and write ax² + bx + c = 0.`;
+    obcMain = `Explain factorisation, completing the square and the quadratic formula. Work x² + 5x + 6 = 0 and x² - 5x + 6 = 0 fully on the board.`;
+    obcGuided = `Learners solve x² + 7x + 12 = 0 and 2x² + 5x - 3 = 0 in pairs.`;
+    obcAssess = `Solve individually: 1) x² - 4x - 12 = 0  2) x² - 6x + 9 = 0  3) 2x² - 7x + 3 = 0.`;
+    obcSummary = `Recap the three methods and the discriminant.`;
+  } else if (isMensuration) {
+    introduction = `Ask: "What is mensuration?" Explain that it deals with length, area and volume. Introduce the unit cm².`;
+    development = `Write the area formulae: Rectangle A=L×W, Square A=L², Triangle A=½bh, Circle A=πr², Parallelogram A=bh, Trapezium A=½(a+b)h.`;
+    activity1 = `Measure the classroom door and a rectangular exercise book. Calculate their areas using A=L×W.`;
+    activity2 = `Work through: rectangle L=12cm, W=8cm → 96cm²; triangle base=10cm, height=6cm → 30cm²; circle r=7cm → 154cm²; trapezium a=8, b=12, h=6 → 60cm².`;
+    exercise = `Find the area of: 1) rectangle 15cm × 10cm  2) triangle base 14cm height 8cm  3) circle r=10cm (π=3.142)  4) parallelogram base 12cm height 7cm  5) trapezium a=8cm b=12cm h=6cm.`;
+    conclusion = `Summarise the formulae and stress that area is always in square units.`;
+    obcIntro = `Define mensuration and area. State the units.`;
+    obcMain = `Write all area formulae and work the four examples: rectangle, triangle, circle, trapezium.`;
+    obcGuided = `Learners measure rectangular objects in class and calculate their areas.`;
+    obcAssess = `1) rectangle 15cm×10cm  2) triangle b=14cm h=8cm  3) circle r=10cm  4) parallelogram b=12cm h=7cm  5) trapezium a=8 b=12 h=6.`;
+    obcSummary = `Recap all area formulae and the correct units.`;
+  } else if (isTrig) {
+    introduction = `Introduce trigonometry as the study of the relationships between the sides and angles of a right-angled triangle.`;
+    development = `Define sin θ = opp/hyp, cos θ = adj/hyp, tan θ = opp/adj. Introduce SOH CAH TOA. Give special angles: sin 30°=½, cos 30°=√3/2, tan 45°=1.`;
+    activity1 = `Draw a right triangle with opp=3, adj=4, hyp=5. Work sin θ = 3/5, cos θ = 4/5, tan θ = 3/4.`;
+    activity2 = `Work through: opp=5, adj=12 → sin=5/13, cos=12/13, tan=5/12. If sin θ = ½, find θ = 30°.`;
+    exercise = `1) opp=5, adj=12: find sin, cos, tan.  2) If cos θ = ¾, find sin θ and tan θ.  3) If tan θ = 1, find θ.`;
+    conclusion = `Summarise SOH CAH TOA and the special-angle values.`;
+    obcIntro = `Define the three trigonometric ratios.`;
+    obcMain = `Explain SOH CAH TOA with a labelled right triangle. Work the 3-4-5 example and the special angles.`;
+    obcGuided = `Learners label triangles and compute ratios for opp=5, adj=12.`;
+    obcAssess = `1) opp=5, adj=12: sin, cos, tan.  2) cos θ=¾: find sin θ, tan θ.  3) tan θ=1: find θ.`;
+    obcSummary = `Recap SOH CAH TOA and the special angles.`;
+  } else if (isCalculus) {
+    introduction = `Define differentiation as the process of finding the rate of change or gradient of a curve.`;
+    development = `Introduce dy/dx and the power rule d/dx(xⁿ)=nxⁿ⁻¹. Show d/dx(x²)=2x, d/dx(3x⁴)=12x³, d/dx(c)=0 and the sum rule.`;
+    activity1 = `Differentiate y=x³ → 3x²; y=5x⁴ → 20x³; y=x²+3x → 2x+3.`;
+    activity2 = `Find the gradient of y=x² at x=3 → dy/dx=2x, at x=3 gradient=6.`;
+    exercise = `Differentiate: 1) y=x⁵  2) y=3x³  3) y=2x⁴+5x²  4) y=x³-4x+7.  5) Find the gradient of y=x³ at x=2.`;
+    conclusion = `Summarise the power rule and its use for finding gradients.`;
+    obcIntro = `Define differentiation.`;
+    obcMain = `State and apply the power rule. Work y=x³, y=5x⁴, y=x²+3x.`;
+    obcGuided = `Learners differentiate y=x⁵, y=3x³, y=2x⁴+5x².`;
+    obcAssess = `1) y=x⁵  2) y=3x³  3) y=2x⁴+5x²  4) y=x³-4x+7  5) gradient of y=x³ at x=2.`;
+    obcSummary = `Recap the power rule and gradient interpretation.`;
+  } else if (isLinear) {
+    introduction = `Define a linear equation as an equation of the form ax + b = c.`;
+    development = `Show how to solve 2x + 3 = 11 by subtracting 3 then dividing by 2 → x = 4. Introduce simultaneous equations by elimination.`;
+    activity1 = `Solve 3x - 5 = 10 → x = 5. Solve 2x + 3y = 12 and x - y = 1 by elimination.`;
+    activity2 = `Substitution method on x + y = 7 and x - y = 3 → x = 5, y = 2.`;
+    exercise = `Solve: 1) 4x + 7 = 23  2) 5x - 3 = 22  3) x + y = 10 and x - y = 4  4) 2x + y = 11 and x - y = 1.`;
+    conclusion = `Summarise the balance method and the two simultaneous-equation methods.`;
+    obcIntro = `Define linear and simultaneous equations.`;
+    obcMain = `Solve 2x+3=11 and 3x-5=10. Introduce elimination with 2x+3y=12, x-y=1.`;
+    obcGuided = `Learners solve x+y=7 and x-y=3 by both elimination and substitution.`;
+    obcAssess = `1) 4x+7=23  2) 5x-3=22  3) x+y=10, x-y=4  4) 2x+y=11, x-y=1.`;
+    obcSummary = `Recap linear and simultaneous solving methods.`;
+  } else {
+    introduction = `Introduce ${focus} and link it to previous work in mathematics.`;
+    development = `Explain the key terms, rules and formulae for ${focus}, using a worked example.`;
+    activity1 = `Work through two examples of ${focus} on the board, showing every step.`;
+    activity2 = `Give learners a short practice set on ${focus} and check their answers.`;
+    exercise = `1) Answer a definition question on ${focus}. 2) Apply the rule to a numeric example. 3) Solve a short application problem on ${focus}.`;
+    conclusion = `Summarise the main rule and one application of ${focus}.`;
+    obcIntro = `Define ${focus}.`;
+    obcMain = `Explain the rule, formula or method for ${focus} with a worked example.`;
+    obcGuided = `Learners work through a practice set on ${focus}.`;
+    obcAssess = `Short questions testing knowledge and application of ${focus}.`;
+    obcSummary = `Recap the key rule of ${focus}.`;
+  }
+
+  return {
+    cbc: [
+      { stage: 'INTRODUCTION', time: '5 min', teacherRole: introduction, learnerRole: `Answer the opening questions and give examples related to ${focus}.`, assessmentCriteria: `Learners respond correctly to the opening question.` },
+      { stage: 'LESSON DEVELOPMENT', time: '10 min', teacherRole: development, learnerRole: `Listen, copy the definitions and formulae, and ask questions about ${focus}.`, assessmentCriteria: `Learners copy the formulae and definitions accurately.` },
+      { stage: 'ACTIVITY 1', time: '15 min', teacherRole: activity1, learnerRole: `Work in groups on the worked example and record every step for ${focus}.`, assessmentCriteria: `Groups show correct working for ${focus}.` },
+      { stage: 'ACTIVITY 2', time: '15 min', teacherRole: activity2, learnerRole: `Present their working, compare answers and correct mistakes about ${focus}.`, assessmentCriteria: `Correct final answers and working are shown for ${focus}.` },
+      { stage: 'EXERCISE', time: '25 min', teacherRole: `Individual exercise on ${focus}. ${exercise}`, learnerRole: `Complete the exercise individually and correct answers after feedback.`, assessmentCriteria: `Learners achieve correct answers on most questions in ${focus}.` },
+      { stage: 'CONCLUSION', time: '10 min', teacherRole: conclusion, learnerRole: `State the key rule or formula for ${focus} and answer the exit question.`, assessmentCriteria: `Learners state the correct rule or formula for ${focus}.` }
+    ],
+    obc: [
+      { time: '10 min', learningPoints: `INTRODUCTION\n\n${obcIntro}`, teacherActivities: `Teacher revises the previous lesson and introduces ${focus} with a simple example.`, pupilActivities: `Learners listen, write the definition and answer oral questions.`, methods: 'Question and Answer, Teacher Exposition' },
+      { time: '25 min', learningPoints: `MAIN CONTENT\n\n${obcMain}`, teacherActivities: `Teacher explains the method for ${focus} step by step and works one full example on the board.`, pupilActivities: `Learners copy the working for ${focus} and ask questions.`, methods: 'Teacher Exposition, Demonstration' },
+      { time: '20 min', learningPoints: `GUIDED PRACTICE\n\n${obcGuided}`, teacherActivities: `Teacher guides learners through practice questions on ${focus} and corrects misconceptions.`, pupilActivities: `Learners work through the practice questions in pairs and present answers.`, methods: 'Group Work, Guided Practice' },
+      { time: '15 min', learningPoints: `INDIVIDUAL ASSESSMENT\n\n${obcAssess}`, teacherActivities: `Teacher sets individual questions on ${focus}, supervises and marks selected responses.`, pupilActivities: `Learners answer individually and correct their work after marking.`, methods: 'Individual Work, Assessment' },
+      { time: '10 min', learningPoints: `SUMMARY\n\n${obcSummary}`, teacherActivities: `Teacher summarises ${focus}, asks an exit question and gives remedial work.`, pupilActivities: `Learners state the main points of ${focus} and answer the exit question.`, methods: 'Review, Question and Answer' }
+    ]
+  };
+}
+
+// ---------- CHEMISTRY ----------
+function chemistryTemplate(focus, topic) {
+  const t = String(topic || '').toLowerCase();
+  const isAtomic = /atomic|atom/.test(t);
+  const isBonding = /bond/.test(t);
+  const isAcids = /acid|base|alkali/.test(t);
+  const isPeriodic = /periodic/.test(t);
+  const isMoles = /mole|stoichiometry/.test(t);
+
+  let intro, dev, a1, a2, ex, concl, oi, om, og, oa, os;
+
+  if (isAtomic) {
+    intro = `Ask: "What is an atom?" Introduce the atom as the smallest particle of an element.`;
+    dev = `Describe the structure of the atom: proton (+), neutron (0) in the nucleus; electron (-) in shells. Introduce atomic number Z and mass number A.`;
+    a1 = `Draw a sodium atom (Z=11, A=23): 11 protons, 12 neutrons, 11 electrons in shells 2,8,1.`;
+    a2 = `Draw chlorine (Z=17, A=35): 17p, 18n, 17e in shells 2,8,7. Compare with sodium.`;
+    ex = `1) State the charge and location of proton, neutron and electron. 2) Draw the atom of oxygen (Z=8, A=16). 3) Define atomic number and mass number. 4) How many neutrons in carbon-14?`;
+    concl = `Summarise the structure of the atom and the meaning of Z and A.`;
+    oi = `Introduce the atom and its three sub-atomic particles.`;
+    om = `Explain protons, neutrons, electrons, atomic number and mass number. Draw the atom of sodium.`;
+    og = `Learners draw oxygen and carbon atoms and label the particles.`;
+    oa = `1) proton/neutron/electron location and charge. 2) Draw oxygen (Z=8, A=16). 3) Define Z and A.`;
+    os = `Recap atomic structure and Z/A.`;
+  } else if (isBonding) {
+    intro = `Define a chemical bond as the force that holds atoms together.`;
+    dev = `Explain ionic bonding (transfer of electrons, metal + non-metal e.g. NaCl) and covalent bonding (sharing electrons, non-metal + non-metal e.g. H₂O).`;
+    a1 = `Draw the ionic bonding in sodium chloride: Na loses 1e, Cl gains 1e.`;
+    a2 = `Draw the covalent bonding in water and in methane (CH₄).`;
+    ex = `1) Define ionic and covalent bonding. 2) Describe the bonding in MgO. 3) Draw the dot-and-cross diagram of CH₄. 4) Why does NaCl conduct electricity when molten?`;
+    concl = `Summarise the difference between ionic and covalent bonding.`;
+    oi = `Define a chemical bond.`;
+    om = `Explain ionic and covalent bonding with NaCl and H₂O.`;
+    og = `Learners draw dot-and-cross diagrams for NaCl and CH₄.`;
+    oa = `1) Define ionic and covalent. 2) Describe MgO bonding. 3) Draw CH₄.`;
+    os = `Recap ionic vs covalent bonding.`;
+  } else if (isAcids) {
+    intro = `Ask: "What is an acid?" Define acid as a proton donor and base as a proton acceptor.`;
+    dev = `Explain pH scale (1-14), reactions of acids with metals, bases and carbonates. Introduce indicators: litmus, methyl orange, phenolphthalein.`;
+    a1 = `Show the reaction HCl + NaOH → NaCl + H₂O. Show Mg + 2HCl → MgCl₂ + H₂.`;
+    a2 = `Show CaCO₃ + 2HCl → CaCl₂ + H₂O + CO₂. Test CO₂ with limewater.`;
+    ex = `1) Define acid and base. 2) Write the equation for HCl + KOH. 3) What gas is produced when Mg reacts with HCl? 4) Predict the pH of a solution that turns litmus red.`;
+    concl = `Summarise the reactions of acids and the pH scale.`;
+    oi = `Define acid, base and indicator.`;
+    om = `Explain pH and the reactions of acids with metals, bases and carbonates.`;
+    og = `Learners write balanced equations for HCl + KOH and CaCO₃ + HCl.`;
+    oa = `1) Define acid/base. 2) HCl + KOH equation. 3) Gas from Mg + HCl.`;
+    os = `Recap acid reactions and pH.`;
+  } else if (isPeriodic) {
+    intro = `Introduce the periodic table as the arrangement of elements by atomic number.`;
+    dev = `Explain groups (vertical, similar properties) and periods (horizontal). Describe Group 1 (alkali metals), Group 7 (halogens) and Group 0 (noble gases).`;
+    a1 = `Locate Na, Cl, He, K on the periodic table. Identify group and period.`;
+    a2 = `Compare the reactivity of Li, Na, K down Group 1; and F, Cl, Br, I down Group 7.`;
+    ex = `1) State the group and period of Na, Cl and He. 2) Why does reactivity increase down Group 1? 3) Why are noble gases unreactive?`;
+    concl = `Summarise groups, periods and the trends in Groups 1, 7 and 0.`;
+    oi = `Introduce the periodic table.`;
+    om = `Explain groups, periods, Group 1, Group 7 and Group 0 with examples.`;
+    og = `Learners locate Na, Cl, He and K and state their group/period.`;
+    oa = `1) Group/period of Na, Cl, He. 2) Trend in Group 1. 3) Why noble gases are inert.`;
+    os = `Recap periodic table organisation and trends.`;
+  } else if (isMoles) {
+    intro = `Introduce the mole as the amount of substance containing 6.02 × 10²³ particles (Avogadro's number).`;
+    dev = `Define molar mass, moles = mass ÷ molar mass, and concentration = moles ÷ volume (dm³). Show the mole ratio method for equations.`;
+    a1 = `Calculate the number of moles in 36 g of water (M=18 g/mol) → 2 mol.`;
+    a2 = `In 2H₂ + O₂ → 2H₂O, 4 mol H₂ reacts with 2 mol O₂ to give 4 mol H₂O.`;
+    ex = `1) Define a mole. 2) Calculate moles in 44 g CO₂ (M=44). 3) In 2H₂ + O₂ → 2H₂O, how many moles of O₂ react with 4 mol H₂? 4) What mass of NaOH (M=40) is needed to make 0.5 mol?`;
+    concl = `Summarise the mole formula, molar mass and mole ratios.`;
+    oi = `Define the mole and Avogadro's number.`;
+    om = `Explain moles = mass ÷ M and mole ratios with a worked example.`;
+    og = `Learners calculate moles of CO₂ in 44 g and mass of 0.5 mol NaOH.`;
+    oa = `1) Define a mole. 2) 44 g CO₂ → moles. 3) 4 mol H₂ → O₂ required. 4) Mass of 0.5 mol NaOH.`;
+    os = `Recap moles, molar mass and mole ratios.`;
+  } else {
+    intro = `Introduce ${focus} in chemistry.`;
+    dev = `Explain the key concepts, definitions and one worked example related to ${focus}.`;
+    a1 = `Work through a lab-based or written example on ${focus}.`;
+    a2 = `Learners practise a short problem on ${focus}.`;
+    ex = `1) Define a key term in ${focus}. 2) Apply the concept to a numeric example. 3) Answer a short application question on ${focus}.`;
+    concl = `Summarise the main concept of ${focus}.`;
+    oi = `Define the key terms of ${focus}.`;
+    om = `Explain the concept of ${focus} with a worked example.`;
+    og = `Learners practise a problem on ${focus}.`;
+    oa = `Short questions on knowledge and application of ${focus}.`;
+    os = `Recap the main concept of ${focus}.`;
+  }
+
+  return {
+    cbc: [
+      { stage: 'INTRODUCTION', time: '5 min', teacherRole: intro, learnerRole: `Answer the opening questions and give examples related to ${focus}.`, assessmentCriteria: `Learners give accurate initial responses about ${focus}.` },
+      { stage: 'LESSON DEVELOPMENT', time: '10 min', teacherRole: dev, learnerRole: `Listen, take notes and copy formulae or diagrams for ${focus}.`, assessmentCriteria: `Notes contain the key definitions and formulae for ${focus}.` },
+      { stage: 'ACTIVITY 1', time: '15 min', teacherRole: a1, learnerRole: `Work through the example or calculation on ${focus} in groups.`, assessmentCriteria: `Correct working is recorded for ${focus}.` },
+      { stage: 'ACTIVITY 2', time: '15 min', teacherRole: a2, learnerRole: `Present working, compare answers and correct errors on ${focus}.`, assessmentCriteria: `Correct final answers are shown for ${focus}.` },
+      { stage: 'EXERCISE', time: '25 min', teacherRole: `Individual exercise: ${ex}`, learnerRole: `Complete the exercise individually and correct after feedback.`, assessmentCriteria: `Most answers on ${focus} are correct.` },
+      { stage: 'CONCLUSION', time: '10 min', teacherRole: concl, learnerRole: `State the main concept of ${focus} and answer the exit question.`, assessmentCriteria: `Learners state the main concept of ${focus} correctly.` }
+    ],
+    obc: [
+      { time: '10 min', learningPoints: `INTRODUCTION\n\n${oi}`, teacherActivities: `Teacher revises previous work and introduces ${focus}.`, pupilActivities: `Learners listen, write the definition and answer oral questions.`, methods: 'Question and Answer, Teacher Exposition' },
+      { time: '25 min', learningPoints: `MAIN CONTENT\n\n${om}`, teacherActivities: `Teacher explains ${focus} with diagrams, equations and a worked example.`, pupilActivities: `Learners copy the notes, equations and diagrams for ${focus}.`, methods: 'Teacher Exposition, Demonstration' },
+      { time: '20 min', learningPoints: `GUIDED PRACTICE\n\n${og}`, teacherActivities: `Teacher guides learners through practice problems on ${focus}.`, pupilActivities: `Learners work through the problems in pairs and present answers.`, methods: 'Group Work, Guided Practice' },
+      { time: '15 min', learningPoints: `INDIVIDUAL ASSESSMENT\n\n${oa}`, teacherActivities: `Teacher sets individual questions on ${focus} and marks selected responses.`, pupilActivities: `Learners answer individually and correct errors.`, methods: 'Individual Work, Assessment' },
+      { time: '10 min', learningPoints: `SUMMARY\n\n${os}`, teacherActivities: `Teacher summarises ${focus} and gives an exit question.`, pupilActivities: `Learners state the main points of ${focus}.`, methods: 'Review, Question and Answer' }
+    ]
+  };
+}
+
+// ---------- PHYSICS ----------
+function physicsTemplate(focus, topic) {
+  const t = String(topic || '').toLowerCase();
+  const isMotion = /motion|mechanic|kinematic|force|dynamics/.test(t);
+  const isElectric = /electric|circuit|current|magnet/.test(t);
+  const isWaves = /wave|sound|light/.test(t);
+  const isOptics = /optic|lens|mirror|refract|reflect/.test(t);
+  const isThermal = /thermo|heat|temperature/.test(t);
+
+  let intro, dev, a1, a2, ex, concl, oi, om, og, oa, os;
+
+  if (isMotion) {
+    intro = `Define motion and state the difference between distance and displacement.`;
+    dev = `Define speed = distance ÷ time, velocity = displacement ÷ time, acceleration = (v-u) ÷ t. State Newton's three laws of motion.`;
+    a1 = `Calculate: a car travels 120 m in 6 s. Find its speed (20 m/s). Find its acceleration if it reaches 20 m/s from rest in 5 s (4 m/s²).`;
+    a2 = `Apply F = ma: a force of 20 N acts on a mass of 4 kg → a = 5 m/s².`;
+    ex = `1) Define speed, velocity, acceleration. 2) A car travels 150 m in 5 s: find its speed. 3) A 3 kg object accelerates at 4 m/s²: find the force. 4) State Newton's second law.`;
+    concl = `Summarise the motion equations and Newton's laws.`;
+    oi = `Define motion, speed and acceleration.`;
+    om = `State speed, velocity, acceleration and Newton's laws with worked examples.`;
+    og = `Learners calculate speed, acceleration and force from given values.`;
+    oa = `1) Define speed, velocity, acceleration. 2) Speed: 150 m in 5 s. 3) Force: 3 kg at 4 m/s².`;
+    os = `Recap motion equations and Newton's laws.`;
+  } else if (isElectric) {
+    intro = `Define electric current as the flow of charge. State the unit (ampere).`;
+    dev = `Explain Ohm's law V = IR. Define power P = VI. Describe series and parallel circuits.`;
+    a1 = `In a circuit with V = 12 V and R = 4 Ω, find I = V/R = 3 A.`;
+    a2 = `In a series circuit of R₁=2Ω and R₂=3Ω with 10 V, total R=5Ω, I=2A, V₁=4V, V₂=6V.`;
+    ex = `1) Define current and state its unit. 2) State Ohm's law. 3) V=6V, R=2Ω: find I. 4) P when V=12V and I=2A. 5) Compare series and parallel resistance.`;
+    concl = `Summarise Ohm's law, power formula and series/parallel rules.`;
+    oi = `Define current, voltage and resistance.`;
+    om = `Explain Ohm's law V=IR and power P=VI with worked examples.`;
+    og = `Learners calculate I, V and R in series and parallel circuits.`;
+    oa = `1) Define current. 2) State Ohm's law. 3) V=6V, R=2Ω: I. 4) P when V=12V, I=2A.`;
+    os = `Recap Ohm's law, power and circuit rules.`;
+  } else if (isWaves) {
+    intro = `Define a wave and distinguish transverse from longitudinal waves.`;
+    dev = `Define amplitude, wavelength, frequency and period. State v = fλ. Describe sound as a longitudinal wave and light as a transverse wave.`;
+    a1 = `A wave has f = 50 Hz and λ = 2 m. Find v = 100 m/s.`;
+    a2 = `A sound wave travels at 340 m/s with f = 170 Hz. Find λ = 2 m.`;
+    ex = `1) Define wave, wavelength and frequency. 2) State v = fλ. 3) f=50Hz, λ=2m: find v. 4) Sound at 340 m/s and 170 Hz: find λ. 5) Distinguish transverse from longitudinal.`;
+    concl = `Summarise wave quantities and the wave equation.`;
+    oi = `Define a wave and its properties.`;
+    om = `Explain wavelength, frequency, amplitude and v = fλ.`;
+    og = `Learners compute v, f and λ from given values.`;
+    oa = `1) Define wavelength and frequency. 2) f=50Hz, λ=2m: v. 3) Sound 340 m/s, 170 Hz: λ.`;
+    os = `Recap wave quantities and v = fλ.`;
+  } else if (isOptics) {
+    intro = `Introduce light as a form of energy that travels in straight lines.`;
+    dev = `Explain reflection (angle of incidence = angle of reflection), refraction (bending at a boundary), and the use of lenses and mirrors.`;
+    a1 = `Draw a ray diagram for a plane mirror showing angle of incidence = angle of reflection.`;
+    a2 = `Draw a convex lens forming a real image and describe the properties of the image.`;
+    ex = `1) State the laws of reflection. 2) Define refraction. 3) Draw the ray diagram for a plane mirror. 4) What type of image does a convex lens form when the object is beyond 2F?`;
+    concl = `Summarise reflection, refraction and image formation.`;
+    oi = `Introduce light and its properties.`;
+    om = `Explain reflection, refraction and image formation with ray diagrams.`;
+    og = `Learners draw ray diagrams for mirrors and lenses.`;
+    oa = `1) Laws of reflection. 2) Define refraction. 3) Ray diagram for plane mirror.`;
+    os = `Recap reflection, refraction and lenses.`;
+  } else if (isThermal) {
+    intro = `Define heat as a form of energy and temperature as a measure of hotness.`;
+    dev = `Explain heat transfer by conduction, convection and radiation. Introduce specific heat capacity Q = mcΔT.`;
+    a1 = `Calculate Q for 2 kg of water heated from 20°C to 70°C (c=4200 J/kg°C) → Q = 420,000 J.`;
+    a2 = `Explain why metals conduct heat better than wood, and why convection currents form in liquids.`;
+    ex = `1) Define heat and temperature. 2) State three methods of heat transfer. 3) Calculate Q for 1 kg water heated from 10°C to 60°C. 4) Why does metal feel colder than wood at the same temperature?`;
+    concl = `Summarise heat transfer methods and Q = mcΔT.`;
+    oi = `Define heat and temperature.`;
+    om = `Explain conduction, convection, radiation and Q = mcΔT.`;
+    og = `Learners calculate Q for given masses and temperature changes.`;
+    oa = `1) Define heat. 2) Three methods of heat transfer. 3) Q for 1 kg water from 10°C to 60°C.`;
+    os = `Recap heat transfer and Q = mcΔT.`;
+  } else {
+    intro = `Introduce ${focus} in physics.`;
+    dev = `Explain the key terms, formulae and one worked example related to ${focus}.`;
+    a1 = `Work through an example of ${focus} on the board.`;
+    a2 = `Learners practise a short problem on ${focus}.`;
+    ex = `1) Define the key term in ${focus}. 2) Apply the formula to a numeric example. 3) Answer a short application question.`;
+    concl = `Summarise the main concept of ${focus}.`;
+    oi = `Define the key terms of ${focus}.`;
+    om = `Explain ${focus} with a worked example.`;
+    og = `Learners practise a problem on ${focus}.`;
+    oa = `Short questions on ${focus}.`;
+    os = `Recap the main concept of ${focus}.`;
+  }
+
+  return {
+    cbc: [
+      { stage: 'INTRODUCTION', time: '5 min', teacherRole: intro, learnerRole: `Answer the opening questions and give examples related to ${focus}.`, assessmentCriteria: `Learners give accurate initial responses about ${focus}.` },
+      { stage: 'LESSON DEVELOPMENT', time: '10 min', teacherRole: dev, learnerRole: `Listen, take notes and copy formulae or diagrams for ${focus}.`, assessmentCriteria: `Notes contain the key formulae for ${focus}.` },
+      { stage: 'ACTIVITY 1', time: '15 min', teacherRole: a1, learnerRole: `Work through the example or calculation on ${focus} in groups.`, assessmentCriteria: `Correct working is recorded for ${focus}.` },
+      { stage: 'ACTIVITY 2', time: '15 min', teacherRole: a2, learnerRole: `Present working, compare answers and correct errors on ${focus}.`, assessmentCriteria: `Correct final answers are shown for ${focus}.` },
+      { stage: 'EXERCISE', time: '25 min', teacherRole: `Individual exercise: ${ex}`, learnerRole: `Complete the exercise individually and correct after feedback.`, assessmentCriteria: `Most answers on ${focus} are correct.` },
+      { stage: 'CONCLUSION', time: '10 min', teacherRole: concl, learnerRole: `State the main concept of ${focus} and answer the exit question.`, assessmentCriteria: `Learners state the main concept of ${focus} correctly.` }
+    ],
+    obc: [
+      { time: '10 min', learningPoints: `INTRODUCTION\n\n${oi}`, teacherActivities: `Teacher revises previous work and introduces ${focus}.`, pupilActivities: `Learners listen, write definitions and answer oral questions.`, methods: 'Question and Answer, Teacher Exposition' },
+      { time: '25 min', learningPoints: `MAIN CONTENT\n\n${om}`, teacherActivities: `Teacher explains ${focus} with formulae, diagrams and a worked example.`, pupilActivities: `Learners copy notes and work through the example.`, methods: 'Teacher Exposition, Demonstration' },
+      { time: '20 min', learningPoints: `GUIDED PRACTICE\n\n${og}`, teacherActivities: `Teacher guides learners through practice problems on ${focus}.`, pupilActivities: `Learners work in pairs and present their answers.`, methods: 'Group Work, Guided Practice' },
+      { time: '15 min', learningPoints: `INDIVIDUAL ASSESSMENT\n\n${oa}`, teacherActivities: `Teacher sets individual questions on ${focus} and marks selected responses.`, pupilActivities: `Learners answer individually and correct errors.`, methods: 'Individual Work, Assessment' },
+      { time: '10 min', learningPoints: `SUMMARY\n\n${os}`, teacherActivities: `Teacher summarises ${focus} and gives an exit question.`, pupilActivities: `Learners state the main points of ${focus}.`, methods: 'Review, Question and Answer' }
+    ]
+  };
+}
+
+// ---------- ENGLISH ----------
+function englishTemplate(focus, topic) {
+  const t = String(topic || '').toLowerCase();
+  const isComprehension = /comprehension|passage|reading/.test(t);
+  const isComposition = /composition|essay|writing|letter/.test(t);
+  const isGrammar = /grammar|tense|noun|verb|adjective|punctuation/.test(t);
+  const isLiterature = /literature|poem|play|novel|drama/.test(t);
+
+  let intro, dev, a1, a2, ex, concl, oi, om, og, oa, os;
+
+  if (isComprehension) {
+    intro = `Introduce ${focus}: reading a passage with understanding to answer questions.`;
+    dev = `Explain the comprehension strategies: skim for gist, scan for detail, identify main idea, infer meaning from context.`;
+    a1 = `Read a short passage aloud. Learners identify the main idea and two supporting details.`;
+    a2 = `Learners answer literal, inferential and evaluative questions on the passage.`;
+    ex = `Read a given passage and answer: 1) What is the main idea? 2) Give two supporting details. 3) What does the word "X" mean in context? 4) What is the writer's purpose?`;
+    concl = `Summarise the three levels of comprehension questions.`;
+    oi = `Define comprehension and its purpose.`;
+    om = `Explain literal, inferential and evaluative comprehension with examples.`;
+    og = `Learners read a passage and identify main idea and details.`;
+    oa = `Answer literal, inferential and evaluative questions on the passage.`;
+    os = `Recap comprehension strategies.`;
+  } else if (isComposition) {
+    intro = `Introduce ${focus}: writing a well-structured piece on a given topic.`;
+    dev = `Explain the structure: introduction, body paragraphs, conclusion. Explain planning and paragraphing.`;
+    a1 = `Plan a composition on a topic: brainstorm, outline three body paragraphs with topic sentences.`;
+    a2 = `Write the introduction and first body paragraph. Peer-review for paragraph structure.`;
+    ex = `Write a composition of 250-300 words on a given topic. Include a clear introduction, three body paragraphs and a conclusion.`;
+    concl = `Summarise the composition structure and the importance of paragraphing.`;
+    oi = `Define composition and its parts.`;
+    om = `Explain introduction, body paragraphs and conclusion with examples.`;
+    og = `Learners plan and write one paragraph.`;
+    oa = `Write a 250-300 word composition on a given topic.`;
+    os = `Recap composition structure.`;
+  } else if (isGrammar) {
+    intro = `Introduce ${focus} and its role in clear writing.`;
+    dev = `Explain the rules of ${focus} with examples and common errors.`;
+    a1 = `Underline examples of ${focus} in given sentences and correct errors.`;
+    a2 = `Learners write five original sentences demonstrating ${focus}.`;
+    ex = `1) Define ${focus}. 2) Identify and correct five sentences with errors in ${focus}. 3) Write three original sentences using ${focus}.`;
+    concl = `Summarise the rules of ${focus} and the common errors to avoid.`;
+    oi = `Define ${focus}.`;
+    om = `Explain the rules of ${focus} with examples.`;
+    og = `Learners identify and correct errors in ${focus}.`;
+    oa = `Short grammar exercise on ${focus}.`;
+    os = `Recap rules of ${focus}.`;
+  } else if (isLiterature) {
+    intro = `Introduce ${focus}: the study of a literary text (poem, play or novel).`;
+    dev = `Explain the elements of literature: plot, character, setting, theme, style. Introduce figurative language.`;
+    a1 = `Read a short poem or extract. Identify the theme and one figure of speech.`;
+    a2 = `Discuss character motivation and theme development in the extract.`;
+    ex = `1) Identify the theme of the text. 2) Describe one character. 3) Identify two figures of speech. 4) Explain how the writer creates mood.`;
+    concl = `Summarise the elements of literature and the role of figurative language.`;
+    oi = `Introduce the literary text and its genre.`;
+    om = `Explain plot, character, setting, theme and style.`;
+    og = `Learners identify theme and figures of speech in an extract.`;
+    oa = `Short questions on theme, character and figures of speech.`;
+    os = `Recap literary elements.`;
+  } else {
+    intro = `Introduce ${focus} in English.`;
+    dev = `Explain the key language skill or concept in ${focus} with examples.`;
+    a1 = `Work through an example of ${focus} on the board.`;
+    a2 = `Learners practise ${focus} in pairs.`;
+    ex = `1) Define ${focus}. 2) Give examples of ${focus}. 3) Apply ${focus} in a short written task.`;
+    concl = `Summarise the main language skill in ${focus}.`;
+    oi = `Introduce ${focus}.`;
+    om = `Explain ${focus} with examples.`;
+    og = `Learners practise ${focus}.`;
+    oa = `Short task on ${focus}.`;
+    os = `Recap ${focus}.`;
+  }
+
+  return {
+    cbc: [
+      { stage: 'INTRODUCTION', time: '5 min', teacherRole: intro, learnerRole: `Answer the opening questions and give examples related to ${focus}.`, assessmentCriteria: `Learners respond accurately about ${focus}.` },
+      { stage: 'LESSON DEVELOPMENT', time: '10 min', teacherRole: dev, learnerRole: `Listen, take notes and give examples of ${focus}.`, assessmentCriteria: `Notes contain the key rules of ${focus}.` },
+      { stage: 'ACTIVITY 1', time: '15 min', teacherRole: a1, learnerRole: `Work in groups on the task on ${focus}.`, assessmentCriteria: `Groups complete the task on ${focus} accurately.` },
+      { stage: 'ACTIVITY 2', time: '15 min', teacherRole: a2, learnerRole: `Present their work and correct their errors on ${focus}.`, assessmentCriteria: `Correct work is shown for ${focus}.` },
+      { stage: 'EXERCISE', time: '25 min', teacherRole: `Individual exercise: ${ex}`, learnerRole: `Complete the exercise individually and correct after feedback.`, assessmentCriteria: `Most answers on ${focus} are correct.` },
+      { stage: 'CONCLUSION', time: '10 min', teacherRole: concl, learnerRole: `State the main point of ${focus} and answer the exit question.`, assessmentCriteria: `Learners state the main point of ${focus}.` }
+    ],
+    obc: [
+      { time: '10 min', learningPoints: `INTRODUCTION\n\n${oi}`, teacherActivities: `Teacher revises previous work and introduces ${focus}.`, pupilActivities: `Learners listen and answer oral questions.`, methods: 'Question and Answer, Teacher Exposition' },
+      { time: '25 min', learningPoints: `MAIN CONTENT\n\n${om}`, teacherActivities: `Teacher explains ${focus} with examples.`, pupilActivities: `Learners copy notes and give examples.`, methods: 'Teacher Exposition, Discussion' },
+      { time: '20 min', learningPoints: `GUIDED PRACTICE\n\n${og}`, teacherActivities: `Teacher guides learners through practice on ${focus}.`, pupilActivities: `Learners practise ${focus} in pairs.`, methods: 'Group Work, Guided Practice' },
+      { time: '15 min', learningPoints: `INDIVIDUAL ASSESSMENT\n\n${oa}`, teacherActivities: `Teacher sets individual questions on ${focus}.`, pupilActivities: `Learners answer individually and correct errors.`, methods: 'Individual Work, Assessment' },
+      { time: '10 min', learningPoints: `SUMMARY\n\n${os}`, teacherActivities: `Teacher summarises ${focus} and gives an exit question.`, pupilActivities: `Learners state the main points of ${focus}.`, methods: 'Review, Question and Answer' }
+    ]
+  };
+}
+
+// ---------- GEOGRAPHY ----------
+function geographyTemplate(focus, topic) {
+  const t = String(topic || '').toLowerCase();
+  const isMap = /map|scale|grid|bearing/.test(t);
+  const isClimate = /climate|weather|rainfall|temperature/.test(t);
+  const isPopulation = /population|census|migration/.test(t);
+  const isPhysical = /physical|landform|river|mountain|relief/.test(t);
+
+  let intro, dev, a1, a2, ex, concl, oi, om, og, oa, os;
+
+  if (isMap) {
+    intro = `Introduce map reading and its importance in geography.`;
+    dev = `Explain map scale (representative fraction and linear scale), grid references (four and six figure), and how to measure straight and curved distances.`;
+    a1 = `Using a topographical map, find the four-figure grid reference of a named feature.`;
+    a2 = `Measure the straight-line distance between two points using the linear scale.`;
+    ex = `1) Define map scale. 2) Give the four-figure grid reference of two features. 3) Measure the distance between two points using the scale. 4) Convert a distance on the map to real distance.`;
+    concl = `Summarise map scale, grid references and distance measurement.`;
+    oi = `Define a map and map scale.`;
+    om = `Explain scale, grid references and distance measurement with examples.`;
+    og = `Learners find grid references and measure distances on a map.`;
+    oa = `Short exercise on grid references and distance.`;
+    os = `Recap map reading skills.`;
+  } else if (isClimate) {
+    intro = `Introduce climate and the difference between weather and climate.`;
+    dev = `Explain the elements of climate (temperature, rainfall, humidity, pressure, wind) and the factors that affect climate in Zambia.`;
+    a1 = `Read a climate graph and describe the temperature and rainfall pattern.`;
+    a2 = `Compare the climate of two Zambian regions and explain the differences.`;
+    ex = `1) Distinguish weather from climate. 2) Describe the climate of Zambia. 3) Identify three factors affecting climate. 4) Interpret a climate graph.`;
+    concl = `Summarise climate elements and the factors affecting climate in Zambia.`;
+    oi = `Distinguish weather and climate.`;
+    om = `Explain the elements of climate and factors affecting it.`;
+    og = `Learners interpret a climate graph.`;
+    oa = `Short questions on climate elements and factors.`;
+    os = `Recap climate and its factors.`;
+  } else if (isPopulation) {
+    intro = `Introduce population studies and their importance in planning.`;
+    dev = `Explain population distribution, density, growth rate, birth rate, death rate and migration (push and pull factors).`;
+    a1 = `Calculate population density from given total population and area.`;
+    a2 = `Discuss the effects of rapid population growth on resources in Zambia.`;
+    ex = `1) Define population density. 2) Calculate density from given figures. 3) State three push and three pull factors. 4) Explain two effects of rapid population growth.`;
+    concl = `Summarise population concepts and their importance.`;
+    oi = `Define population and population density.`;
+    om = `Explain distribution, density, growth and migration.`;
+    og = `Learners calculate population density and discuss migration.`;
+    oa = `Short questions on population concepts.`;
+    os = `Recap population concepts.`;
+  } else if (isPhysical) {
+    intro = `Introduce physical geography and landforms.`;
+    dev = `Explain the formation of rivers, valleys, mountains and plains. Describe the water cycle.`;
+    a1 = `Label a diagram of a river's course from source to mouth.`;
+    a2 = `Describe the formation of a V-shaped valley and a waterfall.`;
+    ex = `1) Define a river. 2) Label the stages of a river. 3) Describe how a waterfall forms. 4) Explain the importance of rivers in Zambia.`;
+    concl = `Summarise the main landforms and the water cycle.`;
+    oi = `Introduce physical geography.`;
+    om = `Explain the formation of rivers, valleys and mountains.`;
+    og = `Learners label a river diagram.`;
+    oa = `Short questions on landforms.`;
+    os = `Recap physical geography.`;
+  } else {
+    intro = `Introduce ${focus} in geography.`;
+    dev = `Explain the key concepts of ${focus} with local Zambian examples.`;
+    a1 = `Work through a map or data exercise on ${focus}.`;
+    a2 = `Discuss the importance of ${focus} in Zambia.`;
+    ex = `1) Define ${focus}. 2) Give examples of ${focus} in Zambia. 3) Explain the importance of ${focus}.`;
+    concl = `Summarise ${focus}.`;
+    oi = `Introduce ${focus}.`;
+    om = `Explain ${focus} with examples.`;
+    og = `Learners practise an exercise on ${focus}.`;
+    oa = `Short questions on ${focus}.`;
+    os = `Recap ${focus}.`;
+  }
+
+  return {
+    cbc: [
+      { stage: 'INTRODUCTION', time: '5 min', teacherRole: intro, learnerRole: `Answer the opening questions and give examples related to ${focus}.`, assessmentCriteria: `Learners respond accurately about ${focus}.` },
+      { stage: 'LESSON DEVELOPMENT', time: '10 min', teacherRole: dev, learnerRole: `Listen, take notes and copy diagrams for ${focus}.`, assessmentCriteria: `Notes contain the key concepts of ${focus}.` },
+      { stage: 'ACTIVITY 1', time: '15 min', teacherRole: a1, learnerRole: `Work in groups on the exercise on ${focus}.`, assessmentCriteria: `Groups complete the exercise accurately.` },
+      { stage: 'ACTIVITY 2', time: '15 min', teacherRole: a2, learnerRole: `Present their work and correct errors on ${focus}.`, assessmentCriteria: `Correct work is shown for ${focus}.` },
+      { stage: 'EXERCISE', time: '25 min', teacherRole: `Individual exercise: ${ex}`, learnerRole: `Complete the exercise individually and correct after feedback.`, assessmentCriteria: `Most answers on ${focus} are correct.` },
+      { stage: 'CONCLUSION', time: '10 min', teacherRole: concl, learnerRole: `State the main point of ${focus} and answer the exit question.`, assessmentCriteria: `Learners state the main point of ${focus}.` }
+    ],
+    obc: [
+      { time: '10 min', learningPoints: `INTRODUCTION\n\n${oi}`, teacherActivities: `Teacher revises previous work and introduces ${focus}.`, pupilActivities: `Learners listen and answer oral questions.`, methods: 'Question and Answer, Teacher Exposition' },
+      { time: '25 min', learningPoints: `MAIN CONTENT\n\n${om}`, teacherActivities: `Teacher explains ${focus} with maps and diagrams.`, pupilActivities: `Learners copy notes and diagrams.`, methods: 'Teacher Exposition, Demonstration' },
+      { time: '20 min', learningPoints: `GUIDED PRACTICE\n\n${og}`, teacherActivities: `Teacher guides learners through an exercise on ${focus}.`, pupilActivities: `Learners work in pairs on the exercise.`, methods: 'Group Work, Guided Practice' },
+      { time: '15 min', learningPoints: `INDIVIDUAL ASSESSMENT\n\n${oa}`, teacherActivities: `Teacher sets individual questions on ${focus}.`, pupilActivities: `Learners answer individually and correct errors.`, methods: 'Individual Work, Assessment' },
+      { time: '10 min', learningPoints: `SUMMARY\n\n${os}`, teacherActivities: `Teacher summarises ${focus} and gives an exit question.`, pupilActivities: `Learners state the main points of ${focus}.`, methods: 'Review, Question and Answer' }
+    ]
+  };
+}
+
+// ---------- HISTORY ----------
+function historyTemplate(focus, topic) {
+  const t = String(topic || '').toLowerCase();
+  const isZambian = /zambia|zambian|bsacus|nyendaelo|kachindami/.test(t);
+  const isAfrican = /africa|colonial|independence|apartheid/.test(t);
+  const isWorld = /world war|wwi|wwii|french revolution/.test(t);
+
+  let intro, dev, a1, a2, ex, concl, oi, om, og, oa, os;
+
+  if (isZambian) {
+    intro = `Introduce ${focus} in Zambian history.`;
+    dev = `Explain the origins, key events and significance of ${focus} in Zambia's development.`;
+    a1 = `Read a short extract about ${focus} and identify the main events.`;
+    a2 = `Discuss the causes and effects of ${focus} on Zambian society.`;
+    ex = `1) State the main events of ${focus}. 2) Give two causes. 3) Explain two effects on Zambia. 4) Why is ${focus} important today?`;
+    concl = `Summarise the significance of ${focus} in Zambian history.`;
+    oi = `Introduce ${focus}.`;
+    om = `Explain the causes and effects of ${focus} in Zambia.`;
+    og = `Learners order key events of ${focus} on a timeline.`;
+    oa = `Short questions on the causes and effects of ${focus}.`;
+    os = `Recap ${focus}.`;
+  } else if (isAfrican) {
+    intro = `Introduce ${focus} in African history.`;
+    dev = `Explain the causes and consequences of ${focus} in Africa.`;
+    a1 = `Read an extract and identify the main causes of ${focus}.`;
+    a2 = `Discuss the effects of ${focus} on African societies.`;
+    ex = `1) State two causes of ${focus}. 2) Describe two effects. 3) Explain the importance of ${focus} in African history.`;
+    concl = `Summarise the causes and effects of ${focus}.`;
+    oi = `Introduce ${focus}.`;
+    om = `Explain the causes and effects of ${focus}.`;
+    og = `Learners create a timeline of ${focus}.`;
+    oa = `Short questions on ${focus}.`;
+    os = `Recap ${focus}.`;
+  } else if (isWorld) {
+    intro = `Introduce ${focus} in world history.`;
+    dev = `Explain the causes, key events and consequences of ${focus}.`;
+    a1 = `Read an extract and identify the main causes of ${focus}.`;
+    a2 = `Discuss the consequences of ${focus} on world order.`;
+    ex = `1) State two causes of ${focus}. 2) Describe two consequences. 3) Explain the significance of ${focus}.`;
+    concl = `Summarise the causes and consequences of ${focus}.`;
+    oi = `Introduce ${focus}.`;
+    om = `Explain the causes and consequences of ${focus}.`;
+    og = `Learners create a timeline of ${focus}.`;
+    oa = `Short questions on ${focus}.`;
+    os = `Recap ${focus}.`;
+  } else {
+    intro = `Introduce ${focus} in history.`;
+    dev = `Explain the causes and consequences of ${focus}.`;
+    a1 = `Read an extract and identify key events of ${focus}.`;
+    a2 = `Discuss the significance of ${focus}.`;
+    ex = `1) State the main events of ${focus}. 2) Give two causes. 3) Explain two effects.`;
+    concl = `Summarise ${focus}.`;
+    oi = `Introduce ${focus}.`;
+    om = `Explain ${focus}.`;
+    og = `Learners make a timeline of ${focus}.`;
+    oa = `Short questions on ${focus}.`;
+    os = `Recap ${focus}.`;
+  }
+
+  return {
+    cbc: [
+      { stage: 'INTRODUCTION', time: '5 min', teacherRole: intro, learnerRole: `Answer the opening questions and give examples related to ${focus}.`, assessmentCriteria: `Learners respond accurately about ${focus}.` },
+      { stage: 'LESSON DEVELOPMENT', time: '10 min', teacherRole: dev, learnerRole: `Listen, take notes and identify key events of ${focus}.`, assessmentCriteria: `Notes contain the key events of ${focus}.` },
+      { stage: 'ACTIVITY 1', time: '15 min', teacherRole: a1, learnerRole: `Work in groups on the extract or timeline on ${focus}.`, assessmentCriteria: `Groups complete the activity accurately.` },
+      { stage: 'ACTIVITY 2', time: '15 min', teacherRole: a2, learnerRole: `Present their findings and correct errors on ${focus}.`, assessmentCriteria: `Correct findings are shown for ${focus}.` },
+      { stage: 'EXERCISE', time: '25 min', teacherRole: `Individual exercise: ${ex}`, learnerRole: `Complete the exercise individually and correct after feedback.`, assessmentCriteria: `Most answers on ${focus} are correct.` },
+      { stage: 'CONCLUSION', time: '10 min', teacherRole: concl, learnerRole: `State the main point of ${focus} and answer the exit question.`, assessmentCriteria: `Learners state the main point of ${focus}.` }
+    ],
+    obc: [
+      { time: '10 min', learningPoints: `INTRODUCTION\n\n${oi}`, teacherActivities: `Teacher revises previous work and introduces ${focus}.`, pupilActivities: `Learners listen and answer oral questions.`, methods: 'Question and Answer, Teacher Exposition' },
+      { time: '25 min', learningPoints: `MAIN CONTENT\n\n${om}`, teacherActivities: `Teacher explains ${focus} with a timeline and sources.`, pupilActivities: `Learners copy notes and timelines.`, methods: 'Teacher Exposition, Discussion' },
+      { time: '20 min', learningPoints: `GUIDED PRACTICE\n\n${og}`, teacherActivities: `Teacher guides learners through a source-based exercise on ${focus}.`, pupilActivities: `Learners work in pairs on the exercise.`, methods: 'Group Work, Guided Practice' },
+      { time: '15 min', learningPoints: `INDIVIDUAL ASSESSMENT\n\n${oa}`, teacherActivities: `Teacher sets individual questions on ${focus}.`, pupilActivities: `Learners answer individually and correct errors.`, methods: 'Individual Work, Assessment' },
+      { time: '10 min', learningPoints: `SUMMARY\n\n${os}`, teacherActivities: `Teacher summarises ${focus} and gives an exit question.`, pupilActivities: `Learners state the main points of ${focus}.`, methods: 'Review, Question and Answer' }
+    ]
+  };
+}
+
+// ---------- CIVIC EDUCATION ----------
+function civicTemplate(focus, topic) {
+  const t = String(topic || '').toLowerCase();
+  const isConstitution = /constitution|bill of rights/.test(t);
+  const isHumanRights = /human right|rights|freedom/.test(t);
+  const isDemocracy = /democracy|election|vote/.test(t);
+  const isGovernance = /governance|government|local government|parliament/.test(t);
+
+  let intro, dev, a1, a2, ex, concl, oi, om, og, oa, os;
+
+  if (isConstitution) {
+    intro = `Introduce the constitution as the supreme law of Zambia.`;
+    dev = `Explain the structure of the Zambian constitution, its key features and the Bill of Rights. Discuss the process of amendment.`;
+    a1 = `Read a short extract from the Bill of Rights and identify three rights.`;
+    a2 = `Discuss why the constitution is supreme and how it protects citizens.`;
+    ex = `1) Define the constitution. 2) State three rights in the Bill of Rights. 3) Explain why the constitution is supreme. 4) Describe one method of constitutional amendment.`;
+    concl = `Summarise the role of the constitution and the Bill of Rights.`;
+    oi = `Define the constitution.`;
+    om = `Explain the structure of the Zambian constitution, the Bill of Rights and amendment.`;
+    og = `Learners identify rights from the Bill of Rights and discuss their importance.`;
+    oa = `Short questions on the constitution and rights.`;
+    os = `Recap the constitution and the Bill of Rights.`;
+  } else if (isHumanRights) {
+    intro = `Introduce human rights and their universal nature.`;
+    dev = `Explain the three generations of human rights (civil/political, socio-economic, collective) and the role of the Human Rights Commission in Zambia.`;
+    a1 = `Classify a list of rights into the three generations.`;
+    a2 = `Discuss a case where a right is violated and how the victim can seek redress.`;
+    ex = `1) Define human rights. 2) Give two examples of each generation. 3) Explain the role of the Human Rights Commission. 4) Describe one way rights can be protected.`;
+    concl = `Summarise human rights and their protection in Zambia.`;
+    oi = `Define human rights.`;
+    om = `Explain the three generations and the role of the Human Rights Commission.`;
+    og = `Learners classify rights and discuss protection mechanisms.`;
+    oa = `Short questions on human rights.`;
+    os = `Recap human rights and protection.`;
+  } else if (isDemocracy) {
+    intro = `Introduce democracy as a system of government by the people.`;
+    dev = `Explain the features of democracy: free elections, rule of law, multiparty system, respect for human rights. Describe the electoral process in Zambia.`;
+    a1 = `Discuss the qualities of a free and fair election.`;
+    a2 = `Role-play a short mock election, then discuss what made it democratic or not.`;
+    ex = `1) Define democracy. 2) State four features of democracy. 3) Describe the steps in the Zambian electoral process. 4) Explain why free elections matter.`;
+    concl = `Summarise the features of democracy and the electoral process.`;
+    oi = `Define democracy.`;
+    om = `Explain the features of democracy and the electoral process.`;
+    og = `Learners discuss what makes an election free and fair.`;
+    oa = `Short questions on democracy and elections.`;
+    os = `Recap democracy and elections.`;
+  } else if (isGovernance) {
+    intro = `Introduce governance and the three arms of government.`;
+    dev = `Explain the executive, legislature and judiciary, and the role of local government in Zambia.`;
+    a1 = `Match each arm of government to its functions.`;
+    a2 = `Discuss how the three arms check each other.`;
+    ex = `1) Define governance. 2) State the three arms of government and their functions. 3) Explain two roles of local government. 4) Describe how the judiciary checks the executive.`;
+    concl = `Summarise the three arms and the importance of checks and balances.`;
+    oi = `Define governance.`;
+    om = `Explain the three arms and local government.`;
+    og = `Learners match each arm to its functions.`;
+    oa = `Short questions on the arms of government.`;
+    os = `Recap the arms of government.`;
+  } else {
+    intro = `Introduce ${focus} in civic education.`;
+    dev = `Explain the key concepts of ${focus} with Zambian examples.`;
+    a1 = `Discuss the importance of ${focus} in a democracy.`;
+    a2 = `Learners give examples of ${focus} in their community.`;
+    ex = `1) Define ${focus}. 2) Give two examples. 3) Explain the importance of ${focus}.`;
+    concl = `Summarise ${focus}.`;
+    oi = `Introduce ${focus}.`;
+    om = `Explain ${focus} with examples.`;
+    og = `Learners discuss examples of ${focus}.`;
+    oa = `Short questions on ${focus}.`;
+    os = `Recap ${focus}.`;
+  }
+
+  return {
+    cbc: [
+      { stage: 'INTRODUCTION', time: '5 min', teacherRole: intro, learnerRole: `Answer the opening questions and give examples related to ${focus}.`, assessmentCriteria: `Learners respond accurately about ${focus}.` },
+      { stage: 'LESSON DEVELOPMENT', time: '10 min', teacherRole: dev, learnerRole: `Listen, take notes and give examples of ${focus}.`, assessmentCriteria: `Notes contain the key concepts of ${focus}.` },
+      { stage: 'ACTIVITY 1', time: '15 min', teacherRole: a1, learnerRole: `Work in groups on the task on ${focus}.`, assessmentCriteria: `Groups complete the task accurately.` },
+      { stage: 'ACTIVITY 2', time: '15 min', teacherRole: a2, learnerRole: `Present their work and correct errors on ${focus}.`, assessmentCriteria: `Correct work is shown for ${focus}.` },
+      { stage: 'EXERCISE', time: '25 min', teacherRole: `Individual exercise: ${ex}`, learnerRole: `Complete the exercise individually and correct after feedback.`, assessmentCriteria: `Most answers on ${focus} are correct.` },
+      { stage: 'CONCLUSION', time: '10 min', teacherRole: concl, learnerRole: `State the main point of ${focus} and answer the exit question.`, assessmentCriteria: `Learners state the main point of ${focus}.` }
+    ],
+    obc: [
+      { time: '10 min', learningPoints: `INTRODUCTION\n\n${oi}`, teacherActivities: `Teacher revises previous work and introduces ${focus}.`, pupilActivities: `Learners listen and answer oral questions.`, methods: 'Question and Answer, Teacher Exposition' },
+      { time: '25 min', learningPoints: `MAIN CONTENT\n\n${om}`, teacherActivities: `Teacher explains ${focus} with examples.`, pupilActivities: `Learners copy notes and give examples.`, methods: 'Teacher Exposition, Discussion' },
+      { time: '20 min', learningPoints: `GUIDED PRACTICE\n\n${og}`, teacherActivities: `Teacher guides learners through a case study on ${focus}.`, pupilActivities: `Learners work in pairs and present answers.`, methods: 'Group Work, Guided Practice' },
+      { time: '15 min', learningPoints: `INDIVIDUAL ASSESSMENT\n\n${oa}`, teacherActivities: `Teacher sets individual questions on ${focus}.`, pupilActivities: `Learners answer individually and correct errors.`, methods: 'Individual Work, Assessment' },
+      { time: '10 min', learningPoints: `SUMMARY\n\n${os}`, teacherActivities: `Teacher summarises ${focus} and gives an exit question.`, pupilActivities: `Learners state the main points of ${focus}.`, methods: 'Review, Question and Answer' }
+    ]
+  };
+}
+
+// ---------- GENERIC FALLBACK (last resort) ----------
+function genericTemplate(focus, subject) {
+  return {
+    cbc: [
+      { stage: 'INTRODUCTION', time: '5 min', teacherRole: `Ask learners what they already know about ${focus}. Write the term on the board and connect responses to the day's work.`, learnerRole: `Answer the opening questions and share prior knowledge about ${focus}.`, assessmentCriteria: `Learners give at least one accurate statement about ${focus}.` },
+      { stage: 'LESSON DEVELOPMENT', time: '10 min', teacherRole: `Define ${focus} clearly, give two concrete examples, and explain why it matters in ${subject}.`, learnerRole: `Listen, ask questions and copy the definition and examples of ${focus}.`, assessmentCriteria: `Learners copy the definition and give one example of ${focus}.` },
+      { stage: 'ACTIVITY 1', time: '15 min', teacherRole: `Give groups a task or source on ${focus}. Ask them to discuss, identify key points and record their findings.`, learnerRole: `Work in groups on the task about ${focus} and record findings.`, assessmentCriteria: `Groups complete the task and identify at least two key points about ${focus}.` },
+      { stage: 'ACTIVITY 2', time: '15 min', teacherRole: `Ask each group to present their findings on ${focus}. Correct mistakes and reinforce the correct terminology.`, learnerRole: `Present their findings and correct their notes.`, assessmentCriteria: `Presentations use correct terms about ${focus}.` },
+      { stage: 'EXERCISE', time: '25 min', teacherRole: `Give individual questions on ${focus}: definition, two examples, one explanation and one application question.`, learnerRole: `Answer the questions individually and correct after feedback.`, assessmentCriteria: `Learners answer most questions on ${focus} correctly.` },
+      { stage: 'CONCLUSION', time: '10 min', teacherRole: `Summarise the key points of ${focus}, ask an exit question and identify learners needing remedial support.`, learnerRole: `State two key facts about ${focus} and answer the exit question.`, assessmentCriteria: `Learners state two accurate facts about ${focus}.` }
+    ],
+    obc: [
+      { time: '10 min', learningPoints: `INTRODUCTION TO ${focus.toUpperCase()}\n\nDefine ${focus} and state why it is important in ${subject}.`, teacherActivities: `Teacher revises previous work, writes the definition of ${focus} on the board and gives one example.`, pupilActivities: `Learners listen, write the definition and give their own examples of ${focus}.`, methods: 'Question and Answer, Teacher Exposition' },
+      { time: '25 min', learningPoints: `MAIN CONTENT: ${focus.toUpperCase()}\n\nExplain the key concepts, definitions, facts or processes related to ${focus}. Give two examples relevant to ${subject}.`, teacherActivities: `Teacher explains ${focus} in detail and works through one concrete example.`, pupilActivities: `Learners copy the notes and work through the example.`, methods: 'Teacher Exposition, Demonstration' },
+      { time: '20 min', learningPoints: `GUIDED PRACTICE ON ${focus.toUpperCase()}\n\nLearners complete a structured task on ${focus}.`, teacherActivities: `Teacher gives a structured task on ${focus}, moves around and corrects misconceptions.`, pupilActivities: `Learners complete the task in pairs and present answers.`, methods: 'Group Work, Guided Practice' },
+      { time: '15 min', learningPoints: `INDIVIDUAL ASSESSMENT ON ${focus.toUpperCase()}\n\nShort questions: define, give examples, explain and apply ${focus}.`, teacherActivities: `Teacher sets individual questions on ${focus}, supervises and marks selected responses.`, pupilActivities: `Learners answer individually and correct errors.`, methods: 'Individual Work, Assessment' },
+      { time: '10 min', learningPoints: `SUMMARY: ${focus.toUpperCase()}\n\nRecap the definition, key features and one application of ${focus}.`, teacherActivities: `Teacher summarises ${focus}, asks an exit question and gives remedial work where needed.`, pupilActivities: `Learners state the key points of ${focus} and answer the exit question.`, methods: 'Review, Question and Answer' }
+    ]
+  };
+}
+
+// Resolve the correct family template from the subject + topic.
+function resolveFallbackTemplate(subject, topic, subtopic) {
+  const s = String(subject || '').toLowerCase();
+  const focus = String(subtopic || topic || '').trim() || topic;
+  const t = String(topic || '').toLowerCase();
+  const st = String(subtopic || '').toLowerCase();
+  const key = `${t} ${st}`;
+
+  if (/biology/.test(s)) {
+    if (/sense organ|eye|ear|skin|nose|tongue|disorder/.test(key)) {
+      // Sense organs template (use biology generic with eye/ear focus)
+      return biologyTemplate(focus);
+    }
+    return biologyTemplate(focus);
+  }
+  if (/mathematics|maths|math/.test(s)) return mathTemplate(focus, topic);
+  if (/chemistry/.test(s)) return chemistryTemplate(focus, topic);
+  if (/physics/.test(s)) return physicsTemplate(focus, topic);
+  if (/english|literature/.test(s)) return englishTemplate(focus, topic);
+  if (/geography/.test(s)) return geographyTemplate(focus, topic);
+  if (/history/.test(s)) return historyTemplate(focus, topic);
+  if (/civic/.test(s)) return civicTemplate(focus, topic);
+  return genericTemplate(focus, subject);
+}
 
 // ============ CBC VERIFIED LESSON PROGRESSION ============
-// Builds the classroom sequence from the selected CDC topic/sub-topic instead
-// of the old subject-agnostic templates. Total time is always exactly 80 min.
 function generateVerifiedCBCProgression(topic, subtopic, subject, grade, cm = {}) {
   const exactTopic = String(topic || cm.topic || '').trim();
   const exactSubtopic = String(subtopic || cm.subTopic || cm.subtopic || '').trim();
@@ -713,10 +1209,6 @@ function generateVerifiedCBCProgression(topic, subtopic, subject, grade, cm = {}
   const standard = String(cm.expectedStandard || cm.expectedStandards || '').trim();
   const competence = String(cm.specificCompetence || cm.specificCompetences || '').trim();
 
-  // CBC sample supplied by the user uses this progression structure:
-  // INTRODUCTION, LESSON DEVELOPMENT, ACTIVITY 1, ACTIVITY 2,
-  // EXERCISE and CONCLUSION, with teacher role, learner role and assessment criteria.
-  // Use topic-specific activities rather than generic AI placeholders.
   if (String(subject).toLowerCase() === 'biology' && /ecosystem|ecological|biotic|abiotic|food chain|food web/i.test(key)) {
     return [
       { stage: 'INTRODUCTION', time: '5 min', teacherRole: 'Ask learners what living and non-living things they can identify in the school environment. Introduce the lesson on ecosystems and connect responses to the topic.', learnerRole: 'Observe the surroundings, answer questions and mention examples of living and non-living components.', assessmentCriteria: 'Learners correctly identify at least one living and one non-living component.' },
@@ -775,15 +1267,10 @@ function repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term
     aiContent.generalCompetences = profile.competences;
   }
 
-  // Keep the specific competence curriculum-grounded when CDC matching succeeds.
-  // When no verified competence is available, use a measurable, topic-specific
-  // fallback rather than the vague phrase "demonstrate understanding".
   if (!cm.specificCompetence && !cm.specificCompetences && !biologyEcology) {
-    aiContent.specificCompetence = `Demonstrate understanding of ${focus} by identifying key concepts, explaining relevant biological or subject-specific relationships, and applying the knowledge in an appropriate classroom task.`;
+    aiContent.specificCompetence = `Demonstrate understanding of ${focus} by identifying key concepts, explaining relevant subject-specific relationships, and applying the knowledge in a structured task.`;
   }
 
-  // Never allow the generic maths/problem-solving fallback language to leak
-  // into non-mathematics CBC lessons.
   if (!/math|account|commerce|physics|chemistry/i.test(subject)) {
     const bad = /accuracy in computing|solve (a|the) .*problem|formulae|quadratic|trigonometry|calculus/i;
     if (bad.test(String(aiContent.rationale || ''))) {
@@ -807,7 +1294,7 @@ function repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term
       aiContent.learningOutcomes = [
         `Define and identify the key concepts related to ${focus}`,
         `Explain the main relationships, processes or features involved in ${focus}`,
-        `Apply knowledge of ${focus} to complete an appropriate ${subject} task`,
+        `Apply knowledge of ${focus} to complete a structured ${subject} task`,
         `Demonstrate the stated competence through accurate responses and participation in the lesson`
       ];
       aiContent.learnersEvaluation = [
@@ -829,7 +1316,7 @@ function repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term
   if (!biologyEcology) {
     aiContent.lessonGoal = cm.specificCompetence || cm.specificCompetences
       ? `By the end of the lesson, learners will be able to ${String(cm.specificCompetence || cm.specificCompetences).replace(/[.]$/, '')}.`
-      : `By the end of the lesson, learners will be able to identify the key concepts of ${focus}, explain the main ideas or relationships, and apply the knowledge in an appropriate ${subject} task.`;
+      : `By the end of the lesson, learners will be able to identify the key concepts of ${focus}, explain the main ideas or relationships, and apply the knowledge in a structured ${subject} task.`;
     aiContent.priorKnowledge = `Learners should have prerequisite knowledge directly related to ${focus}.`;
   }
   aiContent.teacherEvaluation = `Teacher reflection: record evidence of learner achievement of the specific competence and expected standard; identify learners needing remediation and learners requiring extension; record what should be improved in the next lesson.`;
@@ -843,18 +1330,14 @@ function repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term
     const refs = Array.isArray(aiContent.references) ? aiContent.references : [];
     aiContent.references = refs.filter(r => !/not for syllabi|teacher-provided curriculum materials/i.test(String(r)));
     if (!aiContent.references.length) {
-      aiContent.references = [`Ministry of Education — ${subject} Curriculum`, "Biology Learner's Book / Teacher's Guide"];
+      aiContent.references = [`Ministry of Education — ${subject} Curriculum`, `${subject} Learner's Book / Teacher's Guide`];
     }
   }
 
-  // Preserve a valid, detailed DeepSeek progression. Do NOT replace it merely
-  // because one phrase is generic; doing that can destroy otherwise excellent
-  // topic-specific content. Rebuild only when the progression is missing, too
-  // short, or structurally malformed. The final specificity gate below handles
-  // genuinely generic content and requests a targeted regeneration.
   const lp = Array.isArray(aiContent.lessonProgression) ? aiContent.lessonProgression : [];
-  const validLP = lp.length >= 6 && lp.every(x => x && x.stage && x.time && x.teacherRole && x.learnerRole && x.assessmentCriteria);
-  if (!validLP) {
+  const lpText = lp.map(x => `${x?.teacherRole || ''} ${x?.learnerRole || ''} ${x?.assessmentCriteria || ''}`).join(' ');
+  const genericCBC = /appropriate classroom task|appropriate examples|key ideas of .* using appropriate|investigate or classify information related to|apply the new knowledge to the activity/i.test(lpText);
+  if (lp.length < 6 || genericCBC) {
     aiContent.lessonProgression = generateVerifiedCBCProgression(topic, subtopic, subject, grade, cm);
   }
   return aiContent;
@@ -894,17 +1377,18 @@ CURRICULUM PRIORITY RULES:
 2. Do not replace an official specific competence or expected standard with generic wording.
 3. Do not invent official curriculum codes, page numbers, module titles, textbook titles, quotations or references.
 4. Build activities directly from the selected topic/sub-topic and verified curriculum content. The activities must be recognisably appropriate for ${subject}; never copy activities from another subject.
-5. Materials must be appropriate to ${subject} and this exact topic. Never automatically include food, specimens, laboratory apparatus, computers, maps or other objects unless they fit the topic.
-6. If a curriculum field is unavailable, create a pedagogically appropriate value using the subject profile, but do not present it as an official curriculum statement.
-7. Use learner-centred CBC pedagogy: participation, investigation, collaboration, communication, application and assessment of the stated competence.
+5. Materials must be appropriate to ${subject} and this exact topic.
+6. If a curriculum field is unavailable, create a pedagogically appropriate value using the subject profile.
+7. Use learner-centred CBC pedagogy.
 8. The lesson progression MUST total exactly 80 minutes.
-9. DETAIL STANDARD: Write a fully teachable lesson, not a summary. Every stage must contain concrete, topic-specific teaching content, teacher actions, learner actions and observable assessment evidence.
-10. The LESSON DEVELOPMENT must state the actual concepts, definitions, rules, principles, processes, examples, calculations, cases, texts, procedures or practical steps appropriate to the exact topic.
-11. ACTIVITY 1 and ACTIVITY 2 must contain real learner tasks/questions/investigations appropriate to the subject, with what learners are expected to produce or demonstrate.
-12. The EXERCISE must contain actual topic-specific questions/tasks, not phrases such as 'give appropriate questions' or 'apply the concept'.
-13. Avoid generic filler such as 'explain the key ideas', 'use appropriate examples', 'complete an appropriate task' unless followed by the actual content/examples/task.
-14. Do not copy Biology-style activities into Mathematics, Chemistry, Civic Education, Languages, Home Management or other subjects. Use the subject's genuine methods and content.
-15. Make the lesson detailed enough that another teacher could teach the 80-minute lesson directly from the generated plan.
+9. DETAIL STANDARD: Write a fully teachable lesson, not a summary.
+10. The LESSON DEVELOPMENT must state actual concepts, definitions, rules, principles, processes, examples, calculations, cases, texts, procedures or practical steps appropriate to the exact topic.
+11. ACTIVITY 1 and ACTIVITY 2 must contain real learner tasks.
+12. The EXERCISE must contain actual topic-specific questions/tasks.
+13. Avoid generic filler such as 'explain the key ideas', 'use appropriate examples', 'complete an appropriate task'.
+14. Do not copy Biology-style activities into other subjects.
+15. Make the lesson detailed enough that another teacher could teach the 80-minute lesson directly.
+16. The sub-topic overrides the topic. If a sub-topic is supplied, stay inside it for the entire lesson.
 
 VERIFIED CURRICULUM FIELDS TO PRESERVE WHEN PRESENT:
 Specific competence: ${verifiedOutcomes || '[not supplied]'}
@@ -932,18 +1416,18 @@ Return ONLY valid JSON matching this structure. Do not add markdown or commentar
   "boys": ${boys},
   "girls": ${girls},
   "generalCompetences": ${JSON.stringify(verifiedCompetences.length ? verifiedCompetences : profile.competences)},
-  "specificCompetence": ${JSON.stringify(verifiedOutcomes || `Demonstrate understanding of ${subtopic || topic} through subject-appropriate learning activities`)},
+  "specificCompetence": ${JSON.stringify(verifiedOutcomes || `Demonstrate understanding of ${subtopic || topic} through structured learning activities`)},
   "lessonGoal": "Write a concise measurable goal derived from the specific competence and exact topic/sub-topic.",
-  "rationale": "Explain why this exact topic/sub-topic matters in ${subject}, using subject-appropriate learning and real-life relevance.",
+  "rationale": "Explain why this exact topic/sub-topic matters in ${subject}.",
   "priorKnowledge": "State realistic prerequisite knowledge directly related to this topic/sub-topic.",
   "references": ["Use only verified curriculum references available in the source context."],
   "learningEnvironment": ${JSON.stringify(profile.environment)},
   "materials": ${JSON.stringify(verifiedResources.length ? verifiedResources : profile.materials)},
   "expectedStandard": ${JSON.stringify(verifiedStandard || `Learners demonstrate the stated competence for ${subtopic || topic}.`)},
   "lessonProgression": ${JSON.stringify(lessonProgression, null, 2)},
-  "homework": "Give a short subject-specific task that reinforces the exact topic/sub-topic without introducing unrelated content.",
-  "lessonEvaluation": "Evaluate whether learners achieved the stated specific competence and expected standard using evidence from the lesson.",
-  "teacherEvaluation": "Leave a teacher reflection template: record evidence of learner achievement, learners needing remediation, learners needing extension, and improvements for the next lesson. Do not claim the lesson has already happened.",
+  "homework": "Give a short subject-specific task that reinforces the exact topic/sub-topic.",
+  "lessonEvaluation": "Evaluate whether learners achieved the stated specific competence and expected standard.",
+  "teacherEvaluation": "Leave a teacher reflection template.",
   "learningOutcomes": ["Use the verified specific competence as the main outcome", "Add 2-3 measurable outcomes directly derived from the exact topic/sub-topic"],
   "learnersEvaluation": ["Give concise learner-check questions/tasks directly assessing the specific competence"],
   "teachingAids": ${JSON.stringify(verifiedResources.length ? verifiedResources : profile.materials)},
@@ -951,99 +1435,15 @@ Return ONLY valid JSON matching this structure. Do not add markdown or commentar
 }
 `;
 }
+
 // ============ OBC LESSON PROMPT ============
-
-// ============ LESSON QUALITY GATE ============
-// Prevents generic/template text from reaching the saved lesson. A lesson is
-// considered specific only when its learning points, activities and assessment
-// repeatedly refer to the actual topic/subtopic and contain concrete content.
-function lessonSpecificityTerms(topic, subtopic) {
-  const raw = `${subtopic || ''} ${topic || ''}`.toLowerCase();
-  const words = raw.split(/[^a-z0-9]+/).filter(w => w.length >= 4);
-  const variants = [];
-  for (const w of words) {
-    variants.push(w);
-    if (w.endsWith('ies') && w.length > 4) variants.push(w.slice(0, -3) + 'y');
-    if (w.endsWith('s') && !w.endsWith('ss') && w.length > 4) variants.push(w.slice(0, -1));
-  }
-  return [...new Set(variants)];
-}
-
-function hasGenericLessonFiller(text) {
-  return /using appropriate examples|subject-appropriate examples|relevant subject questions or activities|appropriate classroom task|appropriate task|key points of .* and identify|main concepts, terms, processes or structures related to|apply knowledge of .* to relevant|learners have ideas about the topic|teacher revises through the previous lesson|teacher explains the main content of/i.test(String(text || ''));
-}
-
-function isTopicSpecificLesson(content, topic, subtopic, curriculumType) {
-  if (!content || typeof content !== 'object') return false;
-  const rows = curriculumType === 'cbc' ? content.lessonProgression : content.lessonDevelopment;
-  if (!Array.isArray(rows) || rows.length < (curriculumType === 'cbc' ? 6 : 5)) return false;
-
-  const terms = lessonSpecificityTerms(topic, subtopic);
-  const combined = rows.map(r => JSON.stringify(r)).join(' ').toLowerCase();
-  if (hasGenericLessonFiller(combined)) return false;
-
-  // Require clear evidence of the selected content without demanding that
-  // every word of a multi-word topic be repeated many times. This avoids false
-  // rejections for natural wording such as "plant responses to gravity" when
-  // the selected subtopic is "Geotropism". Prefer the subtopic, then topic.
-  const focusWords = lessonSpecificityTerms(subtopic || topic, '');
-  const topicWords = lessonSpecificityTerms(topic, '');
-  const countHits = (words) => words.reduce((n, term) => {
-    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return n + ((combined.match(new RegExp(`\\b${escaped}\\b`, 'g')) || []).length);
-  }, 0);
-  const focusHits = countHits(focusWords);
-  const topicHits = countHits(topicWords);
-  if ((subtopic && focusWords.length && focusHits < 2) && topicHits < 3) return false;
-  if (!subtopic && topicWords.length && topicHits < 3) return false;
-
-
-  return rows.every(r => {
-    const values = curriculumType === 'cbc'
-      ? [r.stage, r.time, r.teacherRole, r.learnerRole, r.assessmentCriteria]
-      : [r.time, r.learningPoints, r.teacherActivities, r.pupilActivities, r.methods];
-    return values.every(v => String(v || '').trim().length >= 10);
-  });
-}
-
-function buildSpecificityRepairPrompt(topic, subtopic, subject, grade, curriculumType, curriculumContext) {
-  const isCBC = curriculumType === 'cbc';
-  return `
-REPAIR THIS LESSON PLAN. The previous response was rejected because it contained generic/template teaching language.
-
-Selected curriculum: ${curriculumType.toUpperCase()}
-Subject: ${subject}
-Grade/Class: ${grade}
-Topic: ${topic}
-Subtopic: ${subtopic || '[none supplied]'}
-
-SOURCE CONTEXT:
-${formatContext(curriculumContext)}
-
-NON-NEGOTIABLE RULES:
-1. Write ONLY about the exact selected topic/subtopic. Do not teach the broader subject instead.
-2. Every learning point must contain concrete facts, definitions, principles, processes, formulas, examples, cases, procedures, diagrams to draw, calculations, experiments or other actual content appropriate to ${subject}.
-3. Every teacher activity must state exactly what the teacher explains, writes, demonstrates, displays, asks or corrects.
-4. Every learner activity must state exactly what learners answer, calculate, classify, draw, discuss, practise, investigate or produce.
-5. Assessment must contain actual questions/tasks about ${subtopic || topic}.
-6. NEVER write phrases such as "appropriate examples", "relevant subject questions", "apply the concept", "key points", "subject-appropriate activity", or "main concepts" without immediately specifying the actual content.
-7. Do not invent official curriculum wording. Use source context when supplied; otherwise label generated pedagogical content as ordinary lesson content, not as an official syllabus statement.
-8. Do not copy content from another subject.
-9. Return ONLY valid JSON.
-
-REQUIRED DEVELOPMENT FORMAT:
-${isCBC ? `lessonProgression: exactly 6 stages with these times: INTRODUCTION 5 min; LESSON DEVELOPMENT 10 min; ACTIVITY 1 15 min; ACTIVITY 2 15 min; EXERCISE 25 min; CONCLUSION 10 min. Each object requires stage, time, teacherRole, learnerRole and assessmentCriteria.` : `lessonDevelopment: exactly 5 stages with these times: 10 min, 25 min, 20 min, 15 min, 10 min. Each object requires time, learningPoints, teacherActivities, pupilActivities and methods.`}
-`;
-}
-
 function generateOBCPrompt(topic, grade, subject, classSize, user, subtopic, term = '', curriculumContext = null) {
   const size = parseInt(classSize) || 40;
   const boys = Math.floor(size / 2) || 18;
   const girls = Math.ceil(size / 2) || 22;
-  
-  // Generate lesson development content based on topic
+
   const lessonDevelopment = generateVerifiedOBCDevelopment(topic, subtopic, subject, grade);
-  
+
   return `
 You are an expert Zambian teacher creating an OBC (legacy Outcome-Based Education / Objective-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}".
 Term: ${term || 'not supplied'}.
@@ -1052,22 +1452,21 @@ LEGACY OBC SOURCE CONTROL:
 ${formatContext(curriculumContext)}
 
 CURRICULUM PRIORITY RULES:
-1. If a verified legacy OBC source match is supplied above, it is authoritative for the topic, subtopic, objectives/outcomes, methods, aids, knowledge, skills and values.
+1. If a verified legacy OBC source match is supplied above, it is authoritative.
 2. Do NOT use 2024 CBC topic names, competences, expected standards or CBC terminology when OBC is selected.
 3. Preserve the verified OBC wording where supplied.
 4. Do not invent official OBC codes, page numbers, textbook titles or source claims.
-5. If no verified OBC source match exists, generate pedagogically useful legacy OBC content but clearly avoid claiming it is an official syllabus statement.
+5. If no verified OBC source match exists, generate pedagogically useful legacy OBC content.
 6. DETAIL STANDARD: The plan must be fully teachable and content-rich for the exact topic and subtopic.
-7. TOPIC LOCK: The subtopic controls the lesson content. If topic='Sense Organs' and subtopic='Eye Disorders', teach eye disorders—not sense organs generally.
-8. CONTENT DENSITY: Each learningPoints entry must contain at least 2-4 concrete topic facts, relationships, examples, procedures or questions.
-9. Learning Points must contain actual subject content: definitions, facts, principles, procedures, worked examples, calculations, cases, texts, practical steps or other concrete material relevant to the topic.
-10. Teacher Activities must describe exactly what the teacher explains, demonstrates, asks, writes, displays, checks or corrects.
-11. Pupil Activities must describe exactly what learners do, answer, calculate, discuss, draw, classify, practise, demonstrate or produce.
-12. Include real topic-specific questions/tasks in guided practice and individual assessment. Do not use generic filler or empty placeholders.
-13. Use genuine methods for the selected subject; do not force Biology, laboratory or generic group activities into unrelated subjects.
-14. Make the lesson detailed enough that another teacher could teach the 80-minute lesson directly from the generated plan.
+7. Learning Points must contain actual subject content.
+8. Teacher Activities must describe exactly what the teacher does.
+9. Pupil Activities must describe exactly what learners do.
+10. Include real topic-specific questions/tasks.
+11. Use genuine methods for the selected subject.
+12. Make the lesson detailed enough that another teacher could teach the 80-minute lesson directly.
+13. The sub-topic overrides the topic. If a sub-topic is supplied, stay inside it for the entire lesson.
 
-⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this OBC lesson structure. The lessonDevelopment array MUST have content with all required fields including content, teacherActivity, pupilActivity, and methods. The content field MUST contain actual lesson content with examples, not empty placeholders.
+⚠️ CRITICAL: Return ONLY valid JSON matching this OBC lesson structure.
 
 {
   "title": "${topic}",
@@ -1093,22 +1492,20 @@ CURRICULUM PRIORITY RULES:
   ],
   "prerequisiteKnowledge": "Learners have basic knowledge of ${topic} from previous lessons.",
   "lessonIntroduction": "Teacher revises through the previous lesson and introduces the topic.",
-  "rationale": "Develop learners knowledge and understanding of ${topic} using appropriate OBC teaching methods and subject-specific skills and values.",
+  "rationale": "Develop learners knowledge and understanding of ${topic}.",
   "learningOutcomes": [
     "By the end of this lesson, learners should be able to:",
     "Define ${topic}",
     "Explain the concept of ${topic}",
-    "Apply knowledge of ${topic} to relevant subject questions or activities",
-    "Explain the importance or application of ${topic}"
+    "Apply knowledge of ${topic}",
+    "Explain the importance of ${topic}"
   ],
-  "lessonDevelopment": [
-    {"time":"10 min","learningPoints":"Write concrete content for the selected subtopic, including definitions, facts, relationships or procedures.","teacherActivities":"State exactly what the teacher explains, demonstrates, writes or asks about the selected subtopic.","pupilActivities":"State exactly what learners answer, calculate, classify, draw, discuss or practise.","methods":"Name the actual teaching method used."}
-  ],
+  "lessonDevelopment": ${JSON.stringify(lessonDevelopment, null, 2)},
   "learnersEvaluation": [
     "Define ${topic} in your own words",
     "Give two examples of ${topic}",
-    "Apply your knowledge of ${topic} to a relevant subject question or activity",
-    "Explain the importance or application of ${topic}"
+    "Apply your knowledge of ${topic}",
+    "Explain the importance of ${topic}"
   ],
   "expectedAnswers": [
     "Correct definition of ${topic}",
@@ -1116,137 +1513,33 @@ CURRICULUM PRIORITY RULES:
     "Correct solution to the ${topic} problem",
     "Clear explanation of the importance of ${topic}"
   ],
-  "lessonConclusion": "Teacher concludes lesson by revising through the lesson with learners to help remedial learners.",
+  "lessonConclusion": "Teacher concludes lesson by revising through the lesson with learners.",
   "learnersEvaluationText": "Space for teacher's assessment of learner performance",
-  "teacherEvaluation": "Lesson reflection: record learner achievement, difficulties observed, participation and remedial or follow-up action required.",
+  "teacherEvaluation": "Lesson reflection.",
   "curriculum": "obc"
 }
 `;
 }
-
 
 function generateVerifiedOBCDevelopment(topic, subtopic, subject, grade) {
   const t = String(topic || '').trim();
   const st = String(subtopic || '').trim();
   const key = `${t} ${st}`.toLowerCase();
 
-  if (subject.toLowerCase() === 'biology' && (key.includes('eye disorders') || (key.includes('eye') && key.includes('disorder')))) {
-    return [
-      {
-        time: '10 min',
-        learningPoints: `INTRODUCTION: EYE DISORDERS\n\nAn eye disorder is a condition that affects the normal structure or functioning of the eye and may reduce the quality of vision. The lesson focuses on common eye disorders, their causes, symptoms and correction.\n\nKey disorders introduced: myopia (short-sightedness), hypermetropia/hyperopia (long-sightedness), presbyopia, astigmatism and cataract.`,
-        teacherActivities: 'Teacher displays a diagram of the eye and introduces eye disorders. Teacher asks: What happens when a person cannot see distant objects clearly? What is meant by short-sightedness and long-sightedness? Teacher states that the lesson will distinguish disorders by their effects on vision and methods of correction.',
-        pupilActivities: 'Learners observe the eye diagram, answer the introductory questions, distinguish clear vision from impaired vision and record the definition of an eye disorder.',
-        methods: 'Question and Answer, Teacher Exposition, Demonstration'
-      },
-      {
-        time: '25 min',
-        learningPoints: `COMMON REFRACTIVE EYE DISORDERS\n\n1. Myopia (short-sightedness): near objects are seen clearly but distant objects appear blurred. The image tends to form in front of the retina, and it is corrected using a concave (diverging) lens.\n2. Hypermetropia/hyperopia (long-sightedness): distant objects may be seen more clearly than near objects. The image tends to form behind the retina, and it is corrected using a convex (converging) lens.\n3. Presbyopia: an age-related reduction in the ability of the eye to focus on near objects because the lens becomes less flexible and accommodation becomes weaker. It is commonly corrected with suitable converging reading lenses, or bifocal/progressive lenses where required.\n4. Astigmatism: uneven curvature of the cornea or lens causes blurred or distorted vision. It is corrected with cylindrical lenses.`,
-        teacherActivities: 'Teacher explains each refractive disorder using ray diagrams. Teacher draws the retina, normal focal point, myopic focal point and hypermetropic focal point on the board. Teacher shows how concave lenses diverge light rays and convex lenses converge light rays, then explains cylindrical correction for astigmatism.',
-        pupilActivities: 'Learners copy and label the ray diagrams, complete a table showing disorder, characteristic symptom, cause/effect on focusing and corrective lens, and answer oral questions comparing myopia with hypermetropia.',
-        methods: 'Teacher Exposition, Board Illustration, Demonstration, Question and Answer'
-      },
-      {
-        time: '20 min',
-        learningPoints: `OTHER COMMON EYE CONDITIONS AND GUIDED APPLICATION\n\nCataract occurs when the normally transparent lens becomes cloudy, causing blurred or hazy vision and, in advanced cases, serious visual impairment. Treatment may involve surgical removal of the cloudy lens and replacement with an artificial intraocular lens.\n\nGuided classification task: learners match each condition to its main feature/correction: myopia → blurred distant vision → concave lens; hypermetropia → difficulty with near vision → convex lens; astigmatism → distorted/blurred vision → cylindrical lens; presbyopia → age-related difficulty focusing near → reading/bifocal/progressive correction; cataract → cloudy lens → medical/surgical management.`,
-        teacherActivities: 'Teacher gives learners disorder-and-correction cards or a board table. Teacher asks groups to match each disorder with its main visual effect and correction, then checks why a concave lens is used for myopia and a convex lens for hypermetropia. Teacher corrects misconceptions.',
-        pupilActivities: 'Learners work in groups to match disorders, symptoms and corrections, complete the classification table, explain two matches to the class and correct their notes after feedback.',
-        methods: 'Group Work, Matching Activity, Discussion, Question and Answer'
-      },
-      {
-        time: '15 min',
-        learningPoints: `INDIVIDUAL ASSESSMENT: EYE DISORDERS\n\n1. Define an eye disorder.\n2. Distinguish between myopia and hypermetropia.\n3. State the corrective lens used for myopia and explain its action.\n4. State the corrective lens used for hypermetropia and explain its action.\n5. State one cause/effect and one correction for astigmatism.\n6. Explain why presbyopia commonly affects near vision in older people.\n7. State what happens to the lens in a cataract.`,
-        teacherActivities: 'Teacher sets the seven questions, supervises individual work, marks responses and gives immediate correction. Teacher checks that learners identify both the disorder and the correct form of treatment/correction rather than merely memorising names.',
-        pupilActivities: 'Learners answer all questions individually, draw a simple correction ray diagram where required, submit or exchange work for checking, and correct inaccurate responses.',
-        methods: 'Individual Work, Written Exercise, Assessment, Question and Answer'
-      },
-      {
-        time: '10 min',
-        learningPoints: `SUMMARY AND CONCLUSION\n\nEye disorders can affect focusing, image formation or the transparency of eye structures. Myopia is associated with blurred distant vision and is corrected with a concave lens; hypermetropia affects near vision and is corrected with a convex lens; astigmatism is corrected with cylindrical lenses; presbyopia is associated with reduced accommodation with age; cataract involves clouding of the lens and may require surgery.`,
-        teacherActivities: 'Teacher conducts a rapid oral review: Which disorder is corrected with a concave lens? Which with a convex lens? Which is associated with an irregular curvature? What happens in cataract? Teacher gives the exit question: A learner sees nearby objects clearly but distant objects are blurred. Name the disorder and the corrective lens.',
-        pupilActivities: 'Learners answer the rapid-review questions, state the main disorder-correction relationships and answer the exit question: myopia, corrected using a concave lens.',
-        methods: 'Review, Question and Answer, Consolidation'
-      }
-    ];
-  }
-
+  // Biology excretion (kept for backward compatibility)
   if (subject.toLowerCase() === 'biology' && (key.includes('excretion') || key.includes('excretory'))) {
     return [
-      {
-        time: '10 min',
-        learningPoints: `INTRODUCTION: EXCRETION\n\nExcretion is the removal of metabolic waste products and excess substances from the body. It is different from egestion, which is the removal of undigested food from the alimentary canal.\n\nFocus: ${st || 'The Excretory Organs and Products'}.`,
-        teacherActivities: 'Teacher revises the previous lesson using questions and introduces excretion. Teacher defines excretion and distinguishes it from egestion. Teacher displays a chart of the human excretory organs.',
-        pupilActivities: 'Learners answer revision questions, listen to the explanation, write the definition and identify excretory organs shown on the chart.',
-        methods: 'Question and Answer, Teacher Exposition, Demonstration'
-      },
-      {
-        time: '25 min',
-        learningPoints: `THE EXCRETORY ORGANS AND THEIR PRODUCTS\n\n1. Kidneys — remove urea, excess mineral salts and excess water in urine.\n2. Lungs — remove carbon dioxide and water vapour during exhalation.\n3. Skin — sweat glands remove water, mineral salts and small amounts of urea.\n4. Liver — deaminates excess amino acids, producing urea, and forms bile pigments from the breakdown of haemoglobin.\n\nThe kidneys contain nephrons, which are the functional units involved in urine formation.`,
-        teacherActivities: 'Teacher explains each excretory organ and its products using labelled diagrams. Teacher relates the liver to deamination and the kidneys to removal of urea. Teacher asks targeted questions to check understanding.',
-        pupilActivities: 'Learners observe and draw labelled diagrams, match organs with excretory products, take notes and answer oral questions.',
-        methods: 'Teacher Exposition, Demonstration, Question and Answer'
-      },
-      {
-        time: '20 min',
-        learningPoints: `GUIDED APPLICATION\n\nLearners complete a table with three columns: Excretory organ, excretory product, and how the product leaves the body.\n\nExample:\nKidneys → urea, excess salts and water → urine\nLungs → carbon dioxide and water vapour → exhaled air\nSkin → water, salts and small amount of urea → sweat\nLiver → bile pigments; produces urea from excess amino acids → bile/urine after transport to the kidneys`,
-        teacherActivities: 'Teacher gives groups an organ-product matching task and guides learners to justify each answer. Teacher corrects misconceptions, especially the difference between excretion and egestion.',
-        pupilActivities: 'Learners work in groups to complete the table, discuss their answers and present one organ-product relationship to the class.',
-        methods: 'Group Work, Discussion, Question and Answer'
-      },
-      {
-        time: '15 min',
-        learningPoints: `INDIVIDUAL PRACTICE AND ASSESSMENT\n\n1. Define excretion.\n2. State four excretory organs in humans and one product removed by each.\n3. Explain the role of the kidneys in removing urea from the blood.\n4. Explain the role of the liver in excretion.\n5. Distinguish between excretion and egestion.`,
-        teacherActivities: 'Teacher sets the questions, supervises individual work and marks selected responses. Teacher gives immediate feedback and provides correction where necessary.',
-        pupilActivities: 'Learners answer the questions individually, exchange answers for guided checking where appropriate and correct errors.',
-        methods: 'Individual Work, Question and Answer, Assessment'
-      },
-      {
-        time: '10 min',
-        learningPoints: `SUMMARY AND CONCLUSION\n\nExcretion removes metabolic wastes from the body. The major human excretory organs are the kidneys, lungs, skin and liver, and each is associated with particular waste products. Excretion helps maintain a stable internal environment.`,
-        teacherActivities: 'Teacher asks learners to state the main organs and products, reinforces the key points and gives a short exit question. Teacher identifies learners who need remedial support.',
-        pupilActivities: 'Learners state key points, answer the exit question and record the homework/remedial task where applicable.',
-        methods: 'Review, Question and Answer, Consolidation'
-      }
+      { time: '10 min', learningPoints: `INTRODUCTION: EXCRETION\n\nExcretion is the removal of metabolic waste products and excess substances from the body. It is different from egestion.`, teacherActivities: 'Teacher revises the previous lesson, defines excretion and displays a chart of the human excretory organs.', pupilActivities: 'Learners answer revision questions, write the definition and identify excretory organs on the chart.', methods: 'Question and Answer, Teacher Exposition, Demonstration' },
+      { time: '25 min', learningPoints: `THE EXCRETORY ORGANS AND THEIR PRODUCTS\n\n1. Kidneys — remove urea, excess salts and water in urine.\n2. Lungs — remove carbon dioxide and water vapour.\n3. Skin — sweat glands remove water, salts and small amounts of urea.\n4. Liver — deaminates excess amino acids producing urea and forms bile pigments.`, teacherActivities: 'Teacher explains each excretory organ and its products using labelled diagrams.', pupilActivities: 'Learners draw labelled diagrams, match organs with products and take notes.', methods: 'Teacher Exposition, Demonstration' },
+      { time: '20 min', learningPoints: `GUIDED APPLICATION\n\nTable: Excretory organ | Product | How it leaves the body.`, teacherActivities: 'Teacher gives an organ-product matching task and corrects misconceptions.', pupilActivities: 'Learners complete the table, discuss and present one relationship.', methods: 'Group Work, Discussion' },
+      { time: '15 min', learningPoints: `INDIVIDUAL PRACTICE AND ASSESSMENT\n\n1. Define excretion.\n2. State four excretory organs and one product each.\n3. Explain the role of the kidneys.\n4. Explain the role of the liver.`, teacherActivities: 'Teacher sets the questions, supervises individual work and marks selected responses.', pupilActivities: 'Learners answer the questions individually and correct errors.', methods: 'Individual Work, Assessment' },
+      { time: '10 min', learningPoints: `SUMMARY AND CONCLUSION\n\nExcretion removes metabolic wastes. Major organs: kidneys, lungs, skin, liver.`, teacherActivities: 'Teacher asks learners to state the main organs and products, reinforces key points.', pupilActivities: 'Learners state key points and answer the exit question.', methods: 'Review, Question and Answer' }
     ];
   }
 
-  return [
-    {
-      time: '10 min',
-      learningPoints: `INTRODUCTION TO ${t.toUpperCase()}${st ? `\n\nSubtopic: ${st}` : ''}\n\nKey terms and the meaning of ${t} are introduced using examples appropriate to ${subject}.`,
-      teacherActivities: `Teacher revises prerequisite knowledge and introduces ${t} using subject-appropriate examples.`,
-      pupilActivities: `Learners answer revision questions, listen to the explanation and record key points about ${t}.`,
-      methods: 'Question and Answer, Teacher Exposition'
-    },
-    {
-      time: '25 min',
-      learningPoints: `MAIN CONTENT: ${t.toUpperCase()}\n\nTeacher explains the main concepts, terms, processes or structures related to ${t}, using appropriate examples for ${subject}.`,
-      teacherActivities: `Teacher explains the main content of ${t}, demonstrates relevant examples and checks understanding through questions.`,
-      pupilActivities: `Learners observe, take notes, answer questions and contribute examples related to ${t}.`,
-      methods: 'Teacher Exposition, Demonstration, Question and Answer'
-    },
-    {
-      time: '20 min',
-      learningPoints: `GUIDED PRACTICE\n\nLearners apply the concepts of ${t} to structured questions, examples or a subject-appropriate activity.`,
-      teacherActivities: `Teacher organises guided practice on ${t}, monitors learners and corrects misconceptions.`,
-      pupilActivities: `Learners work in pairs or groups, apply the concepts and present their responses.`,
-      methods: 'Group Work, Discussion, Guided Practice'
-    },
-    {
-      time: '15 min',
-      learningPoints: `INDIVIDUAL ASSESSMENT\n\nLearners answer short questions that test knowledge, understanding and application of ${t}.`,
-      teacherActivities: `Teacher gives an individual assessment, supervises the work and provides feedback.`,
-      pupilActivities: `Learners complete the assessment individually and correct errors after feedback.`,
-      methods: 'Individual Work, Question and Answer, Assessment'
-    },
-    {
-      time: '10 min',
-      learningPoints: `SUMMARY AND CONCLUSION\n\nTeacher and learners review the key points of ${t} and identify areas requiring further practice.`,
-      teacherActivities: `Teacher summarises ${t}, asks an exit question and identifies learners requiring remedial support.`,
-      pupilActivities: `Learners state the main points learned and answer the exit question.`,
-      methods: 'Review, Question and Answer, Consolidation'
-    }
-  ];
+  // Route to the subject-specific template
+  const template = resolveFallbackTemplate(subject, topic, subtopic);
+  return template.obc;
 }
 
 function repairOBCLessonContent(aiContent, topic, subtopic, subject, grade, term, profile = null) {
@@ -1255,7 +1548,7 @@ function repairOBCLessonContent(aiContent, topic, subtopic, subject, grade, term
   const boys = Number(content.boys) || Math.floor(size / 2);
   const girls = Number(content.girls) || (size - boys);
   const focus = String(subtopic || content.subtopic || '').trim();
-  const development = generateVerifiedOBCDevelopment(topic, focus, subject, grade);
+  const template = resolveFallbackTemplate(subject, topic, focus);
   const biologyExcretion = subject.toLowerCase() === 'biology' && `${topic} ${focus}`.toLowerCase().includes('excret');
 
   content.title = topic;
@@ -1267,8 +1560,8 @@ function repairOBCLessonContent(aiContent, topic, subtopic, subject, grade, term
   content.curriculum = 'obc';
 
   content.rationale = biologyExcretion
-    ? `This lesson develops learners' understanding of excretion, with emphasis on the human excretory organs and the products they remove. Teacher exposition, demonstration, question and answer, group work and individual practice will be used. The lesson develops the skills of identification, classification, explanation and application, as well as accuracy, cooperation and responsibility.`
-    : `This lesson develops learners' knowledge and understanding of ${topic}${focus ? `, specifically ${focus}` : ''}. Teacher exposition, demonstration, question and answer, guided practice and individual work will be used to develop relevant subject skills, values and understanding.`;
+    ? `This lesson develops learners' understanding of excretion, with emphasis on the human excretory organs and the products they remove.`
+    : `This lesson develops learners' knowledge and understanding of ${topic}${focus ? `, specifically ${focus}` : ''}.`;
 
   content.learningOutcomes = biologyExcretion ? [
     'By the end of this lesson, learners should be able to:',
@@ -1280,23 +1573,16 @@ function repairOBCLessonContent(aiContent, topic, subtopic, subject, grade, term
     'By the end of this lesson, learners should be able to:',
     `Define and explain ${topic}.`,
     `Identify the main concepts, structures or processes related to ${topic}.`,
-    `Apply knowledge of ${topic} to relevant subject questions or activities.`,
+    `Apply knowledge of ${topic} to structured subject questions.`,
     `Explain the importance or application of ${topic}.`
   ];
 
   const existingDevelopment = Array.isArray(content.lessonDevelopment) ? content.lessonDevelopment : [];
   const existingText = existingDevelopment.map(x => `${x?.learningPoints || x?.content || ''} ${x?.teacherActivities || x?.teacherActivity || ''} ${x?.pupilActivities || x?.pupilActivity || ''}`).join(' ');
   const genericOBC = /main content of .* using appropriate examples|key points of .* and identify|subject-appropriate activity|relevant subject questions or activities|appropriate OBC teaching methods/i.test(existingText);
-  // Preserve detailed AI-generated development whenever it is already topic-specific.
-  // The verified builders are only emergency fallbacks; they must never overwrite
-  // good DeepSeek content for an arbitrary subject/topic.
-  const existingSpecific = existingDevelopment.length >= 5 && !genericOBC &&
-    isTopicSpecificLesson(content, topic, focus, 'obc');
-  if (!existingSpecific && development.length >= 5) {
-    content.lessonDevelopment = development;
-  } else if (existingDevelopment.length >= 5) {
-    content.lessonDevelopment = existingDevelopment;
-  }
+  if (existingDevelopment.length < 5 || genericOBC) content.lessonDevelopment = template.obc;
+  else content.lessonDevelopment = existingDevelopment;
+
   content.learnersEvaluation = biologyExcretion ? [
     'Define excretion.',
     'State four human excretory organs and one product removed by each.',
@@ -1306,42 +1592,44 @@ function repairOBCLessonContent(aiContent, topic, subtopic, subject, grade, term
   ] : [
     `Define ${topic} in your own words.`,
     `State or identify two important points about ${topic}.`,
-    `Apply your knowledge of ${topic} to a relevant subject question or activity.`,
+    `Apply your knowledge of ${topic} to a structured subject question.`,
     `Explain the importance or application of ${topic}.`
   ];
 
   content.expectedAnswers = biologyExcretion ? [
     'Excretion is the removal of metabolic waste products and excess substances from the body.',
-    'Kidneys—urea/excess salts/water; lungs—carbon dioxide/water vapour; skin—water/salts/small amount of urea; liver—bile pigments and production of urea from excess amino acids.',
-    'Urea is carried in the blood to the kidneys, filtered into the nephron and eventually removed from the body in urine.',
-    'The liver deaminates excess amino acids to form urea and forms bile pigments from the breakdown of haemoglobin.',
-    'Excretion removes metabolic wastes; egestion removes undigested food from the alimentary canal.'
+    'Kidneys—urea/salts/water; lungs—carbon dioxide/water vapour; skin—water/salts/small amount of urea; liver—bile pigments and urea from excess amino acids.',
+    'Urea is carried in the blood to the kidneys, filtered into the nephron and removed in urine.',
+    'The liver deaminates excess amino acids to form urea and forms bile pigments.',
+    'Excretion removes metabolic wastes; egestion removes undigested food.'
   ] : (content.expectedAnswers || []);
 
   content.prerequisiteKnowledge = biologyExcretion
-    ? 'Learners have prior knowledge of cellular respiration, metabolism and the need to remove waste products from the body.'
+    ? 'Learners have prior knowledge of cellular respiration, metabolism and the need to remove waste products.'
     : `Learners have prerequisite knowledge related to ${topic}.`;
   content.lessonIntroduction = biologyExcretion
-    ? 'Teacher revises the previous lesson and uses questions to lead learners to the need for removal of metabolic waste products.'
+    ? 'Teacher revises the previous lesson and leads learners to the need to remove metabolic waste products.'
     : `Teacher revises prerequisite knowledge and introduces ${topic}.`;
   content.lessonConclusion = biologyExcretion
-    ? 'Teacher summarises the major excretory organs and their products, checks understanding with an exit question and identifies learners requiring remedial support.'
-    : `Teacher summarises the key points of ${topic}, checks understanding and identifies learners requiring remedial support.`;
-  content.teacherEvaluation = 'Lesson reflection: record the number of learners who achieved the intended outcomes, the concepts that caused difficulty, evidence of learner participation, and the remedial or follow-up action required.';
+    ? 'Teacher summarises the major excretory organs and their products, checks understanding and identifies learners needing remedial support.'
+    : `Teacher summarises the key points of ${topic}, checks understanding and identifies learners needing remedial support.`;
+  content.teacherEvaluation = 'Lesson reflection: record the number of learners who achieved the intended outcomes, the concepts that caused difficulty, evidence of participation, and remedial or follow-up action.';
   content.learnersEvaluationText = 'Record learner performance from the assessment activities and identify learners requiring further support.';
   content.lessonEvaluation = 'Evaluate learner responses against the stated outcomes and record evidence for remediation or enrichment.';
   return content;
 }
 
-// ============ ENHANCED FALLBACK LESSON GENERATOR ============
-
+// ============ FALLBACK LESSON GENERATORS ============
 function generateFallbackCBC(topic, grade, subject, classSize, user, curriculumContext = null) {
   const profile = getCBCSubjectProfile(subject);
   const cm = curriculumContext?.matched ? (curriculumContext.match || {}) : {};
   const size = parseInt(classSize) || 40;
   const boys = Math.floor(size / 2) || 18;
   const girls = Math.ceil(size / 2) || 22;
-  
+
+  const subtopic = cm.subTopic || cm.subtopic || '';
+  const template = resolveFallbackTemplate(subject, topic, subtopic);
+
   return {
     title: topic,
     grade: grade,
@@ -1351,29 +1639,29 @@ function generateFallbackCBC(topic, grade, subject, classSize, user, curriculumC
     province: user?.province || '',
     district: user?.district || '',
     date: new Date().toISOString().split('T')[0],
-    time: "08:00-08:40",
+    time: "10:20-11:40",
     duration: "80 MINUTES",
     classSize: size,
     boys: boys,
     girls: girls,
-    subtopic: '',
+    subtopic: subtopic,
     generalCompetences: Array.isArray(cm.competences) && cm.competences.length ? cm.competences : profile.competences,
-    specificCompetence: cm.specificCompetence || cm.specificCompetences || `Demonstrate understanding of ${topic} through subject-appropriate learning activities`,
-    lessonGoal: `By the end of this lesson, learners will be able to demonstrate the stated competence for ${topic}.`,
-    rationale: `The lesson develops subject-specific understanding and competence in ${topic}.`,
-    priorKnowledge: `Learners demonstrate prerequisite knowledge related to ${topic}.`,
+    specificCompetence: cm.specificCompetence || cm.specificCompetences || `Demonstrate understanding of ${subtopic || topic} through structured learning activities`,
+    lessonGoal: `By the end of this lesson, learners will be able to demonstrate the stated competence for ${subtopic || topic}.`,
+    rationale: `The lesson develops subject-specific understanding and competence in ${subtopic || topic}.`,
+    priorKnowledge: `Learners demonstrate prerequisite knowledge related to ${subtopic || topic}.`,
     references: curriculumContext?.matched && curriculumContext.match?.reference ? [curriculumContext.match.reference] : ["No verified official reference is loaded for this selection"],
     learningEnvironment: profile.environment,
     materials: Array.isArray(cm.resources) && cm.resources.length ? cm.resources : profile.materials,
-    expectedStandard: cm.expectedStandard || cm.expectedStandards || `Learners demonstrate the stated competence for ${topic}.`,
-    lessonProgression: generateVerifiedCBCProgression(topic, cm.subTopic || cm.subtopic || '', subject, grade, cm),
-    homework: `Research and list examples of ${topic}`,
-    lessonEvaluation: "Lesson was successful, key competences were acquired",
-    teacherEvaluation: "Space for teacher's reflections",
-    learningOutcomes: [`Understand ${topic}`, `Apply ${topic}`, `Analyze ${topic}`],
-    learnersEvaluation: [`Define ${topic}`, `Give examples of ${topic}`, `Explain the importance of ${topic}`],
-    lessonDevelopment: generateVerifiedOBCDevelopment(topic, '', subject, grade),
-    teachingAids: ["Whiteboard", "Charts", "Diagrams"],
+    expectedStandard: cm.expectedStandard || cm.expectedStandards || `Learners demonstrate the stated competence for ${subtopic || topic}.`,
+    lessonProgression: template.cbc,
+    homework: `Research and list examples of ${subtopic || topic}`,
+    lessonEvaluation: "Evaluate whether learners achieved the stated specific competence.",
+    teacherEvaluation: "Space for teacher's reflections.",
+    learningOutcomes: [`Understand ${subtopic || topic}`, `Apply ${subtopic || topic}`, `Analyze ${subtopic || topic}`],
+    learnersEvaluation: [`Define ${subtopic || topic}`, `Give examples of ${subtopic || topic}`, `Explain the importance of ${subtopic || topic}`],
+    lessonDevelopment: template.obc,
+    teachingAids: Array.isArray(cm.resources) && cm.resources.length ? cm.resources : profile.materials,
     curriculum: 'cbc'
   };
 }
@@ -1382,7 +1670,9 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
   const size = parseInt(classSize) || 40;
   const boys = Math.floor(size / 2) || 18;
   const girls = Math.ceil(size / 2) || 22;
-  
+
+  const template = resolveFallbackTemplate(subject, topic, '');
+
   return {
     title: topic,
     grade: grade,
@@ -1400,21 +1690,21 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
       "Teacher's Guide"
     ],
     teachingAids: ["Learners book", "Chalk board", "Chart", "Diagrams"],
-    rationale: `This lesson develops learners' knowledge and understanding of ${topic} using teacher exposition, demonstration, question and answer, guided practice and individual work. The lesson develops subject-specific skills, values and understanding.`,
+    rationale: `This lesson develops learners' knowledge and understanding of ${topic} using teacher exposition, demonstration, question and answer, guided practice and individual work.`,
     learningOutcomes: [
       "By the end of this lesson, learners should be able to:",
       `Define ${topic}`,
       `Explain the concept of ${topic}`,
-      `Apply ${topic} to solve problems`,
+      `Apply ${topic} to structured questions`,
       `Analyze real-world applications of ${topic}`
     ],
     prerequisiteKnowledge: "Learners have ideas about the topic being taught.",
     lessonIntroduction: "Teacher revises through the previous lesson",
-    lessonDevelopment: generateLessonContent(topic, subject, grade),
+    lessonDevelopment: template.obc,
     learnersEvaluation: [
       `Define ${topic} in your own words`,
       `Give two examples of ${topic}`,
-      `Apply your knowledge of ${topic} to a relevant subject question or activity`,
+      `Apply your knowledge of ${topic} to a structured subject question`,
       `Explain the importance of ${topic}`
     ],
     expectedAnswers: [
@@ -1423,16 +1713,14 @@ function generateFallbackOBC(topic, grade, subject, classSize, user) {
       `Correct solution to the ${topic} problem`,
       `Clear explanation of the importance of ${topic}`
     ],
-    lessonConclusion: "Teacher concludes lesson by revising through the lesson with learners to help remedial learners",
+    lessonConclusion: "Teacher concludes lesson by revising through the lesson with learners.",
     learnersEvaluationText: "Space for teacher's assessment of learner performance",
-    teacherEvaluation: 'Lesson reflection: record learner achievement, difficulties observed, participation and remedial or follow-up action required.',
+    teacherEvaluation: 'Lesson reflection.',
     curriculum: 'obc'
   };
 }
 
 // ============ CBC SCHEME GENERATOR ============
-
-
 function normaliseSchemeText(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
@@ -1489,7 +1777,6 @@ function repairCBCSchemeAlignment(weeks, options = {}) {
     const requestedTopic = customTopics[weekNumber] || customTopics[String(weekNumber)] || '';
     const requestedSub = customSubtopics[weekNumber] || customSubtopics[String(weekNumber)] || '';
 
-    // Prefer an exact verified source row for this week/topic/subtopic.
     let match = usableSource.find(r => Number(r.week) === weekNumber);
     if (!match && requestedTopic) {
       match = usableSource.find(r => schemeTextScore(r.topic, requestedTopic) >= 0.65);
@@ -1510,10 +1797,6 @@ function repairCBCSchemeAlignment(weeks, options = {}) {
     let finalStrategies = match?.strategies || match?.methods || topicObj.strategies || topicObj.methods || '';
     let finalReference = match?.reference || match?.references || topicObj.reference || topicObj.references || '';
 
-    // Biology has a small deterministic guard against the exact failure seen
-    // in generated schemes: plant/animal responses, photosynthesis, transport,
-    // digestion and related maintenance topics must not be placed under the
-    // cellular-life topic merely because the language model did so.
     if (subjectIsBiology) {
       const family = biologySchemeFamily(`${finalSubtopic} ${finalCompetence} ${finalActivities}`);
       const familyTopic = biologyTopicForFamily(family);
@@ -1526,7 +1809,6 @@ function repairCBCSchemeAlignment(weeks, options = {}) {
           (family === 'concepts' && /cellular life|maintenance of the organism|continuity of life/.test(topicNorm));
         if (clearlyWrong) {
           finalTopic = familyTopic;
-          // If the verified source has a matching family, use its complete row.
           const familyMatch = usableSource.find(r => normaliseSchemeText(r.topic).includes(familyNorm) &&
             schemeTextScore(r.subTopic || r.subtopic, finalSubtopic) >= 0.45);
           if (familyMatch) {
@@ -1543,10 +1825,6 @@ function repairCBCSchemeAlignment(weeks, options = {}) {
       }
     }
 
-    // Never allow a user subtopic to overwrite a verified source subtopic.
-    // If there is no source match, only accept the requested subtopic when it
-    // is reasonably coherent with the selected topic; otherwise retain the AI
-    // subtopic instead of creating an obviously contradictory row.
     if (requestedSub && !match) {
       const coherent = schemeTextScore(finalTopic, requestedSub) >= 0.25 ||
         (subjectIsBiology && biologySchemeFamily(requestedSub) === biologySchemeFamily(finalTopic));
@@ -1586,7 +1864,7 @@ function repairCBCSchemeAlignment(weeks, options = {}) {
 function generateCBCScheme(grade, subject, term, user, customTopics = {}) {
   const weeks = [];
   const totalWeeks = 13;
-  
+
   const subjectTopics = {
     'Biology': {
       topics: [
@@ -1794,9 +2072,9 @@ function generateCBCScheme(grade, subject, term, user, customTopics = {}) {
     const customTopic = customTopics[weekNumber];
     const isRevision = [1, 5, 9].includes(i);
     const isAssessment = [3, 6, 9, 12].includes(i);
-    
+
     let weekTopics = [];
-    
+
     if (isRevision) {
       weekTopics = [{
         topic: 'REVISION WEEK',
@@ -1838,7 +2116,7 @@ function generateCBCScheme(grade, subject, term, user, customTopics = {}) {
     } else {
       const topicIndex = (i - 1) % extendedTopics.length;
       const topicData = extendedTopics[topicIndex];
-      
+
       weekTopics = [{
         topic: topicData.topic || `Topic ${i}`,
         subtopic: topicData.subtopic || `Subtopic ${i}`,
@@ -1851,7 +2129,7 @@ function generateCBCScheme(grade, subject, term, user, customTopics = {}) {
         values: valuesOptions[i % valuesOptions.length]
       }];
     }
-    
+
     weeks.push({
       week: i,
       topics: weekTopics,
@@ -1872,7 +2150,7 @@ function generateCBCScheme(grade, subject, term, user, customTopics = {}) {
 function generateOBCScheme(grade, subject, term, user, customTopics = {}) {
   const weeks = [];
   const totalWeeks = 13;
-  
+
   const subjectTopics = {
     'Biology': [
       'Cell Structure and Function', 'Genetics and Heredity', 'Ecology and Environment',
@@ -1930,7 +2208,7 @@ function generateOBCScheme(grade, subject, term, user, customTopics = {}) {
     "Experimentation, discussion, question and answer",
     "Role play, group work, question and answer"
   ];
-  
+
   const aidsOptions = [
     "Whiteboard, charts, textbooks, diagrams",
     "Laboratory equipment, models, charts",
@@ -1938,7 +2216,7 @@ function generateOBCScheme(grade, subject, term, user, customTopics = {}) {
     "Multi-media, charts, textbooks",
     "Field trips, specimens, cameras"
   ];
-  
+
   const valuesOptions = [
     "Responsibility, teamwork, curiosity",
     "Scientific inquiry, honesty, creativity",
@@ -1946,7 +2224,7 @@ function generateOBCScheme(grade, subject, term, user, customTopics = {}) {
     "Integrity, diligence, innovation",
     "Accountability, empathy, resilience"
   ];
-  
+
   const skillsOptions = [
     "Critical thinking, analysis, collaboration",
     "Problem solving, research, presentation",
@@ -1961,7 +2239,7 @@ function generateOBCScheme(grade, subject, term, user, customTopics = {}) {
     const customTopic = customTopics[weekNumber];
     const isRevision = [1, 5, 9].includes(i);
     const isAssessment = [3, 6, 9, 12].includes(i);
-    
+
     if (isRevision) {
       weekTopics.push({
         topic: 'REVISION WEEK',
@@ -1969,9 +2247,7 @@ function generateOBCScheme(grade, subject, term, user, customTopics = {}) {
         methods: 'Class discussion, Question and answer, Group work',
         aids: 'Test papers, Revision notes',
         references: 'Test papers, Marking keys',
-        knowledge: '',
-        skills: '',
-        values: ''
+        knowledge: '', skills: '', values: ''
       });
     } else if (isAssessment) {
       weekTopics.push({
@@ -1980,9 +2256,7 @@ function generateOBCScheme(grade, subject, term, user, customTopics = {}) {
         methods: 'Test, Examination, Practical assessment',
         aids: 'Examination papers, Answer sheets',
         references: 'Teacher\'s guide, Marking scheme',
-        knowledge: '',
-        skills: '',
-        values: ''
+        knowledge: '', skills: '', values: ''
       });
     } else if (customTopic) {
       weekTopics.push({
@@ -1998,12 +2272,11 @@ function generateOBCScheme(grade, subject, term, user, customTopics = {}) {
     } else {
       const topicIndex = (i - 1) % extendedTopics.length;
       const topicName = extendedTopics[topicIndex];
-      
       const methodIndex = (i - 1) % methodOptions.length;
       const aidsIndex = (i - 1) % aidsOptions.length;
       const skillsIndex = (i - 1) % skillsOptions.length;
       const valuesIndex = (i - 1) % valuesOptions.length;
-      
+
       weekTopics.push({
         topic: topicName,
         specificOutcome: `By the end of this lesson, learners will be able to understand and explain ${topicName}`,
@@ -2015,7 +2288,7 @@ function generateOBCScheme(grade, subject, term, user, customTopics = {}) {
         values: valuesOptions[valuesIndex]
       });
     }
-    
+
     weeks.push({
       week: i,
       topics: weekTopics,
@@ -2032,39 +2305,23 @@ function generateOBCScheme(grade, subject, term, user, customTopics = {}) {
 }
 
 // ============ AUTH ROUTES ============
-
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { fullName, email, password, school, province, district, grades, subjects } = req.body;
-
     const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) {
-      return res.status(409).json({ error: 'User already exists' });
-    }
-
+    if (existingUser) return res.status(409).json({ error: 'User already exists' });
     const hashedPassword = await bcrypt.hash(password, 10);
-
     const user = await prisma.user.create({
       data: {
-        fullName,
-        email,
-        passwordHash: hashedPassword,
-        school,
-        province,
-        district,
-        grades: grades || [],
-        subjects: subjects || [],
-        role: 'FREE',
-        lastActive: new Date(),
+        fullName, email, passwordHash: hashedPassword, school, province, district,
+        grades: grades || [], subjects: subjects || [], role: 'FREE', lastActive: new Date(),
       }
     });
-
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
       JWT_SECRET,
       { expiresIn: '30d' }
     );
-
     const { passwordHash, ...userWithoutPassword } = user;
     res.status(201).json({ user: userWithoutPassword, token });
   } catch (error) {
@@ -2076,28 +2333,16 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
     const isValid = await bcrypt.compare(password, user.passwordHash);
-    if (!isValid) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { lastActive: new Date() }
-    });
-
+    if (!isValid) return res.status(401).json({ error: 'Invalid credentials' });
+    await prisma.user.update({ where: { id: user.id }, data: { lastActive: new Date() } });
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
       JWT_SECRET,
       { expiresIn: '30d' }
     );
-
     const { passwordHash, ...userWithoutPassword } = user;
     res.json({ user: userWithoutPassword, token });
   } catch (error) {
@@ -2108,14 +2353,8 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/me', authenticate, async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.userId }
-    });
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
     const { passwordHash, ...userWithoutPassword } = user;
     res.json(userWithoutPassword);
   } catch (error) {
@@ -2124,8 +2363,7 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// ============ LESSON GENERATION ROUTE ============
-
+// ============ LESSON GENERATION ROUTE (with quality gate) ============
 app.post('/api/lessons/generate', authenticate, async (req, res) => {
   try {
     const { topic, grade, subject, classSize, curriculum, subtopic, term } = req.body;
@@ -2134,13 +2372,8 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields: topic, grade, subject' });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: req.userId }
-    });
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
     if (user.role !== 'ADMIN' && user.lessonsUsed >= user.lessonsLimit) {
       return res.status(403).json({
@@ -2150,16 +2383,13 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
 
     const curriculumType = curriculum || 'cbc';
 
-    // Keep lesson-plan grade/form selection consistent with the curriculum mode.
-    // CBC uses Grades 1–6 and Secondary Forms 1–4; OBC/legacy permits Grades 1–12 and Forms 1–6.
+    // ---- Curriculum / level validation ----
     const normalizedGrade = String(grade).trim().replace(/\s+/g, ' ');
     const gradeMatch = normalizedGrade.match(/^Grade\s+(\d+)$/i);
     const formMatch = normalizedGrade.match(/^Form\s+(\d+)$/i);
     const gradeNumber = gradeMatch ? Number(gradeMatch[1]) : null;
     const formNumber = formMatch ? Number(formMatch[1]) : null;
 
-    // Keep the API rules identical to the Lesson Plan selector.
-    // Secondary 2024 CBC subjects are taught at Forms 1–4; primary CBC uses Grades 1–6.
     const secondaryCBCSubjects = new Set([
       'Agricultural Science', 'Art and Design', 'Biology', 'Chemistry',
       'Civic Education', 'Commerce', 'Computer Science', 'Design and Technology Studies',
@@ -2198,32 +2428,29 @@ app.post('/api/lessons/generate', authenticate, async (req, res) => {
     const size = parseInt(classSize) || 40;
     const boys = Math.floor(size / 2) || 18;
     const girls = Math.ceil(size / 2) || 22;
-    
+
     let aiContent = null;
     let useFallback = false;
     let curriculumContext = null;
+    let generationMode = 'deepseek';
 
+    // =========================================================
+    // GENERATION + STRICT REPAIR LOOP
+    // =========================================================
     try {
-      let prompt;
-      
-      curriculumContext = await getCurriculumContextAsync({ curriculum: curriculumType, grade, subject, term, topic, subtopic });
-      const onlineResearch = ''; // Online research disabled to keep generation dependent on official curriculum sources only.
-      if (curriculumType === 'cbc') {
-        prompt = generateCBCPrompt(topic, grade, subject, classSize, user, subtopic, term, curriculumContext);
-      } else {
-        prompt = generateOBCPrompt(topic, grade, subject, classSize, user, subtopic, term, curriculumContext);
-      }
-      if (onlineResearch) {
-        prompt += `\n\nONLINE RESEARCH ENRICHMENT (use only for examples, explanations, classroom activities and current context):\n${onlineResearch}\nRULE: Online research must NOT override the official curriculum topic, subtopic, competence, standard, code, sequence or CBC/OBC terminology.\n`;
-      }
+      curriculumContext = await getCurriculumContextAsync({
+        curriculum: curriculumType, grade, subject, term, topic, subtopic
+      });
 
-      console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson with DeepSeek...`);
+      const buildInitialMessages = () => {
+        const prompt = curriculumType === 'cbc'
+          ? generateCBCPrompt(topic, grade, subject, classSize, user, subtopic, term, curriculumContext)
+          : generateOBCPrompt(topic, grade, subject, classSize, user, subtopic, term, curriculumContext);
 
-      const messages = [
-        {
-          role: "system",
-          content: `
-You are an expert Zambian teacher creating ${curriculumType.toUpperCase()} lesson plans.
+        return [
+          {
+            role: 'system',
+            content: `You are an expert Zambian teacher creating ${curriculumType.toUpperCase()} lesson plans.
 
 The user will provide a topic and requirements for a lesson plan.
 Parse the information and output it in valid JSON format.
@@ -2236,64 +2463,105 @@ CURRICULUM ISOLATION:
 - CBC means the current 2024 Competence-Based Curriculum.
 - OBC means the legacy Outcome-Based/Objective-Based curriculum.
 - Never mix CBC source content into an OBC lesson, and never mix OBC source content into a CBC lesson.
-- DeepSeek is the lesson-writing engine, not the curriculum authority.
 
-⚠️ CRITICAL: The lessonProgression and lessonDevelopment arrays MUST have content. Do NOT return empty arrays.
+CRITICAL: The lessonProgression and lessonDevelopment arrays MUST have content. Do NOT return empty arrays.
+Never use filler phrases such as:
+"using appropriate examples", "subject-appropriate activity",
+"relevant subject questions or activities", "main concepts, terms, processes",
+"key ideas of X using appropriate examples", "investigate or classify information related to",
+"apply the new knowledge to the activity", "complete an application task",
+"apply your knowledge of X to a relevant subject question or activity",
+"explain the main idea, relationship or process",
+"give evidence that demonstrates the stated competence".
 
-Return ONLY the JSON object, no other text.
-`
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ];
+The sub-topic overrides the topic. If a sub-topic is supplied, stay inside it for the entire lesson.
 
-      aiContent = await generateDeepSeekJSON(messages, { 
+Return ONLY the JSON object, no other text.`
+          },
+          { role: 'user', content: prompt }
+        ];
+      };
+
+      console.log(`📝 Generating ${curriculumType.toUpperCase()} lesson with DeepSeek...`);
+      aiContent = await generateDeepSeekJSON(buildInitialMessages(), {
         max_tokens: 7000,
         temperature: 0.3
       });
-      
-      let fallback;
-      if (curriculumType === 'cbc') {
-        fallback = generateFallbackCBC(topic, grade, subject, classSize, user);
-      } else {
-        fallback = generateFallbackOBC(topic, grade, subject, classSize, user);
-      }
+
+      const fallback = curriculumType === 'cbc'
+        ? generateFallbackCBC(topic, grade, subject, classSize, user, curriculumContext)
+        : generateFallbackOBC(topic, grade, subject, classSize, user);
       aiContent = { ...fallback, ...aiContent };
 
-      // HARD QUALITY GATE: reject generic AI output and ask DeepSeek to repair it
-      // using the exact topic/subtopic before any fallback/template is accepted.
-      if (!isTopicSpecificLesson(aiContent, topic, subtopic, curriculumType)) {
-        console.log(`⚠️ ${curriculumType.toUpperCase()} lesson failed topic-specificity check; requesting repair...`);
-        const repairPrompt = buildSpecificityRepairPrompt(topic, subtopic, subject, grade, curriculumType, curriculumContext);
-        try {
-          const repaired = await generateDeepSeekJSON([
-            { role: 'system', content: 'You are a strict lesson-plan editor. Reject generic educational filler. Return only a fully topic-specific JSON lesson plan.' },
-            { role: 'user', content: repairPrompt }
-          ], { max_tokens: 9000, temperature: 0.2 });
-          if (repaired && typeof repaired === 'object') {
-            aiContent = { ...aiContent, ...repaired };
-          }
-        } catch (repairError) {
-          console.log(`⚠️ Topic-specific repair failed: ${repairError.message}`);
-        }
-      }
-
-      // FORCE populate if empty - THIS IS THE CRITICAL FIX
       if (curriculumType === 'cbc' && (!aiContent.lessonProgression || aiContent.lessonProgression.length === 0)) {
-        console.log('📝 CBC lessonProgression was empty, FORCE populating with content...');
+        console.log('📝 CBC lessonProgression empty — force-populating.');
         aiContent.lessonProgression = generateLessonProgression(topic, subject, grade);
       }
-
       if (curriculumType === 'obc' && (!aiContent.lessonDevelopment || aiContent.lessonDevelopment.length === 0)) {
-        console.log('📝 OBC lessonDevelopment was empty, FORCE populating with content...');
+        console.log('📝 OBC lessonDevelopment empty — force-populating.');
         aiContent.lessonDevelopment = generateLessonContent(topic, subject, grade);
       }
 
-      console.log(`✅ ${curriculumType.toUpperCase()} lesson generated with DeepSeek`);
-      console.log(`📝 lessonProgression length: ${aiContent.lessonProgression?.length || 0}`);
-      console.log(`📝 lessonDevelopment length: ${aiContent.lessonDevelopment?.length || 0}`);
+      if (curriculumType === 'obc') {
+        aiContent = repairOBCLessonContent(aiContent, topic, subtopic, subject, grade, term);
+      } else {
+        aiContent = repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term, curriculumContext, getCBCSubjectProfile(subject));
+      }
+
+      // ---- QUALITY GATE + STRICT REPAIR (DeepSeek path only) ----
+      let gate = detectGenericLesson(aiContent, { curriculumType, topic, subtopic });
+
+      if (gate.generic) {
+        console.warn(`⚠️ Quality gate rejected lesson: ${gate.reasons.join('; ')}`);
+        console.warn('🔁 Sending stricter repair prompt to DeepSeek...');
+
+        let repairSucceeded = false;
+        try {
+          const repairMessages = [
+            {
+              role: 'system',
+              content: 'You rewrite rejected lesson plans. Output ONLY valid JSON matching the required structure. No markdown, no commentary.'
+            },
+            {
+              role: 'user',
+              content: buildStrictRepairPrompt({
+                curriculumType, topic, subtopic, grade, subject, term,
+                previousContent: aiContent,
+                reasons: gate.reasons
+              })
+            }
+          ];
+
+          const repaired = await generateDeepSeekJSON(repairMessages, {
+            max_tokens: 7000,
+            temperature: 0.2
+          });
+
+          if (repaired && typeof repaired === 'object') {
+            aiContent = { ...aiContent, ...repaired };
+
+            if (curriculumType === 'obc') {
+              aiContent = repairOBCLessonContent(aiContent, topic, subtopic, subject, grade, term);
+            } else {
+              aiContent = repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term, curriculumContext, getCBCSubjectProfile(subject));
+            }
+
+            gate = detectGenericLesson(aiContent, { curriculumType, topic, subtopic });
+            repairSucceeded = !gate.generic;
+          }
+        } catch (repairErr) {
+          console.error('❌ Strict repair call failed:', repairErr.message);
+        }
+
+        if (!repairSucceeded) {
+          console.warn('↩️ Strict repair did not produce a topic-specific lesson. Falling back to offline generator.');
+          useFallback = true;
+        }
+      }
+
+      if (!useFallback) {
+        console.log(`✅ ${curriculumType.toUpperCase()} lesson passed the quality gate.`);
+      }
 
     } catch (error) {
       console.log('⚠️ DeepSeek error, using fallback:', error.message);
@@ -2301,22 +2569,19 @@ Return ONLY the JSON object, no other text.
     }
 
     if (useFallback || !aiContent) {
-      console.log(`📝 Using ${curriculumType.toUpperCase()} fallback`);
-      if (curriculumType === 'cbc') {
-        aiContent = generateFallbackCBC(topic, grade, subject, classSize, user, curriculumContext);
-      } else {
-        aiContent = generateFallbackOBC(topic, grade, subject, classSize, user);
-      }
+      console.log(`📝 Using ${curriculumType.toUpperCase()} fallback (quality gate skipped)`);
+      aiContent = curriculumType === 'cbc'
+        ? generateFallbackCBC(topic, grade, subject, classSize, user, curriculumContext)
+        : generateFallbackOBC(topic, grade, subject, classSize, user);
+      generationMode = 'fallback';
+    } else {
+      generationMode = 'deepseek';
     }
 
-    // ONE MORE FINAL CHECK - Ensure lessonProgression is populated
     if (curriculumType === 'cbc' && (!aiContent.lessonProgression || aiContent.lessonProgression.length === 0)) {
-      console.log('🔧 FINAL FORCE: lessonProgression still empty, populating...');
       aiContent.lessonProgression = generateLessonProgression(topic, subject, grade);
     }
-
     if (curriculumType === 'obc' && (!aiContent.lessonDevelopment || aiContent.lessonDevelopment.length === 0)) {
-      console.log('🔧 FINAL FORCE: lessonDevelopment still empty, populating...');
       aiContent.lessonDevelopment = generateLessonContent(topic, subject, grade);
     }
 
@@ -2334,7 +2599,6 @@ Return ONLY the JSON object, no other text.
           aiContent.lessonGoal = `By the end of the lesson, learners will be able to ${String(cm.specificCompetence).replace(/^(demonstrate|explore|interpret|construct|apply|identify|explain)\s+/i, '').trim().replace(/[.]$/, '')}.`;
         }
       } else {
-        // Legacy OBC fields only. Never inject CBC-specific fields into OBC output.
         aiContent.specificOutcome = cm.specificOutcome || cm.objective || aiContent.specificOutcome || '';
         aiContent.teachingAids = Array.isArray(cm.aids) ? cm.aids : aiContent.teachingAids;
         if (cm.methods) aiContent.curriculumMethods = cm.methods;
@@ -2348,57 +2612,14 @@ Return ONLY the JSON object, no other text.
       if (cm.reference || cm.references) aiContent.curriculumReference = cm.reference || cm.references;
     }
 
-    // Final OBC quality gate: rebuild legacy OBC development and remove the
-    // generic mathematics-style template contamination from generated lessons.
     if (curriculumType === 'obc') {
       aiContent = repairOBCLessonContent(aiContent, topic, subtopic, subject, grade, term);
-      if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'obc')) {
-        console.log('⚠️ Final OBC specificity check failed; requesting one final content-only regeneration...');
-        try {
-          const finalRepair = await generateDeepSeekJSON([
-            { role: 'system', content: 'You are a Zambian OBC lesson-plan specialist. Return ONLY valid JSON. Every lessonDevelopment row must contain concrete, topic-specific content. Never use generic placeholders.' },
-            { role: 'user', content: buildSpecificityRepairPrompt(topic, subtopic, subject, grade, 'obc', curriculumContext) }
-          ], { max_tokens: 10000, temperature: 0.15 });
-          if (finalRepair && typeof finalRepair === 'object') {
-            aiContent = { ...aiContent, ...finalRepair };
-          }
-        } catch (finalRepairError) {
-          console.log(`⚠️ Final OBC regeneration failed: ${finalRepairError.message}`);
-        }
-      }
-      if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'obc')) {
-        return res.status(422).json({
-          error: 'The lesson generator could not produce sufficiently topic-specific content for the selected topic/subtopic after regeneration. No generic lesson was saved.',
-          code: 'LESSON_CONTENT_NOT_TOPIC_SPECIFIC'
-        });
-      }
     }
-
-    // Final CBC quality gate: rebuild the progression and clean generated fields
-    // from the selected CDC curriculum context before saving the lesson.
     if (curriculumType === 'cbc') {
       aiContent = repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term, curriculumContext, getCBCSubjectProfile(subject));
-      if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'cbc')) {
-        console.log('⚠️ Final CBC specificity check failed; requesting one final content-only regeneration...');
-        try {
-          const finalRepair = await generateDeepSeekJSON([
-            { role: 'system', content: 'You are a strict Zambian CBC lesson-plan specialist. Return ONLY valid JSON. The lesson must contain concrete content for the exact selected topic and subtopic. Never use generic placeholders.' },
-            { role: 'user', content: buildSpecificityRepairPrompt(topic, subtopic, subject, grade, 'cbc', curriculumContext) }
-          ], { max_tokens: 10000, temperature: 0.15 });
-          if (finalRepair && typeof finalRepair === 'object') aiContent = { ...aiContent, ...finalRepair };
-        } catch (finalRepairError) {
-          console.log(`⚠️ Final CBC regeneration failed: ${finalRepairError.message}`);
-        }
-      }
-      if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'cbc')) {
-        return res.status(422).json({
-          error: 'The lesson generator could not produce sufficiently topic-specific CBC content after automatic regeneration. No generic lesson was saved.',
-          code: 'LESSON_CONTENT_NOT_TOPIC_SPECIFIC'
-        });
-      }
     }
 
-    // HARD FORMAT ISOLATION: preserve the user's OBC format while preventing cross-format leakage.
+    // HARD FORMAT ISOLATION
     if (curriculumType === 'cbc') {
       delete aiContent.lessonDevelopment;
       delete aiContent.specificOutcome;
@@ -2418,7 +2639,6 @@ Return ONLY the JSON object, no other text.
       delete aiContent.homework;
     }
 
-    // Guarantee the displayed lesson duration is internally consistent.
     if (curriculumType === 'cbc' && Array.isArray(aiContent.lessonProgression)) {
       const parseMinutes = (value) => {
         const m = String(value || '').match(/(\d+)\s*(?:min|mins|minutes?)/i);
@@ -2437,9 +2657,6 @@ Return ONLY the JSON object, no other text.
       ? aiContent.references
       : (aiContent.references ? [aiContent.references] : []);
 
-    // CBC references are controlled by the official DCD registry plus any
-    // verified local source-pack reference. Never ask DeepSeek to invent a
-    // textbook, Teaching Module title, publisher or page number.
     if (curriculumType === 'cbc') {
       const officialRefs = getReferenceTitles({ subject, grade, term, context: curriculumContext });
       if (officialRefs.length) referencesArray = officialRefs;
@@ -2448,41 +2665,39 @@ Return ONLY the JSON object, no other text.
       referencesArray = ['Teacher-provided curriculum materials'];
     }
 
-    const materialsArray = Array.isArray(aiContent.materials) 
-      ? aiContent.materials 
+    const materialsArray = Array.isArray(aiContent.materials)
+      ? aiContent.materials
       : (aiContent.materials ? [aiContent.materials] : ["Manila paper", "Markers", "Charts", "Worksheet", "Real objects"]);
 
-    const teachingAidsArray = Array.isArray(aiContent.teachingAids) 
-      ? aiContent.teachingAids 
+    const teachingAidsArray = Array.isArray(aiContent.teachingAids)
+      ? aiContent.teachingAids
       : (aiContent.teachingAids ? [aiContent.teachingAids] : ["Whiteboard", "Charts", "Diagrams"]);
 
-    const generalCompetencesArray = Array.isArray(aiContent.generalCompetences) 
-      ? aiContent.generalCompetences 
+    const generalCompetencesArray = Array.isArray(aiContent.generalCompetences)
+      ? aiContent.generalCompetences
       : ["Analytical thinking", "Collaboration", "Communication", "Critical thinking"];
 
-    const learningOutcomesArray = Array.isArray(aiContent.learningOutcomes) 
-      ? aiContent.learningOutcomes 
+    const learningOutcomesArray = Array.isArray(aiContent.learningOutcomes)
+      ? aiContent.learningOutcomes
       : [`Understand ${topic}`, `Apply ${topic}`, `Analyze ${topic}`];
 
-    const learnersEvaluationArray = Array.isArray(aiContent.learnersEvaluation) 
-      ? aiContent.learnersEvaluation 
+    const learnersEvaluationArray = Array.isArray(aiContent.learnersEvaluation)
+      ? aiContent.learnersEvaluation
       : [`Define ${topic}`, `Give examples of ${topic}`, `Explain the importance of ${topic}`];
 
-    const lessonProgressionArray = Array.isArray(aiContent.lessonProgression) 
-      ? aiContent.lessonProgression 
+    const lessonProgressionArray = Array.isArray(aiContent.lessonProgression)
+      ? aiContent.lessonProgression
       : generateLessonProgression(topic, subject, grade);
 
-    let lessonDevelopmentArray = Array.isArray(aiContent.lessonDevelopment) 
-      ? aiContent.lessonDevelopment 
+    let lessonDevelopmentArray = Array.isArray(aiContent.lessonDevelopment)
+      ? aiContent.lessonDevelopment
       : [];
 
-    if (lessonDevelopmentArray.length === 0) {
-      console.log('📝 lessonDevelopment was empty, populating with default content...');
+    if (lessonDevelopmentArray.length === 0 && curriculumType === 'obc') {
+      console.log('📝 lessonDevelopment empty — populating default content.');
       lessonDevelopmentArray = generateLessonContent(topic, subject, grade);
     }
 
-    // Normalize OBC development field names so both the AI response and
-    // legacy fallback generator are compatible with the frontend/exporters.
     if (curriculumType === 'obc') {
       lessonDevelopmentArray = lessonDevelopmentArray.map((item, index) => ({
         ...item,
@@ -2496,12 +2711,16 @@ Return ONLY the JSON object, no other text.
       }));
     }
 
+    // Attach generation metadata so the frontend can warn the user
+    aiContent._generationMode = generationMode;
+    if (generationMode === 'fallback') {
+      aiContent._generationWarning = 'AI generation was unavailable or produced generic content. This is a template-based fallback lesson — please review and adapt it before teaching.';
+    }
+
     const lesson = await prisma.lesson.create({
       data: {
         userId: req.userId,
-        grade: grade,
-        subject: subject,
-        topic: topic,
+        grade, subject, topic,
         subtopic: aiContent.subtopic || subtopic || '',
         title: aiContent.title || topic,
         classSize: size,
@@ -2550,15 +2769,15 @@ Return ONLY the JSON object, no other text.
       ...aiContent,
       id: lesson.id,
       createdAt: lesson.createdAt,
-      grade: grade,
-      subject: subject,
-      topic: topic,
+      grade, subject, topic,
       classSize: size,
       curriculum: curriculumType,
       school: user.school || '',
       province: user.province || '',
       district: user.district || '',
-      teacherName: user.fullName || ''
+      teacherName: user.fullName || '',
+      _generationMode: generationMode,
+      _generationWarning: aiContent._generationWarning || null
     };
 
     if (curriculumType === 'cbc') {
@@ -2585,26 +2804,20 @@ Return ONLY the JSON object, no other text.
 });
 
 // ============ SCHEME OF WORK GENERATION ROUTE ============
-
 app.post('/api/schemes/generate', authenticate, async (req, res) => {
   try {
-    const { 
-      grade, subject, term, year, school, 
-      weeks: totalWeeks, assessmentWeeks, testTopics, 
-      weekTopics, weekSubtopics, subtopic, curriculum 
+    const {
+      grade, subject, term, year, school,
+      weeks: totalWeeks, assessmentWeeks, testTopics,
+      weekTopics, weekSubtopics, subtopic, curriculum
     } = req.body;
 
     if (!grade || !subject) {
       return res.status(400).json({ error: 'Missing required fields: grade, subject' });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: req.userId }
-    });
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
     if (user.role !== 'ADMIN' && user.schemesUsed >= user.schemesLimit) {
       return res.status(403).json({
@@ -2614,11 +2827,6 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
 
     const curriculumType = String(curriculum || 'cbc').toLowerCase();
 
-    // The official 2024 secondary syllabus is organised as Forms, not the
-    // old Grade 8-12 labels. For registered secondary subjects, the
-    // ordinary-level DCD syllabus currently indexed by MyToolbox is Form 1-4.
-    // Do not let a Grade 11/12 selection silently generate a fake 2024 CBC
-    // scheme by mixing legacy content with the new syllabus.
     if (curriculumType === 'cbc') {
       const registeredSubject = getRegisteredOfficialSource(subject);
       const secondaryGrade = /^grade\s*(?:[8-9]|1[0-2])$/i.test(String(grade || '').trim());
@@ -2634,18 +2842,12 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       }
     }
 
-    // MyToolbox syllabus mode: CBC uses the current 2024 Competence-Based
-    // Curriculum; OBC uses the legacy/old syllabus structure.  This is kept
-    // separate from the output format so DeepSeek knows which syllabus family
-    // to follow when generating content.
     const syllabusVersion = curriculumType === 'cbc'
       ? 'NEW_2024_CBC'
       : 'OLD_LEGACY_OBC';
     let sourcePacks = listCurriculumSources({ curriculum: curriculumType, grade, subject, term });
     let sourceRowsDetailed = listCurriculumRows({ curriculum: curriculumType, grade, subject, term });
 
-    // CBC schemes use the live CDC Digital Library as the primary source.
-    // Local JSON packs remain a fallback when the CDC repository has no match.
     if (curriculumType === 'cbc') {
       try {
         const cdcResources = await listCDCResources({ grade, subject, term });
@@ -2656,7 +2858,8 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
                 curriculum: 'cbc', subject, grade, term, sourceType: 'cdc_digital_library',
                 sourceBasis: 'CDC Digital Library — Curriculum Development Centre, Ministry of Education, Zambia',
                 officialSource: r.url, file: `cdc:${r.id}`,
-                title: r.title, resourceUrl: r.url, topics: [...new Set(cdcRows.filter(x => x.cdcResourceUrl === r.url || x.cdcResourceTitle === r.title).map(x => x.topic).filter(Boolean))],
+                title: r.title, resourceUrl: r.url,
+                topics: [...new Set(cdcRows.filter(x => x.cdcResourceUrl === r.url || x.cdcResourceTitle === r.title).map(x => x.topic).filter(Boolean))],
                 subtopics: [...new Set(cdcRows.filter(x => x.cdcResourceUrl === r.url || x.cdcResourceTitle === r.title).map(x => x.subTopic).filter(Boolean))]
               }))
             : [{
@@ -2690,9 +2893,7 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       reference: (() => {
         const localReference = row.reference || row.references || '';
         const titles = getReferenceTitles({
-          subject,
-          grade,
-          term,
+          subject, grade, term,
           context: {
             matched: Boolean(localReference),
             match: localReference ? { reference: localReference } : null,
@@ -2703,22 +2904,23 @@ app.post('/api/schemes/generate', authenticate, async (req, res) => {
       })(),
       source: row._source
     }));
+
     console.log(`📚 Curriculum source packs found: ${sourcePacks.length}`);
     console.log(`📝 Generating ${curriculumType.toUpperCase()} scheme with DeepSeek (${syllabusVersion})...`);
-    
+
     const assessmentWeeksList = assessmentWeeks || [3, 6, 9, 12];
     const customTopics = weekTopics || {};
     const customSubtopics = weekSubtopics || {};
     const totalWeeksCount = totalWeeks || 13;
     const subtopicsList = subtopic ? subtopic.split(',').map(s => s.trim()) : [];
-    
+
     let aiContent = null;
     let useFallback = false;
-    
+
     try {
       let prompt;
-      const schemeResearch = ''; // Online research disabled to keep scheme generation dependent on official curriculum sources only.
-      
+      const schemeResearch = '';
+
       if (curriculumType === 'cbc') {
         let customTopicsString = '';
         let matchedSourceDetails = '';
@@ -2744,7 +2946,7 @@ IMPORTANT SYLLABUS RULES:
 - Use official syllabus topic/sub-topic terminology and numbering where known.
 - Do not invent unrelated topics merely to fill weeks.
 - If the user supplies topics/subtopics, preserve them and build the CBC competences, activities and standards around them.
-- If an official topic cannot be confidently identified, use the closest syllabus-aligned topic and keep the wording conservative rather than fabricating syllabus codes.
+- If an official topic cannot be confidently identified, use the closest syllabus-aligned topic.
 - The output must remain suitable for a Zambian Ministry of Education CBC scheme of work.
 ${customTopicsString ? `User topics (respect these):\n${customTopicsString}` : 'Generate appropriate topics for all weeks from the selected 2024 CBC syllabus.'}
 Assessment weeks: ${assessmentWeeksList.join(', ')}
@@ -2758,9 +2960,8 @@ LOCAL CURRICULUM SOURCE CONTROL:
 ${sourceRows.length ? JSON.stringify(sourceRows, null, 2) : 'NO VERIFIED LOCAL SOURCE PACK IS AVAILABLE FOR THIS SUBJECT/GRADE/TERM. Do not invent official syllabus codes, page numbers or CDC claims.'}
 - When a local source pack is available, its rows are the authoritative local sequence for this generation. Preserve the supplied topic/subtopic/competence wording rather than replacing it with a generic DeepSeek sequence.
 - Never use a subject-specific default such as Biology when the selected subject is different.
-- References must use the verified DCD reference titles supplied above, plus a matched local source-pack page/range when one exists. Never invent a textbook or page.
-${matchedSourceDetails ? `VERIFIED DETAILS FOR USER-SUPPLIED TOPICS:
-${matchedSourceDetails}` : ''}
+- References must use the verified DCD reference titles supplied above. Never invent a textbook or page.
+${matchedSourceDetails ? `VERIFIED DETAILS FOR USER-SUPPLIED TOPICS:\n${matchedSourceDetails}` : ''}
 - If a verified local source row matches a supplied topic, preserve its official wording, competence, resources and reference.
 - If a verified source pack exists but the user leaves a week topic blank, use the source pack sequence rather than inventing a different topic.
 - If no verified source exists, generate a useful scheme but do not label invented topic codes/references as official CDC content.
@@ -2772,13 +2973,13 @@ Return ONLY valid JSON with this CBC scheme structure:
       "week": 1,
       "topics": [
         {
-          "topic": "Topic code and name (e.g., 1.1.0 Concepts and Methods in Biology)",
-          "subtopic": "Subtopic name (e.g., 1.1.1 Nature of Science inquiry)",
-          "specificCompetence": "What learners should achieve (e.g., Apply scientific inquiry in carrying out scientific investigations)",
-          "methods": "Teaching methods (e.g., Group work, Experiments, Field work)",
-          "aids": "Teaching aids/resources (e.g., Apparatus, Books, Beakers)",
-          "references": "Reference books (e.g., 2024 New Syllabus pages 1-10)",
-          "knowledge": "Knowledge gained from the topic",
+          "topic": "Topic code and name",
+          "subtopic": "Subtopic name",
+          "specificCompetence": "What learners should achieve",
+          "methods": "Teaching methods",
+          "aids": "Teaching aids/resources",
+          "references": "Reference books",
+          "knowledge": "Knowledge gained",
           "skills": "Skills developed",
           "values": "Values adopted"
         }
@@ -2795,9 +2996,7 @@ Return ONLY valid JSON with this CBC scheme structure:
       } else {
         let customTopicsString = '';
         Object.keys(customTopics).forEach(week => {
-          if (customTopics[week]) {
-            customTopicsString += `Week ${week}: ${customTopics[week]}\n`;
-          }
+          if (customTopics[week]) customTopicsString += `Week ${week}: ${customTopics[week]}\n`;
         });
 
         prompt = `
@@ -2858,31 +3057,24 @@ Parse the information and output it in valid JSON format.
 
 Syllabus selection is mandatory:
 - NEW_2024_CBC: use the current 2024 Zambia Ministry of Education Competence-Based syllabus and CBC terminology.
-- OLD_LEGACY_OBC: use the older/legacy Zambian syllabus and Objective-Based terminology; do not silently substitute the 2024 CBC sequence.
+- OLD_LEGACY_OBC: use the older/legacy Zambian syllabus and Objective-Based terminology.
 For CBC: Include topic, subtopic, specificCompetences, learningActivities, expectedStandards, resources, strategies, and reference.
 For OBC: Include topic, specificOutcome, methods, aids, references, knowledge, skills, and values.
 
 Return ONLY the JSON object, no other text.
 `
         },
-        {
-          role: "user",
-          content: prompt
-        }
+        { role: "user", content: prompt }
       ];
 
-      aiContent = await generateDeepSeekJSON(messages, { 
-        max_tokens: 4000,
-        temperature: 0.1
-      });
-      
+      aiContent = await generateDeepSeekJSON(messages, { max_tokens: 4000, temperature: 0.1 });
       console.log('✅ DeepSeek generated scheme successfully');
 
     } catch (error) {
       console.log('⚠️ DeepSeek error, using fallback:', error.message);
       useFallback = true;
     }
-    
+
     if (!aiContent || useFallback) {
       console.log(`📝 Using ${curriculumType.toUpperCase()} fallback scheme generator`);
       if (curriculumType === 'cbc' && sourceRowsDetailed.length) {
@@ -2912,13 +3104,10 @@ Return ONLY the JSON object, no other text.
         aiContent = generateOBCScheme(grade, subject, term, user, customTopics);
       }
     }
-    
+
     const weeks = (aiContent?.weeks || []).map(week => {
       if (curriculumType === 'cbc') {
-        const topic = Array.isArray(week.topics) && week.topics.length > 0
-          ? week.topics[0]
-          : week;
-
+        const topic = Array.isArray(week.topics) && week.topics.length > 0 ? week.topics[0] : week;
         const weekNumber = Number(week.week);
         const forcedSubtopic = customSubtopics[weekNumber] || customSubtopics[String(weekNumber)] || '';
         const topicName = topic.topic || '';
@@ -2958,7 +3147,6 @@ Return ONLY the JSON object, no other text.
           reference: finalReference,
           isRevision: week.isRevision || false,
           isAssessment: week.isAssessment || false,
-          // Keep nested data for compatibility with older saved scheme viewers.
           topics: Array.isArray(week.topics) ? week.topics : [topic]
         };
       }
@@ -2983,9 +3171,6 @@ Return ONLY the JSON object, no other text.
       };
     });
 
-    // Final CBC scheme alignment gate: prevent DeepSeek or manual subtopics
-    // from creating topic/subtopic/competence mismatches. Verified source rows
-    // take priority; Biology also gets a deterministic subject-family guard.
     if (curriculumType === 'cbc') {
       const repairedWeeks = repairCBCSchemeAlignment(weeks, {
         sourceRowsDetailed, customTopics, customSubtopics, assessmentWeeksList, subject
@@ -2999,13 +3184,7 @@ Return ONLY the JSON object, no other text.
         if (!assessmentWeeksList.includes(weeks[i].week) && !weeks[i].isRevision && !weeks[i].isAssessment) {
           if (weekIndex < subtopicsList.length && weeks[i].topics?.[0]) {
             const manualSubtopic = subtopicsList[weekIndex];
-            // A user-entered subtopic must never replace the official topic.
-            // It belongs in the Sub-topic column, while the verified topic,
-            // competence and standard remain intact.
             if (curriculumType === 'cbc') {
-              // Do not blindly overwrite a repaired/verified CBC subtopic.
-              // The alignment gate above has already accepted the manual value
-              // only when it is coherent with the topic.
               const current = weeks[i].subTopic || weeks[i].topics[0].subtopic || '';
               if (!current) {
                 weeks[i].subTopic = manualSubtopic;
@@ -3033,8 +3212,7 @@ Return ONLY the JSON object, no other text.
     }
 
     const generatedScheme = {
-      grade: grade,
-      subject: subject,
+      grade, subject,
       term: term || 'Term 1',
       year: year || new Date().getFullYear().toString(),
       totalWeeks: totalWeeksCount,
@@ -3045,7 +3223,9 @@ Return ONLY the JSON object, no other text.
       assessmentWeeks: assessmentWeeksList,
       testTopics: testTopics || [`Mid-term test on ${subject}`, `End of term test on ${subject}`],
       curriculum: curriculumType,
-      curriculumSourceStatus: curriculumType === 'cbc' ? (sourcePacks.some(s => s.sourceType === 'cdc_digital_library') ? 'VERIFIED_CDC_LIBRARY_AVAILABLE' : (sourcePacks.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : 'NO_CDC_SOURCE')) : (sourcePacks.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : 'OBC_MODE'),
+      curriculumSourceStatus: curriculumType === 'cbc'
+        ? (sourcePacks.some(s => s.sourceType === 'cdc_digital_library') ? 'VERIFIED_CDC_LIBRARY_AVAILABLE' : (sourcePacks.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : 'NO_CDC_SOURCE'))
+        : (sourcePacks.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : 'OBC_MODE'),
       curriculumSources: sourcePacks,
       createdAt: new Date().toISOString()
     };
@@ -3053,8 +3233,7 @@ Return ONLY the JSON object, no other text.
     const scheme = await prisma.scheme.create({
       data: {
         userId: req.userId,
-        grade: grade,
-        subject: subject,
+        grade, subject,
         term: term || 'Term 1',
         year: year || new Date().getFullYear().toString(),
         totalWeeks: totalWeeksCount,
@@ -3090,7 +3269,6 @@ Return ONLY the JSON object, no other text.
 });
 
 // ============ SCHEME EXPORT ROUTES ============
-
 function cbcListText(value) {
   if (Array.isArray(value)) return value.join('\n');
   return String(value ?? '');
@@ -3178,7 +3356,6 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
     }
 
     const tableRows = [];
-
     const headerRow = new TableRow({
       children: [
         new TableCell({ children: [new Paragraph({ text: 'WEEK', bold: true })], width: { size: 5, type: WidthType.PERCENTAGE } }),
@@ -3196,7 +3373,6 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
 
     scheme.weeks.forEach(week => {
       const topics = week.topics || [];
-      
       const topicText = topics.map(t => t.topic || '').join('\n');
       const subtopicText = topics.map(t => t.subtopic || '').join('\n');
       const competenceText = topics.map(t => t.specificCompetence || t.specificOutcome || '').join('\n');
@@ -3205,7 +3381,6 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
       const refsText = topics.map(t => t.references || '').join('\n');
       const knowledgeText = topics.map(t => t.knowledge || '').join('\n');
       const skillsText = topics.map(t => t.skills || '').join('\n');
-      const valuesText = topics.map(t => t.values || '').join('\n');
 
       const dataRow = new TableRow({
         children: [
@@ -3246,7 +3421,6 @@ app.get('/api/schemes/export/:id/word', authenticate, async (req, res) => {
     });
 
     const buffer = await Packer.toBuffer(doc);
-    
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition', `attachment; filename="scheme_${scheme.id}.docx"`);
     res.send(buffer);
@@ -3336,20 +3510,20 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
     const tableTop = doc.y;
     const columnWidths = [30, 50, 50, 60, 40, 40, 40, 30, 30];
     const headers = ['WK', 'TOPIC', 'SUBTOPIC', 'SPECIFIC COMPETENCE', 'METHODS', 'AIDS', 'REFERENCES', 'KNOWLEDGE', 'SKILLS'];
-    
+
     let x = 50;
     let y = tableTop;
-    
+
     doc.rect(50, y - 5, 495, 25).fill('#e0e0e0');
     doc.fillColor('black');
-    
+
     headers.forEach((header, i) => {
       doc.fontSize(8).text(header, x, y, { width: columnWidths[i], align: 'center' });
       x += columnWidths[i];
     });
-    
+
     y += 25;
-    
+
     scheme.weeks.forEach(week => {
       const topics = week.topics || [];
       const topicText = topics.map(t => t.topic || '').join('\n');
@@ -3360,8 +3534,7 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
       const refsText = topics.map(t => t.references || '').join('\n');
       const knowledgeText = topics.map(t => t.knowledge || '').join('\n');
       const skillsText = topics.map(t => t.skills || '').join('\n');
-      const valuesText = topics.map(t => t.values || '').join('\n');
-      
+
       const rowData = [
         String(week.week),
         topicText || '-',
@@ -3373,7 +3546,7 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
         knowledgeText || '-',
         skillsText || '-'
       ];
-      
+
       let maxHeight = 20;
       rowData.forEach((text, i) => {
         doc.fontSize(7).text(text, 50 + columnWidths.slice(0, i).reduce((a, b) => a + b, 0), y, {
@@ -3384,24 +3557,24 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
         const height = doc.heightOfString(text, { width: columnWidths[i] });
         if (height > maxHeight) maxHeight = height;
       });
-      
+
       let currentX = 50;
       rowData.forEach((text, i) => {
         doc.rect(currentX, y, columnWidths[i], maxHeight + 5).stroke();
         currentX += columnWidths[i];
       });
-      
+
       y += maxHeight + 10;
-      
+
       if (y > 750) {
         doc.addPage();
         y = 50;
       }
     });
-    
+
     doc.moveDown();
     doc.fontSize(10).text('© 2026 mytoolbox - Made for teachers in Zambia', { align: 'center' });
-    
+
     doc.end();
 
   } catch (error) {
@@ -3411,13 +3584,10 @@ app.get('/api/schemes/export/:id/pdf', authenticate, async (req, res) => {
 });
 
 // ============ NOTES ROUTES ============
-
 app.get('/api/notes', authenticate, async (req, res) => {
   try {
     const notes = await prisma.note.findMany({
-      where: { userId: req.userId },
-      orderBy: { createdAt: 'desc' },
-      take: 20
+      where: { userId: req.userId }, orderBy: { createdAt: 'desc' }, take: 20
     });
     res.json(notes);
   } catch (error) {
@@ -3429,15 +3599,9 @@ app.get('/api/notes', authenticate, async (req, res) => {
 app.get('/api/notes/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
-    const note = await prisma.note.findUnique({
-      where: { id: id },
-    });
-    if (!note) {
-      return res.status(404).json({ error: 'Note not found' });
-    }
-    if (note.userId !== req.userId) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
+    const note = await prisma.note.findUnique({ where: { id: id } });
+    if (!note) return res.status(404).json({ error: 'Note not found' });
+    if (note.userId !== req.userId) return res.status(403).json({ error: 'Unauthorized' });
     res.json(note);
   } catch (error) {
     console.error('Error fetching note:', error);
@@ -3448,7 +3612,6 @@ app.get('/api/notes/:id', authenticate, async (req, res) => {
 app.post('/api/notes/upload', authenticate, notesUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Please select a notes file.' });
-
     const ext = (req.file.originalname.split('.').pop() || '').toLowerCase();
     let content = '';
 
@@ -3485,17 +3648,9 @@ app.post('/api/notes/upload', authenticate, notesUpload.single('file'), async (r
 app.post('/api/notes', authenticate, async (req, res) => {
   try {
     const { title, content, subject, grade } = req.body;
-    if (!title || !content) {
-      return res.status(400).json({ error: 'Title and content are required' });
-    }
+    if (!title || !content) return res.status(400).json({ error: 'Title and content are required' });
     const note = await prisma.note.create({
-      data: {
-        userId: req.userId,
-        title,
-        content,
-        subject,
-        grade,
-      }
+      data: { userId: req.userId, title, content, subject, grade }
     });
     res.status(201).json(note);
   } catch (error) {
@@ -3508,15 +3663,9 @@ app.put('/api/notes/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, content, subject, grade } = req.body;
-    const existingNote = await prisma.note.findUnique({
-      where: { id: id },
-    });
-    if (!existingNote) {
-      return res.status(404).json({ error: 'Note not found' });
-    }
-    if (existingNote.userId !== req.userId) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
+    const existingNote = await prisma.note.findUnique({ where: { id: id } });
+    if (!existingNote) return res.status(404).json({ error: 'Note not found' });
+    if (existingNote.userId !== req.userId) return res.status(403).json({ error: 'Unauthorized' });
     const note = await prisma.note.update({
       where: { id: id },
       data: { title, content, subject, grade },
@@ -3531,18 +3680,10 @@ app.put('/api/notes/:id', authenticate, async (req, res) => {
 app.delete('/api/notes/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
-    const existingNote = await prisma.note.findUnique({
-      where: { id: id },
-    });
-    if (!existingNote) {
-      return res.status(404).json({ error: 'Note not found' });
-    }
-    if (existingNote.userId !== req.userId) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
-    await prisma.note.delete({
-      where: { id: id },
-    });
+    const existingNote = await prisma.note.findUnique({ where: { id: id } });
+    if (!existingNote) return res.status(404).json({ error: 'Note not found' });
+    if (existingNote.userId !== req.userId) return res.status(403).json({ error: 'Unauthorized' });
+    await prisma.note.delete({ where: { id: id } });
     res.status(204).send();
   } catch (error) {
     console.error('Error deleting note:', error);
@@ -3551,9 +3692,6 @@ app.delete('/api/notes/:id', authenticate, async (req, res) => {
 });
 
 // ============ ASSESSMENTS ROUTES ============
-
-// Generate a topic-specific assessment with DeepSeek. Falls back to a
-// deterministic Zambia-school-friendly set if AI is unavailable or malformed.
 app.post('/api/assessments/generate', authenticate, async (req, res) => {
   try {
     const { title, type = 'test', subject, grade, topic, description = '' } = req.body || {};
@@ -3597,11 +3735,7 @@ app.post('/api/assessments/generate', authenticate, async (req, res) => {
       : fallback;
 
     res.json({
-      title,
-      type,
-      subject,
-      grade,
-      topic,
+      title, type, subject, grade, topic,
       description: generated?.description || description || `Assessment on ${topic}`,
       questions,
       maxScore: questions.reduce((sum, q) => sum + q.marks, 0),
@@ -3616,9 +3750,7 @@ app.post('/api/assessments/generate', authenticate, async (req, res) => {
 app.get('/api/assessments', authenticate, async (req, res) => {
   try {
     const assessments = await prisma.assessment.findMany({
-      where: { userId: req.userId },
-      orderBy: { createdAt: 'desc' },
-      take: 20
+      where: { userId: req.userId }, orderBy: { createdAt: 'desc' }, take: 20
     });
     res.json(assessments);
   } catch (error) {
@@ -3630,15 +3762,9 @@ app.get('/api/assessments', authenticate, async (req, res) => {
 app.get('/api/assessments/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
-    const assessment = await prisma.assessment.findUnique({
-      where: { id: id },
-    });
-    if (!assessment) {
-      return res.status(404).json({ error: 'Assessment not found' });
-    }
-    if (assessment.userId !== req.userId) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
+    const assessment = await prisma.assessment.findUnique({ where: { id: id } });
+    if (!assessment) return res.status(404).json({ error: 'Assessment not found' });
+    if (assessment.userId !== req.userId) return res.status(403).json({ error: 'Unauthorized' });
     res.json(assessment);
   } catch (error) {
     console.error('Error fetching assessment:', error);
@@ -3649,19 +3775,11 @@ app.get('/api/assessments/:id', authenticate, async (req, res) => {
 app.post('/api/assessments', authenticate, async (req, res) => {
   try {
     const { title, type, subject, grade, description, questions, maxScore } = req.body;
-    if (!title || !type) {
-      return res.status(400).json({ error: 'Title and type are required' });
-    }
+    if (!title || !type) return res.status(400).json({ error: 'Title and type are required' });
     const assessment = await prisma.assessment.create({
       data: {
-        userId: req.userId,
-        title,
-        type,
-        subject,
-        grade,
-        description,
-        questions: questions || [],
-        maxScore: maxScore || 0,
+        userId: req.userId, title, type, subject, grade, description,
+        questions: questions || [], maxScore: maxScore || 0,
       }
     });
     res.status(201).json(assessment);
@@ -3675,15 +3793,9 @@ app.post('/api/assessments/:id/submit', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
     const { score, answers } = req.body;
-    const existingAssessment = await prisma.assessment.findUnique({
-      where: { id: id },
-    });
-    if (!existingAssessment) {
-      return res.status(404).json({ error: 'Assessment not found' });
-    }
-    if (existingAssessment.userId !== req.userId) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
+    const existingAssessment = await prisma.assessment.findUnique({ where: { id: id } });
+    if (!existingAssessment) return res.status(404).json({ error: 'Assessment not found' });
+    if (existingAssessment.userId !== req.userId) return res.status(403).json({ error: 'Unauthorized' });
     const assessment = await prisma.assessment.update({
       where: { id: id },
       data: {
@@ -3702,18 +3814,10 @@ app.post('/api/assessments/:id/submit', authenticate, async (req, res) => {
 app.delete('/api/assessments/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
-    const existingAssessment = await prisma.assessment.findUnique({
-      where: { id: id },
-    });
-    if (!existingAssessment) {
-      return res.status(404).json({ error: 'Assessment not found' });
-    }
-    if (existingAssessment.userId !== req.userId) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
-    await prisma.assessment.delete({
-      where: { id: id },
-    });
+    const existingAssessment = await prisma.assessment.findUnique({ where: { id: id } });
+    if (!existingAssessment) return res.status(404).json({ error: 'Assessment not found' });
+    if (existingAssessment.userId !== req.userId) return res.status(403).json({ error: 'Unauthorized' });
+    await prisma.assessment.delete({ where: { id: id } });
     res.status(204).send();
   } catch (error) {
     console.error('Error deleting assessment:', error);
@@ -3760,7 +3864,6 @@ async function applySuccessfulPayment(payment) {
   });
 }
 
-// Teacher submits a payment notification after paying directly to your mobile-money number.
 app.post('/api/payments/manual', authenticate, async (req, res) => {
   try {
     const { plan, phoneNumber, provider, transactionReference } = req.body;
@@ -3824,9 +3927,7 @@ app.post('/api/payments/manual', authenticate, async (req, res) => {
 app.get('/api/payments/history', authenticate, async (req, res) => {
   try {
     const payments = await prisma.payment.findMany({
-      where: { userId: req.userId },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
+      where: { userId: req.userId }, orderBy: { createdAt: 'desc' }, take: 20,
     });
     res.json(payments);
   } catch (error) {
@@ -3835,18 +3936,13 @@ app.get('/api/payments/history', authenticate, async (req, res) => {
   }
 });
 
-// ============ ADMIN ROUTES (FIXED) ============
-
+// ============ ADMIN ROUTES ============
 const isAdmin = async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({
-      where: { id: req.userId },
-      select: { role: true }
+      where: { id: req.userId }, select: { role: true }
     });
-    
-    if (!user || user.role !== 'ADMIN') {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
+    if (!user || user.role !== 'ADMIN') return res.status(403).json({ error: 'Admin access required' });
     next();
   } catch (error) {
     console.error('Admin check error:', error);
@@ -3854,14 +3950,10 @@ const isAdmin = async (req, res, next) => {
   }
 };
 
-// Manual payment verification: admin checks the transaction in the mobile-money account
-// and approves or rejects the teacher's request.
 app.get('/api/admin/payments/pending', authenticate, isAdmin, async (req, res) => {
   try {
     const payments = await prisma.payment.findMany({
-      where: { status: 'pending' },
-      orderBy: { createdAt: 'asc' },
-      take: 100,
+      where: { status: 'pending' }, orderBy: { createdAt: 'asc' }, take: 100,
       include: { user: { select: { fullName: true, email: true, school: true, phone: true } } },
     });
     res.json(payments);
@@ -3901,7 +3993,6 @@ app.post('/api/admin/payments/:id/reject', authenticate, isAdmin, async (req, re
   }
 });
 
-// Admin Stats
 app.get('/api/admin/stats', authenticate, isAdmin, async (req, res) => {
   try {
     const now = new Date();
@@ -3930,22 +4021,14 @@ app.get('/api/admin/stats', authenticate, isAdmin, async (req, res) => {
 
     res.json({
       stats: {
-        totalUsers,
-        totalLessons,
-        totalSchemes,
-        totalPayments,
+        totalUsers, totalLessons, totalSchemes, totalPayments,
         revenue: Number(completedRevenue?._sum?.amount || 0),
         totalRevenue: Number(completedRevenue?._sum?.amount || 0),
-        newUsersToday,
-        lessonsToday,
-        schemesToday,
-        paymentsToday,
-        activeUsers,
-        pendingModeration,
+        newUsersToday, lessonsToday, schemesToday, paymentsToday,
+        activeUsers, pendingModeration,
         systemHealth: 'Operational',
         uptime: `${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m`,
-        proPayments,
-        schoolPayments
+        proPayments, schoolPayments
       }
     });
   } catch (error) {
@@ -3954,25 +4037,14 @@ app.get('/api/admin/stats', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Admin Users (basic)
 app.get('/api/admin/users', authenticate, isAdmin, async (req, res) => {
   try {
     const users = await prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
       select: {
-        id: true,
-        fullName: true,
-        email: true,
-        school: true,
-        province: true,
-        district: true,
-        role: true,
-        lessonsUsed: true,
-        lessonsLimit: true,
-        schemesUsed: true,
-        schemesLimit: true,
-        createdAt: true,
-        subscriptionEndsAt: true
+        id: true, fullName: true, email: true, school: true, province: true, district: true,
+        role: true, lessonsUsed: true, lessonsLimit: true, schemesUsed: true, schemesLimit: true,
+        createdAt: true, subscriptionEndsAt: true
       }
     });
     res.json(users);
@@ -3982,28 +4054,15 @@ app.get('/api/admin/users', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Admin Detailed Users - FIXED (Simplified, no _count issues)
 app.get('/api/admin/users/detailed', authenticate, isAdmin, async (req, res) => {
   try {
     console.log('📊 Fetching detailed users...');
-    
     const users = await prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
       select: {
-        id: true,
-        fullName: true,
-        email: true,
-        school: true,
-        province: true,
-        district: true,
-        role: true,
-        lessonsUsed: true,
-        lessonsLimit: true,
-        schemesUsed: true,
-        schemesLimit: true,
-        createdAt: true,
-        subscriptionEndsAt: true,
-        lastActive: true
+        id: true, fullName: true, email: true, school: true, province: true, district: true,
+        role: true, lessonsUsed: true, lessonsLimit: true, schemesUsed: true, schemesLimit: true,
+        createdAt: true, subscriptionEndsAt: true, lastActive: true
       }
     });
 
@@ -4022,242 +4081,121 @@ app.get('/api/admin/users/detailed', authenticate, isAdmin, async (req, res) => 
       createdAt: user.createdAt ? user.createdAt.toISOString() : new Date().toISOString(),
       subscriptionEndsAt: user.subscriptionEndsAt ? user.subscriptionEndsAt.toISOString() : null,
       lastActive: user.lastActive ? user.lastActive.toISOString() : new Date().toISOString(),
-      // These are the fields the frontend expects for toLocaleString
-      totalLessons: Number(0),
-      totalSchemes: Number(0),
-      totalPayments: Number(0),
-      totalNotes: Number(0),
-      totalAssessments: Number(0),
+      totalLessons: 0, totalSchemes: 0, totalPayments: 0, totalNotes: 0, totalAssessments: 0,
       lessons: Number(user.lessonsUsed || 0),
       schemes: Number(user.schemesUsed || 0),
-      payments: Number(0),
-      notes: Number(0),
-      assessments: Number(0)
+      payments: 0, notes: 0, assessments: 0
     }));
 
     console.log(`✅ Found ${formattedUsers.length} users`);
-    
-    res.json({
-      success: true,
-      users: formattedUsers,
-      total: formattedUsers.length
-    });
-
+    res.json({ success: true, users: formattedUsers, total: formattedUsers.length });
   } catch (error) {
     console.error('❌ Error fetching detailed users:', error);
-    res.json({
-      success: false,
-      users: [],
-      total: 0,
-      error: error.message
-    });
+    res.json({ success: false, users: [], total: 0, error: error.message });
   }
 });
 
-// Admin User Stats
 app.get('/api/admin/users/:id/stats', authenticate, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-
     const user = await prisma.user.findUnique({
       where: { id },
       select: {
-        id: true,
-        fullName: true,
-        email: true,
-        school: true,
-        province: true,
-        district: true,
-        role: true,
-        lessonsUsed: true,
-        lessonsLimit: true,
-        schemesUsed: true,
-        schemesLimit: true,
-        createdAt: true,
-        subscriptionEndsAt: true,
-        lastActive: true
+        id: true, fullName: true, email: true, school: true, province: true, district: true,
+        role: true, lessonsUsed: true, lessonsLimit: true, schemesUsed: true, schemesLimit: true,
+        createdAt: true, subscriptionEndsAt: true, lastActive: true
       }
     });
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
     const recentLessons = await prisma.lesson.findMany({
-      where: { userId: id },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-      select: {
-        id: true,
-        topic: true,
-        subject: true,
-        grade: true,
-        createdAt: true
-      }
+      where: { userId: id }, orderBy: { createdAt: 'desc' }, take: 5,
+      select: { id: true, topic: true, subject: true, grade: true, createdAt: true }
     }).catch(() => []);
 
     const recentPayments = await prisma.payment.findMany({
-      where: { userId: id },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-      select: {
-        id: true,
-        amount: true,
-        status: true,
-        createdAt: true,
-        plan: true
-      }
+      where: { userId: id }, orderBy: { createdAt: 'desc' }, take: 5,
+      select: { id: true, amount: true, status: true, createdAt: true, plan: true }
     }).catch(() => []);
 
     const recentSchemes = await prisma.scheme.findMany({
-      where: { userId: id },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-      select: {
-        id: true,
-        subject: true,
-        grade: true,
-        term: true,
-        createdAt: true
-      }
+      where: { userId: id }, orderBy: { createdAt: 'desc' }, take: 5,
+      select: { id: true, subject: true, grade: true, term: true, createdAt: true }
     }).catch(() => []);
 
     res.json({
-      user: {
-        ...user,
-        _count: undefined
-      },
+      user: { ...user, _count: undefined },
       stats: {
         totalLessons: Number(user.lessonsUsed || 0),
         totalSchemes: Number(user.schemesUsed || 0),
-        totalPayments: Number(0),
-        totalNotes: Number(0),
-        totalAssessments: Number(0)
+        totalPayments: 0, totalNotes: 0, totalAssessments: 0
       },
       recentLessons: recentLessons.map(l => ({
-        id: String(l.id || ''),
-        topic: String(l.topic || ''),
-        subject: String(l.subject || ''),
-        grade: String(l.grade || ''),
-        createdAt: l.createdAt ? l.createdAt.toISOString() : new Date().toISOString()
+        id: String(l.id || ''), topic: String(l.topic || ''), subject: String(l.subject || ''),
+        grade: String(l.grade || ''), createdAt: l.createdAt ? l.createdAt.toISOString() : new Date().toISOString()
       })),
       recentPayments: recentPayments.map(p => ({
-        id: String(p.id || ''),
-        amount: Number(p.amount || 0),
-        status: String(p.status || 'pending'),
-        createdAt: p.createdAt ? p.createdAt.toISOString() : new Date().toISOString(),
-        plan: String(p.plan || 'PRO')
+        id: String(p.id || ''), amount: Number(p.amount || 0), status: String(p.status || 'pending'),
+        createdAt: p.createdAt ? p.createdAt.toISOString() : new Date().toISOString(), plan: String(p.plan || 'PRO')
       })),
       recentSchemes: recentSchemes.map(s => ({
-        id: String(s.id || ''),
-        subject: String(s.subject || ''),
-        grade: String(s.grade || ''),
-        term: String(s.term || ''),
-        createdAt: s.createdAt ? s.createdAt.toISOString() : new Date().toISOString()
+        id: String(s.id || ''), subject: String(s.subject || ''), grade: String(s.grade || ''),
+        term: String(s.term || ''), createdAt: s.createdAt ? s.createdAt.toISOString() : new Date().toISOString()
       }))
     });
   } catch (error) {
     console.error('❌ Error fetching user stats:', error);
-    res.status(500).json({
-      error: 'Failed to fetch user statistics',
-      details: error.message
-    });
+    res.status(500).json({ error: 'Failed to fetch user statistics', details: error.message });
   }
 });
 
-// Admin System Stats - FIXED (Simplified)
 app.get('/api/admin/system/stats', authenticate, isAdmin, async (req, res) => {
   try {
     console.log('📊 Fetching system stats...');
-    
-    // Get all counts with guaranteed numbers
     const totalUsers = Number(await prisma.user.count().catch(() => 0));
     const totalLessons = Number(await prisma.lesson.count().catch(() => 0));
     const totalSchemes = Number(await prisma.scheme.count().catch(() => 0));
     const totalPayments = Number(await prisma.payment.count().catch(() => 0));
     const totalNotes = Number(await prisma.note.count().catch(() => 0));
     const totalAssessments = Number(await prisma.assessment.count().catch(() => 0));
-    
-    // Get revenue
+
     const revenueResult = await prisma.payment.aggregate({
-      where: { status: 'completed' },
-      _sum: { amount: true }
+      where: { status: 'completed' }, _sum: { amount: true }
     }).catch(() => ({ _sum: { amount: 0 } }));
     const totalRevenue = Number(revenueResult?._sum?.amount || 0);
-    
-    // Get role counts
+
     const freeUsers = Number(await prisma.user.count({ where: { role: 'FREE' } }).catch(() => 0));
     const proUsers = Number(await prisma.user.count({ where: { role: 'PRO' } }).catch(() => 0));
     const schoolUsers = Number(await prisma.user.count({ where: { role: 'SCHOOL' } }).catch(() => 0));
     const adminUsers = Number(await prisma.user.count({ where: { role: 'ADMIN' } }).catch(() => 0));
-    
-    // Get new users last 30 days
+
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const newUsersLast30Days = Number(await prisma.user.count({
       where: { createdAt: { gte: thirtyDaysAgo } }
     }).catch(() => 0));
 
-    // Get recent users
     const recentUsers = await prisma.user.findMany({
-      take: 10,
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
-        school: true,
-        role: true,
-        createdAt: true,
-        lessonsUsed: true,
-        schemesUsed: true
-      }
+      take: 10, orderBy: { createdAt: 'desc' },
+      select: { id: true, fullName: true, email: true, school: true, role: true, createdAt: true, lessonsUsed: true, schemesUsed: true }
     }).catch(() => []);
 
     const formattedRecentUsers = recentUsers.map(user => ({
-      id: String(user.id || ''),
-      fullName: String(user.fullName || ''),
-      email: String(user.email || ''),
-      school: String(user.school || ''),
+      id: String(user.id || ''), fullName: String(user.fullName || ''),
+      email: String(user.email || ''), school: String(user.school || ''),
       role: String(user.role || 'FREE'),
       createdAt: user.createdAt ? user.createdAt.toISOString() : new Date().toISOString(),
-      lessonsUsed: Number(user.lessonsUsed || 0),
-      schemesUsed: Number(user.schemesUsed || 0)
+      lessonsUsed: Number(user.lessonsUsed || 0), schemesUsed: Number(user.schemesUsed || 0)
     }));
 
-    // Return response with ALL numeric fields as numbers
-    const response = {
-      totals: {
-        users: totalUsers,
-        lessons: totalLessons,
-        schemes: totalSchemes,
-        payments: totalPayments,
-        notes: totalNotes,
-        assessments: totalAssessments,
-        revenue: totalRevenue
-      },
-      growth: {
-        newUsersLast30Days: newUsersLast30Days
-      },
-      subscriptions: {
-        free: freeUsers,
-        pro: proUsers,
-        school: schoolUsers,
-        admin: adminUsers
-      },
-      recent: {
-        users: formattedRecentUsers,
-        lessons: [],
-        payments: []
-      }
-    };
-
-    console.log('📊 System stats response sent successfully');
-    res.json(response);
-
+    res.json({
+      totals: { users: totalUsers, lessons: totalLessons, schemes: totalSchemes, payments: totalPayments, notes: totalNotes, assessments: totalAssessments, revenue: totalRevenue },
+      growth: { newUsersLast30Days },
+      subscriptions: { free: freeUsers, pro: proUsers, school: schoolUsers, admin: adminUsers },
+      recent: { users: formattedRecentUsers, lessons: [], payments: [] }
+    });
   } catch (error) {
     console.error('❌ Error fetching system stats:', error);
-    // Always return a valid response with all numeric fields
     res.json({
       totals: { users: 0, lessons: 0, schemes: 0, payments: 0, notes: 0, assessments: 0, revenue: 0 },
       growth: { newUsersLast30Days: 0 },
@@ -4267,22 +4205,18 @@ app.get('/api/admin/system/stats', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Admin Update User Role
 app.put('/api/admin/users/:id/role', authenticate, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { role } = req.body;
-
     if (!['FREE', 'PRO', 'SCHOOL', 'ADMIN'].includes(role)) {
       return res.status(400).json({ error: 'Invalid role. Must be FREE, PRO, SCHOOL, or ADMIN' });
     }
-
     const user = await prisma.user.update({
       where: { id },
       data: { role },
       select: { id: true, fullName: true, email: true, role: true }
     });
-
     res.json(user);
   } catch (error) {
     console.error('Error updating user role:', error);
@@ -4290,21 +4224,11 @@ app.put('/api/admin/users/:id/role', authenticate, isAdmin, async (req, res) => 
   }
 });
 
-// Admin Lessons
 app.get('/api/admin/lessons', authenticate, isAdmin, async (req, res) => {
   try {
     const lessons = await prisma.lesson.findMany({
-      take: 50,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        user: {
-          select: {
-            fullName: true,
-            email: true,
-            school: true
-          }
-        }
-      }
+      take: 50, orderBy: { createdAt: 'desc' },
+      include: { user: { select: { fullName: true, email: true, school: true } } }
     });
     res.json(lessons);
   } catch (error) {
@@ -4313,21 +4237,11 @@ app.get('/api/admin/lessons', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Admin Schemes
 app.get('/api/admin/schemes', authenticate, isAdmin, async (req, res) => {
   try {
     const schemes = await prisma.scheme.findMany({
-      take: 50,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        user: {
-          select: {
-            fullName: true,
-            email: true,
-            school: true
-          }
-        }
-      }
+      take: 50, orderBy: { createdAt: 'desc' },
+      include: { user: { select: { fullName: true, email: true, school: true } } }
     });
     res.json(schemes);
   } catch (error) {
@@ -4336,20 +4250,11 @@ app.get('/api/admin/schemes', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Admin Payments
 app.get('/api/admin/payments', authenticate, isAdmin, async (req, res) => {
   try {
     const payments = await prisma.payment.findMany({
-      take: 50,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        user: {
-          select: {
-            fullName: true,
-            email: true
-          }
-        }
-      }
+      take: 50, orderBy: { createdAt: 'desc' },
+      include: { user: { select: { fullName: true, email: true } } }
     });
     res.json(payments);
   } catch (error) {
@@ -4358,27 +4263,13 @@ app.get('/api/admin/payments', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Admin Delete User
 app.delete('/api/admin/users/:id', authenticate, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    
-    if (id === req.userId) {
-      return res.status(400).json({ error: 'Cannot delete your own account' });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id }
-    });
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    await prisma.user.delete({
-      where: { id }
-    });
-
+    if (id === req.userId) return res.status(400).json({ error: 'Cannot delete your own account' });
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    await prisma.user.delete({ where: { id } });
     res.json({ success: true, message: 'User deleted successfully' });
   } catch (error) {
     console.error('Error deleting user:', error);
@@ -4386,11 +4277,9 @@ app.delete('/api/admin/users/:id', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Admin System Health Check
 app.get('/api/admin/health', authenticate, isAdmin, async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    
     let deepseekStatus = 'unknown';
     try {
       await deepseek.chat.completions.create({
@@ -4402,36 +4291,25 @@ app.get('/api/admin/health', authenticate, isAdmin, async (req, res) => {
     } catch (error) {
       deepseekStatus = 'unhealthy';
     }
-
     res.json({
       status: 'healthy',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      services: {
-        database: 'connected',
-        deepseek: deepseekStatus,
-        manualPayments: 'enabled'
-      },
+      services: { database: 'connected', deepseek: deepseekStatus, manualPayments: 'enabled' },
       memory: process.memoryUsage(),
       version: process.version
     });
   } catch (error) {
     console.error('Health check error:', error);
-    res.status(500).json({
-      status: 'unhealthy',
-      error: error.message
-    });
+    res.status(500).json({ status: 'unhealthy', error: error.message });
   }
 });
 
 // ============ GET ROUTES ============
-
 app.get('/api/lessons', authenticate, async (req, res) => {
   try {
     const lessons = await prisma.lesson.findMany({
-      where: { userId: req.userId },
-      orderBy: { createdAt: 'desc' },
-      take: 20
+      where: { userId: req.userId }, orderBy: { createdAt: 'desc' }, take: 20
     });
     res.json(lessons);
   } catch (error) {
@@ -4443,9 +4321,7 @@ app.get('/api/lessons', authenticate, async (req, res) => {
 app.get('/api/lessons/mine', authenticate, async (req, res) => {
   try {
     const lessons = await prisma.lesson.findMany({
-      where: { userId: req.userId },
-      orderBy: { createdAt: 'desc' },
-      take: 20
+      where: { userId: req.userId }, orderBy: { createdAt: 'desc' }, take: 20
     });
     res.json(lessons);
   } catch (error) {
@@ -4457,9 +4333,7 @@ app.get('/api/lessons/mine', authenticate, async (req, res) => {
 app.get('/api/schemes', authenticate, async (req, res) => {
   try {
     const schemes = await prisma.scheme.findMany({
-      where: { userId: req.userId },
-      orderBy: { createdAt: 'desc' },
-      take: 10
+      where: { userId: req.userId }, orderBy: { createdAt: 'desc' }, take: 10
     });
     res.json(schemes);
   } catch (error) {
@@ -4471,9 +4345,7 @@ app.get('/api/schemes', authenticate, async (req, res) => {
 app.get('/api/schemes/mine', authenticate, async (req, res) => {
   try {
     const schemes = await prisma.scheme.findMany({
-      where: { userId: req.userId },
-      orderBy: { createdAt: 'desc' },
-      take: 10
+      where: { userId: req.userId }, orderBy: { createdAt: 'desc' }, take: 10
     });
     res.json(schemes);
   } catch (error) {
@@ -4493,9 +4365,6 @@ app.get('/api/curriculum/subjects', async (req, res) => {
     let cdcSubjects = [];
     if (curriculum === 'cbc' && grade) {
       try {
-        // The CDC grade page exposes the authoritative subject filter. We
-        // discover subject names through the same repository integration used
-        // for resources rather than maintaining another hard-coded list.
         const { getSubjectCatalog } = require('./utils/cdcLibrary');
         cdcSubjects = await getSubjectCatalog({ grade });
       } catch (error) {
@@ -4542,7 +4411,13 @@ app.get('/api/curriculum/topics', async (req, res) => {
     }
     const topics = [...new Set(rows.map((r) => r.topic).filter(Boolean))];
     const subtopics = [...new Set(rows.map((r) => r.subTopic || r.subtopic).filter(Boolean))];
-    res.json({ curriculum, grade, subject, term, hasLocalSource: sources.length > 0, hasCDCSource: sources.some(s => s.sourceType === 'cdc_digital_library'), sourceStatus: sources.some(s => s.sourceType === 'cdc_digital_library') ? 'VERIFIED_CDC_LIBRARY_AVAILABLE' : (sources.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : 'NO_CDC_SOURCE'), topics, subtopics, rows, sources });
+    res.json({
+      curriculum, grade, subject, term,
+      hasLocalSource: sources.length > 0,
+      hasCDCSource: sources.some(s => s.sourceType === 'cdc_digital_library'),
+      sourceStatus: sources.some(s => s.sourceType === 'cdc_digital_library') ? 'VERIFIED_CDC_LIBRARY_AVAILABLE' : (sources.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : 'NO_CDC_SOURCE'),
+      topics, subtopics, rows, sources
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to load curriculum topics' });
   }
@@ -4561,16 +4436,20 @@ app.get('/api/curriculum/status', async (req, res) => {
       if (cdcResources.length) sources = cdcResources.map(r => ({ curriculum: 'cbc', subject, grade, term, sourceType: 'cdc_digital_library', title: r.title, officialSource: r.url, file: `cdc:${r.id}` }));
     }
     const officialSource = curriculum === 'cbc' ? getRegisteredOfficialSource(subject) : null;
-    const status = curriculum === 'cbc' ? (cdcResources.length ? 'VERIFIED_CDC_LIBRARY_AVAILABLE' : (sources.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : (officialSource ? 'OFFICIAL_SOURCE_REGISTERED_NO_LOCAL_PACK' : 'NO_CDC_SOURCE'))) : 'OBC_MODE';
-    res.json({ curriculum, grade, subject, term, status, sources, cdcResources, officialSource: officialSource || null, references: curriculum === 'cbc' ? getReferenceTitles({ subject, grade, term }) : [] });
+    const status = curriculum === 'cbc'
+      ? (cdcResources.length ? 'VERIFIED_CDC_LIBRARY_AVAILABLE' : (sources.length ? 'VERIFIED_LOCAL_PACK_AVAILABLE' : (officialSource ? 'OFFICIAL_SOURCE_REGISTERED_NO_LOCAL_PACK' : 'NO_CDC_SOURCE')))
+      : 'OBC_MODE';
+    res.json({
+      curriculum, grade, subject, term, status, sources, cdcResources,
+      officialSource: officialSource || null,
+      references: curriculum === 'cbc' ? getReferenceTitles({ subject, grade, term }) : []
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to load curriculum status' });
   }
 });
 
 // ============ START SERVER ============
-
-// ================= RECORD OF WORK / WEEKLY FORECAST =================
 function plannerSafe(v) { return String(v ?? ''); }
 function plannerCell(text, bold=false, size=18) {
   return new TableCell({ children: [new Paragraph({
@@ -4581,8 +4460,10 @@ function plannerCell(text, bold=false, size=18) {
 function plannerPayload(body) {
   const rows = Array.isArray(body?.rows) ? body.rows : [];
   return {
-    title: body?.title || 'Term Planning Document', subject: body?.subject || '', grade: body?.grade || '',
-    term: body?.term || '', year: body?.year || new Date().getFullYear(), teacher: body?.teacher || '', school: body?.school || '', rows
+    title: body?.title || 'Term Planning Document',
+    subject: body?.subject || '', grade: body?.grade || '',
+    term: body?.term || '', year: body?.year || new Date().getFullYear(),
+    teacher: body?.teacher || '', school: body?.school || '', rows
   };
 }
 function plannerDocx(data, type) {
@@ -4645,6 +4526,7 @@ app.post('/api/planner/export/:type/word', authenticate, async (req,res)=>{
     res.send(buffer);
   } catch(e){ console.error('Planner Word export error:',e); res.status(500).json({error:'Failed to export editable Word document'}); }
 });
+
 app.post('/api/planner/export/:type/pdf', authenticate, async (req,res)=>{
   try {
     const type=req.params.type;
@@ -4652,7 +4534,6 @@ app.post('/api/planner/export/:type/pdf', authenticate, async (req,res)=>{
     plannerPdf(plannerPayload(req.body),type,res);
   } catch(e){ console.error('Planner PDF export error:',e); if(!res.headersSent) res.status(500).json({error:'Failed to export PDF'}); }
 });
-// =====================================================================
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server running on port ${PORT}`);
@@ -4665,10 +4546,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Assessments routes available at /api/assessments`);
   console.log(`✅ Payment routes available at /api/payments/*`);
   console.log(`✅ Admin routes available at /api/admin/*`);
-  console.log(`✅ Get lessons at /api/lessons`);
-  console.log(`✅ Get schemes at /api/schemes`);
-  console.log(`✅ Get lessons (alias) at /api/lessons/mine`);
-  console.log(`✅ Get schemes (alias) at /api/schemes/mine`);
   console.log(`✅ DeepSeek AI integration enabled`);
   console.log(`✅ Manual payment verification enabled`);
   console.log(`✅ CORS enabled for Vercel and Render frontend`);
