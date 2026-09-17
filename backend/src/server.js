@@ -847,12 +847,14 @@ function repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term
     }
   }
 
-  // Preserve a detailed DeepSeek progression when it contains real content.
-  // Only rebuild when missing, too short, malformed, or obviously generic.
+  // Preserve a valid, detailed DeepSeek progression. Do NOT replace it merely
+  // because one phrase is generic; doing that can destroy otherwise excellent
+  // topic-specific content. Rebuild only when the progression is missing, too
+  // short, or structurally malformed. The final specificity gate below handles
+  // genuinely generic content and requests a targeted regeneration.
   const lp = Array.isArray(aiContent.lessonProgression) ? aiContent.lessonProgression : [];
-  const lpText = lp.map(x => `${x?.teacherRole || ''} ${x?.learnerRole || ''} ${x?.assessmentCriteria || ''}`).join(' ');
-  const genericCBC = /appropriate classroom task|appropriate examples|key ideas of .* using appropriate|investigate or classify information related to|apply the new knowledge to the activity/i.test(lpText);
-  if (lp.length < 6 || genericCBC) {
+  const validLP = lp.length >= 6 && lp.every(x => x && x.stage && x.time && x.teacherRole && x.learnerRole && x.assessmentCriteria);
+  if (!validLP) {
     aiContent.lessonProgression = generateVerifiedCBCProgression(topic, subtopic, subject, grade, cm);
   }
   return aiContent;
@@ -872,7 +874,7 @@ function generateCBCPrompt(topic, grade, subject, classSize, user, subtopic, ter
   const verifiedStandard = cm.expectedStandard || cm.expectedStandards || '';
   const verifiedKnowledge = cm.knowledge || '';
   const verifiedSkills = cm.skills || '';
-  const lessonProgression = generateVerifiedCBCProgression(topic, subtopic, subject, grade, cm);
+  const lessonProgression = [];
 
   return `
 You are an expert Zambian teacher creating a CBC (Competence-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}"${subtopic ? ` and sub-topic "${subtopic}"` : ''}.
@@ -938,7 +940,7 @@ Return ONLY valid JSON matching this structure. Do not add markdown or commentar
   "learningEnvironment": ${JSON.stringify(profile.environment)},
   "materials": ${JSON.stringify(verifiedResources.length ? verifiedResources : profile.materials)},
   "expectedStandard": ${JSON.stringify(verifiedStandard || `Learners demonstrate the stated competence for ${subtopic || topic}.`)},
-  "lessonProgression": ${JSON.stringify(lessonProgression, null, 2)},
+  "lessonProgression": "RETURN EXACTLY SIX COMPLETED CBC STAGE OBJECTS; DO NOT RETURN AN EMPTY ARRAY. Follow the six stages and times specified above.",
   "homework": "Give a short subject-specific task that reinforces the exact topic/sub-topic without introducing unrelated content.",
   "lessonEvaluation": "Evaluate whether learners achieved the stated specific competence and expected standard using evidence from the lesson.",
   "teacherEvaluation": "Leave a teacher reflection template: record evidence of learner achievement, learners needing remediation, learners needing extension, and improvements for the next lesson. Do not claim the lesson has already happened.",
@@ -956,12 +958,63 @@ Return ONLY valid JSON matching this structure. Do not add markdown or commentar
 // considered specific only when its learning points, activities and assessment
 // repeatedly refer to the actual topic/subtopic and contain concrete content.
 function lessonSpecificityTerms(topic, subtopic) {
-  const raw = `${topic || ''} ${subtopic || ''}`.toLowerCase();
-  return [...new Set(raw.split(/[^a-z0-9]+/).filter(w => w.length >= 4))];
+  const raw = `${subtopic || ''} ${topic || ''}`.toLowerCase();
+  const words = raw.split(/[^a-z0-9]+/).filter(w => w.length >= 4);
+  const variants = [];
+  for (const w of words) {
+    variants.push(w);
+    if (w.endsWith('ies') && w.length > 4) variants.push(w.slice(0, -3) + 'y');
+    if (w.endsWith('s') && !w.endsWith('ss') && w.length > 4) variants.push(w.slice(0, -1));
+  }
+  return [...new Set(variants)];
 }
 
 function hasGenericLessonFiller(text) {
   return /using appropriate examples|subject-appropriate examples|relevant subject questions or activities|appropriate classroom task|appropriate task|key points of .* and identify|main concepts, terms, processes or structures related to|apply knowledge of .* to relevant|learners have ideas about the topic|teacher revises through the previous lesson|teacher explains the main content of/i.test(String(text || ''));
+}
+
+
+function normalizeCBCProgressionRows(rows) {
+  if (!Array.isArray(rows) || rows.length !== 6) return rows || [];
+  const requiredStages = [
+    'INTRODUCTION',
+    'LESSON DEVELOPMENT',
+    'ACTIVITY 1',
+    'ACTIVITY 2',
+    'EXERCISE',
+    'CONCLUSION'
+  ];
+  const requiredTimes = ['5 min', '10 min', '15 min', '15 min', '25 min', '10 min'];
+
+  return rows.map((r, i) => {
+    const row = r && typeof r === 'object' ? { ...r } : {};
+    row.stage = requiredStages[i];
+    row.time = requiredTimes[i];
+    row.teacherRole = String(
+      row.teacherRole || row.teacherActivities || row.teacherActivity || ''
+    ).trim();
+    row.learnerRole = String(
+      row.learnerRole || row.learnerActivities || row.learnerActivity ||
+      row.pupilActivities || row.pupilActivity || ''
+    ).trim();
+    row.assessmentCriteria = String(
+      row.assessmentCriteria || row.assessment || row.assessmentTask || ''
+    ).trim();
+    return row;
+  });
+}
+
+
+function normalizeOBCDevelopmentRows(rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((r) => ({
+    ...r,
+    time: r?.time || r?.duration || '',
+    learningPoints: r?.learningPoints || r?.content || r?.learningPoint || r?.learningContent || '',
+    teacherActivities: r?.teacherActivities || r?.teacherActivity || r?.teacherRole || '',
+    pupilActivities: r?.pupilActivities || r?.pupilActivity || r?.learnerActivities || r?.learnerRole || '',
+    methods: r?.methods || r?.method || r?.teachingMethods || 'Question and Answer, Discussion'
+  }));
 }
 
 function isTopicSpecificLesson(content, topic, subtopic, curriculumType) {
@@ -969,30 +1022,53 @@ function isTopicSpecificLesson(content, topic, subtopic, curriculumType) {
   const rows = curriculumType === 'cbc' ? content.lessonProgression : content.lessonDevelopment;
   if (!Array.isArray(rows) || rows.length < (curriculumType === 'cbc' ? 6 : 5)) return false;
 
-  const terms = lessonSpecificityTerms(topic, subtopic);
   const combined = rows.map(r => JSON.stringify(r)).join(' ').toLowerCase();
-  if (hasGenericLessonFiller(combined)) return false;
+  const focus = String(subtopic || topic || '').trim();
+  const topicText = String(topic || '').trim();
+  const focusWords = lessonSpecificityTerms(focus, '');
+  const topicWords = lessonSpecificityTerms(topicText, '');
 
-  // Topic-lock check: require the actual selected topic/subtopic to appear
-  // throughout the development, but do not require every individual word of a
-  // multi-word subtopic to be repeated. That was rejecting otherwise valid OBC
-  // lessons simply because DeepSeek used natural synonyms.
-  const normalizedTerms = terms.filter(t => t.length >= 4);
-  const rowHasFocus = rows.filter(r => {
-    const rowText = JSON.stringify(r).toLowerCase();
-    return normalizedTerms.some(term => rowText.includes(term));
-  }).length;
-  const totalFocusHits = normalizedTerms.reduce((n, term) => n + (combined.match(new RegExp(`\\b${term.replace(/[.*+?^${}()|[\\]\\]/g, '\\\\$&')}\\b`, 'g')) || []).length, 0);
-  if (normalizedTerms.length && rowHasFocus < Math.min(3, rows.length) && totalFocusHits < 3) return false;
+  const genericFiller = hasGenericLessonFiller(combined);
 
-  return rows.every(r => {
-    const values = curriculumType === 'cbc'
-      ? [r.stage, r.time, r.teacherRole, r.learnerRole, r.assessmentCriteria]
-      : [r.time, r.learningPoints, r.teacherActivities, r.pupilActivities, r.methods];
-    return values.every(v => String(v || '').trim().length >= 10);
+  const countHits = (words) => words.reduce((n, term) => {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return n + ((combined.match(new RegExp(`\\b${escaped}\\b`, 'gi')) || []).length);
+  }, 0);
+  const focusHits = countHits(focusWords);
+  const topicHits = countHits(topicWords);
+
+  // A valid lesson may naturally use synonyms rather than repeating the exact
+  // topic title. For short/single-word topics, 2 occurrences are sufficient;
+  // for longer subtopics, require evidence from the selected focus OR the
+  // parent topic, plus concrete subject content.
+  const concreteEvidence = /\b(defin|explain|identify|state|describe|compare|predict|observe|measure|draw|label|calculate|classif|investigat|experiment|demonstrat|analyse|analyz|apply|solve|differentiat|discuss|construct|plot|name)\w*/i.test(combined);
+  const focusPass = focusWords.length ? focusHits >= Math.min(3, Math.max(2, focusWords.length)) : false;
+  const topicPass = topicWords.length ? topicHits >= 3 : false;
+  // Generic wording is acceptable only when the lesson also contains strong
+  // concrete evidence and repeated selected-topic terminology. This prevents
+  // a harmless phrase from rejecting an otherwise valid lesson.
+  if (!concreteEvidence || (!focusPass && !topicPass)) return false;
+  if (genericFiller && !concreteEvidence) return false;
+
+  if (curriculumType === 'cbc') {
+    const normalizedRows = normalizeCBCProgressionRows(rows);
+    if (normalizedRows.length !== 6) return false;
+    return normalizedRows.every(r => {
+      const teacher = r.teacherRole || r.teacherActivities || r.teacherActivity || '';
+      const learner = r.learnerRole || r.learnerActivities || r.learnerActivity || r.pupilActivities || r.pupilActivity || '';
+      const assessment = r.assessmentCriteria || r.assessment || r.assessmentTask || '';
+      const time = r.time || r.duration || '';
+      return [r.stage, time, teacher, learner, assessment].every(v => String(v).trim().length >= 10);
+    });
+  }
+
+  const normalizedRows = normalizeOBCDevelopmentRows(rows);
+  if (normalizedRows.length < 5) return false;
+  return normalizedRows.every(r => {
+    const values = [r.time, r.learningPoints, r.teacherActivities, r.pupilActivities, r.methods];
+    return values.every(v => String(v || '').trim().length >= 2);
   });
 }
-
 function buildSpecificityRepairPrompt(topic, subtopic, subject, grade, curriculumType, curriculumContext) {
   const isCBC = curriculumType === 'cbc';
   return `
@@ -1019,7 +1095,7 @@ NON-NEGOTIABLE RULES:
 9. Return ONLY valid JSON.
 
 REQUIRED DEVELOPMENT FORMAT:
-${isCBC ? `lessonProgression: exactly 6 stages with these times: INTRODUCTION 5 min; LESSON DEVELOPMENT 10 min; ACTIVITY 1 15 min; ACTIVITY 2 15 min; EXERCISE 25 min; CONCLUSION 10 min. Each object requires stage, time, teacherRole, learnerRole and assessmentCriteria.` : `lessonDevelopment: exactly 5 stages with these times: 10 min, 25 min, 20 min, 15 min, 10 min. Each object requires time, learningPoints, teacherActivities, pupilActivities and methods.`}
+${isCBC ? `lessonProgression: return exactly 6 fully written objects in this exact order: INTRODUCTION (5 min), LESSON DEVELOPMENT (10 min), ACTIVITY 1 (15 min), ACTIVITY 2 (15 min), EXERCISE (25 min), CONCLUSION (10 min). Each object MUST contain stage, time, teacherRole, learnerRole and assessmentCriteria. Do not return an empty array. For the selected topic, write the actual facts, examples, questions, procedures and learner products in every row.` : `lessonDevelopment: exactly 5 stages with these times: 10 min, 25 min, 20 min, 15 min, 10 min. Each object requires time, learningPoints, teacherActivities, pupilActivities and methods.`}
 `;
 }
 
@@ -1271,18 +1347,29 @@ function repairOBCLessonContent(aiContent, topic, subtopic, subject, grade, term
     `Explain the importance or application of ${topic}.`
   ];
 
-  const existingDevelopment = Array.isArray(content.lessonDevelopment) ? content.lessonDevelopment : [];
-  const existingText = existingDevelopment.map(x => `${x?.learningPoints || x?.content || ''} ${x?.teacherActivities || x?.teacherActivity || ''} ${x?.pupilActivities || x?.pupilActivity || ''}`).join(' ');
+  const existingDevelopment = normalizeOBCDevelopmentRows(Array.isArray(content.lessonDevelopment) ? content.lessonDevelopment : []);
+  content.lessonDevelopment = existingDevelopment;
+  const existingText = existingDevelopment.map(x => `${x?.learningPoints || ''} ${x?.teacherActivities || ''} ${x?.pupilActivities || ''}`).join(' ');
   const genericOBC = /main content of .* using appropriate examples|key points of .* and identify|subject-appropriate activity|relevant subject questions or activities|appropriate OBC teaching methods/i.test(existingText);
   // Preserve detailed AI-generated development whenever it is already topic-specific.
   // The verified builders are only emergency fallbacks; they must never overwrite
   // good DeepSeek content for an arbitrary subject/topic.
   const existingSpecific = existingDevelopment.length >= 5 && !genericOBC &&
     isTopicSpecificLesson(content, topic, focus, 'obc');
-  if (!existingSpecific && development.length >= 5) {
-    content.lessonDevelopment = development;
-  } else if (existingDevelopment.length >= 5) {
+  // Never replace a DeepSeek repair with the generic emergency builder.
+  // The emergency builder is usable only when it independently passes the
+  // same topic-specificity gate. Otherwise preserve the existing detailed
+  // content and let the final strict DeepSeek repair decide whether it is
+  // acceptable.
+  const builderContent = { lessonDevelopment: development };
+  const builderSpecific = development.length >= 5 &&
+    isTopicSpecificLesson(builderContent, topic, focus, 'obc');
+  if (existingDevelopment.length >= 5) {
     content.lessonDevelopment = existingDevelopment;
+  } else if (builderSpecific) {
+    content.lessonDevelopment = development;
+  } else {
+    content.lessonDevelopment = [];
   }
   content.learnersEvaluation = biologyExcretion ? [
     'Define excretion.',
@@ -1359,7 +1446,6 @@ function generateFallbackCBC(topic, grade, subject, classSize, user, curriculumC
     teacherEvaluation: "Space for teacher's reflections",
     learningOutcomes: [`Understand ${topic}`, `Apply ${topic}`, `Analyze ${topic}`],
     learnersEvaluation: [`Define ${topic}`, `Give examples of ${topic}`, `Explain the importance of ${topic}`],
-    lessonDevelopment: generateVerifiedOBCDevelopment(topic, '', subject, grade),
     teachingAids: ["Whiteboard", "Charts", "Diagrams"],
     curriculum: 'cbc'
   };
@@ -2274,7 +2360,7 @@ Return ONLY the JSON object, no other text.
       }
 
       if (curriculumType === 'obc' && (!aiContent.lessonDevelopment || aiContent.lessonDevelopment.length === 0)) {
-        console.log('📝 OBC lessonDevelopment was empty; rebuilding from topic-locked OBC content...');
+        console.log('📝 OBC lessonDevelopment was empty, FORCE populating with content...');
         aiContent.lessonDevelopment = generateVerifiedOBCDevelopment(topic, subtopic, subject, grade);
       }
 
@@ -2303,7 +2389,7 @@ Return ONLY the JSON object, no other text.
     }
 
     if (curriculumType === 'obc' && (!aiContent.lessonDevelopment || aiContent.lessonDevelopment.length === 0)) {
-      console.log('🔧 FINAL OBC RECOVERY: lessonDevelopment still empty; using topic-locked OBC builder...');
+      console.log('🔧 FINAL FORCE: lessonDevelopment still empty, populating...');
       aiContent.lessonDevelopment = generateVerifiedOBCDevelopment(topic, subtopic, subject, grade);
     }
 
@@ -2335,34 +2421,47 @@ Return ONLY the JSON object, no other text.
       if (cm.reference || cm.references) aiContent.curriculumReference = cm.reference || cm.references;
     }
 
-    // Final OBC quality gate: repair the development and keep the verified
-    // topic-locked version unless a new DeepSeek response independently passes
-    // the same quality gate. Never overwrite good repaired content with a
-    // lower-quality final regeneration.
+    // Final OBC quality gate: normalize aliases first, then validate the actual
+    // generated content. Never replace a detailed DeepSeek lesson with a generic
+    // builder merely because field names differ.
     if (curriculumType === 'obc') {
       aiContent = repairOBCLessonContent(aiContent, topic, subtopic, subject, grade, term);
+      aiContent.lessonDevelopment = normalizeOBCDevelopmentRows(aiContent.lessonDevelopment);
 
-      if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'obc')) {
-        console.log('⚠️ Final OBC specificity check failed; requesting one final content-only regeneration...');
+      const checkOBC = () => {
+        const rows = normalizeOBCDevelopmentRows(aiContent.lessonDevelopment);
+        const combined = rows.map(r => JSON.stringify(r)).join(' ').toLowerCase();
+        const focusWords = lessonSpecificityTerms(String(subtopic || topic || ''), '');
+        const topicWords = lessonSpecificityTerms(String(topic || ''), '');
+        const hits = (words) => words.reduce((n, term) => {
+          const escaped = String(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          return n + ((combined.match(new RegExp(`\\b${escaped}\\b`, 'gi')) || []).length);
+        }, 0);
+        const focusHits = hits(focusWords);
+        const topicHits = hits(topicWords);
+        const concrete = /\b(defin|explain|identify|state|describe|compare|predict|observe|measure|draw|label|calculate|classif|investigat|experiment|demonstrat|analyse|analyz|apply|solve|differentiat|discuss|construct|plot|name|list|distinguish)\w*/i.test(combined);
+        const structure = rows.length >= 5 && rows.every(r => [r.time,r.learningPoints,r.teacherActivities,r.pupilActivities,r.methods].every(v => String(v || '').trim().length >= 2));
+        const topicValid = concrete && (focusHits >= 2 || topicHits >= 3);
+        console.log('✅ OBC FINAL QUALITY CHECK', JSON.stringify({topic, subtopic, rows: rows.length, focusHits, topicHits, concreteEvidence: concrete, structureValid: structure, topicValid}));
+        return structure && topicValid;
+      };
+
+      if (!checkOBC()) {
+        console.log('⚠️ OBC lesson failed final quality check; requesting one strict content repair...');
         try {
           const finalRepair = await generateDeepSeekJSON([
-            { role: 'system', content: 'You are a Zambian OBC lesson-plan specialist. Return ONLY valid JSON. Every lessonDevelopment row must contain concrete, topic-specific content. Never use generic placeholders.' },
+            { role: 'system', content: 'You are a Zambian OBC lesson-plan specialist. Return ONLY JSON. Preserve the selected topic exactly. Return at least 5 detailed lessonDevelopment rows. Use fields time, learningPoints, teacherActivities, pupilActivities, methods. Every row must contain concrete facts, examples, questions, procedures or calculations directly about the selected topic. Do not use generic placeholders.' },
             { role: 'user', content: buildSpecificityRepairPrompt(topic, subtopic, subject, grade, 'obc', curriculumContext) }
           ], { max_tokens: 10000, temperature: 0.15 });
-          if (finalRepair && typeof finalRepair === 'object') {
-            const candidate = repairOBCLessonContent({ ...aiContent, ...finalRepair }, topic, subtopic, subject, grade, term);
-            if (isTopicSpecificLesson(candidate, topic, subtopic, 'obc')) {
-              aiContent = candidate;
-              console.log('✅ Final OBC regeneration passed specificity check.');
-            } else {
-              console.log('⚠️ Final OBC regeneration rejected; retaining topic-locked repaired content.');
-            }
+          if (finalRepair && Array.isArray(finalRepair.lessonDevelopment)) {
+            aiContent.lessonDevelopment = normalizeOBCDevelopmentRows(finalRepair.lessonDevelopment);
           }
-        } catch (finalRepairError) {
-          console.log(`⚠️ Final OBC regeneration failed: ${finalRepairError.message}`);
+        } catch (e) {
+          console.log(`⚠️ OBC final repair failed: ${e.message}`);
         }
       }
-      if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'obc')) {
+
+      if (!checkOBC()) {
         return res.status(422).json({
           error: 'The lesson generator could not produce sufficiently topic-specific content for the selected topic/subtopic after regeneration. No generic lesson was saved.',
           code: 'LESSON_CONTENT_NOT_TOPIC_SPECIFIC'
@@ -2374,12 +2473,63 @@ Return ONLY the JSON object, no other text.
     // from the selected CDC curriculum context before saving the lesson.
     if (curriculumType === 'cbc') {
       aiContent = repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term, curriculumContext, getCBCSubjectProfile(subject));
-      if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'cbc')) {
+      if (Array.isArray(aiContent.lessonProgression) && aiContent.lessonProgression.length === 6) {
+        aiContent.lessonProgression = normalizeCBCProgressionRows(aiContent.lessonProgression);
+      }
+      // Final CBC acceptance uses the normalized rows directly. DeepSeek may
+      // use descriptive stage names, but normalization above preserves the
+      // generated topic-specific content and maps rows to the required CBC stages.
+      const finalRows = Array.isArray(aiContent.lessonProgression) ? aiContent.lessonProgression : [];
+      const finalCombined = finalRows.map(r => JSON.stringify(r)).join(' ').toLowerCase();
+      const finalFocusWords = lessonSpecificityTerms(String(subtopic || topic || ''), '');
+      const finalTopicWords = lessonSpecificityTerms(String(topic || ''), '');
+      const finalHits = (words) => words.reduce((n, term) => {
+        const escaped = String(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return n + ((finalCombined.match(new RegExp(`\\b${escaped}\\b`, 'gi')) || []).length);
+      }, 0);
+      const finalFocusHits = finalHits(finalFocusWords);
+      const finalTopicHits = finalHits(finalTopicWords);
+      const finalConcreteEvidence = /\b(defin|explain|identify|state|describe|compare|predict|observe|measure|draw|label|calculate|classif|investigat|experiment|demonstrat|analyse|analyz|apply|solve|differentiat|discuss|construct|plot|name)\w*/i.test(finalCombined);
+      const finalStructureValid = finalRows.length === 6 && finalRows.every((r) => {
+        return [r?.stage, r?.time, r?.teacherRole, r?.learnerRole, r?.assessmentCriteria]
+          .every(v => String(v || '').trim().length >= 2);
+      });
+      const finalTopicValid = finalConcreteEvidence &&
+        (finalFocusHits >= 2 || finalTopicHits >= 3);
+
+      console.log('✅ CBC FINAL QUALITY CHECK', JSON.stringify({
+        topic, subtopic, rows: finalRows.length,
+        focusHits: finalFocusHits, topicHits: finalTopicHits,
+        concreteEvidence: finalConcreteEvidence,
+        structureValid: finalStructureValid,
+        topicValid: finalTopicValid,
+        stages: finalRows.map(r => r?.stage)
+      }));
+
+      // Do not reject a concrete CBC lesson because of wording-only/template
+      // heuristics. Reject only when the six required rows are actually missing
+      // or the generated content does not contain meaningful selected-topic
+      // evidence.
+      if (!finalStructureValid || !finalTopicValid) {
+        console.log('❌ CBC FINAL REJECT DIAGNOSTICS', JSON.stringify({
+          topic, subtopic, focusText: String(subtopic || topic || ''), rows: finalRows.length,
+          focusHits: finalFocusHits, topicHits: finalTopicHits,
+          genericFiller: hasGenericLessonFiller(finalCombined),
+          concreteEvidence: finalConcreteEvidence,
+          structureValid: finalStructureValid,
+          topicValid: finalTopicValid,
+          stages: finalRows.map(r => r?.stage),
+          contentSample: finalRows.map(r => ({
+            stage:r?.stage, time:r?.time, teacherRole:r?.teacherRole,
+            learnerRole:r?.learnerRole, assessmentCriteria:r?.assessmentCriteria
+          })).slice(0,6)
+        }, null, 2));
         return res.status(422).json({
-          error: 'The selected topic/subtopic did not produce sufficiently topic-specific CBC lesson content. Please retry or select a verified curriculum source match.',
+          error: 'The lesson generator could not produce sufficiently topic-specific CBC content after automatic regeneration. No generic lesson was saved.',
           code: 'LESSON_CONTENT_NOT_TOPIC_SPECIFIC'
         });
       }
+
     }
 
     // HARD FORMAT ISOLATION: preserve the user's OBC format while preventing cross-format leakage.
@@ -2461,12 +2611,8 @@ Return ONLY the JSON object, no other text.
       : [];
 
     if (lessonDevelopmentArray.length === 0) {
-      if (curriculumType === 'obc') {
-        console.log('📝 OBC lessonDevelopment was empty; using topic-locked OBC content...');
-        lessonDevelopmentArray = generateVerifiedOBCDevelopment(topic, subtopic, subject, grade);
-      } else {
-        lessonDevelopmentArray = generateLessonContent(topic, subject, grade);
-      }
+      console.log('📝 lessonDevelopment was empty, populating with default content...');
+      lessonDevelopmentArray = generateVerifiedOBCDevelopment(topic, subtopic, subject, grade);
     }
 
     // Normalize OBC development field names so both the AI response and
