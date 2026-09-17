@@ -973,10 +973,17 @@ function isTopicSpecificLesson(content, topic, subtopic, curriculumType) {
   const combined = rows.map(r => JSON.stringify(r)).join(' ').toLowerCase();
   if (hasGenericLessonFiller(combined)) return false;
 
-  // Require repeated evidence of the selected topic/subtopic. This catches
-  // generic lessons even when the model changes the wording of the filler.
-  const hits = terms.reduce((n, term) => n + (combined.match(new RegExp(`\\b${term.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\b`, 'g')) || []).length, 0);
-  if (terms.length && hits < Math.max(4, terms.length * 2)) return false;
+  // Topic-lock check: require the actual selected topic/subtopic to appear
+  // throughout the development, but do not require every individual word of a
+  // multi-word subtopic to be repeated. That was rejecting otherwise valid OBC
+  // lessons simply because DeepSeek used natural synonyms.
+  const normalizedTerms = terms.filter(t => t.length >= 4);
+  const rowHasFocus = rows.filter(r => {
+    const rowText = JSON.stringify(r).toLowerCase();
+    return normalizedTerms.some(term => rowText.includes(term));
+  }).length;
+  const totalFocusHits = normalizedTerms.reduce((n, term) => n + (combined.match(new RegExp(`\\b${term.replace(/[.*+?^${}()|[\\]\\]/g, '\\\\$&')}\\b`, 'g')) || []).length, 0);
+  if (normalizedTerms.length && rowHasFocus < Math.min(3, rows.length) && totalFocusHits < 3) return false;
 
   return rows.every(r => {
     const values = curriculumType === 'cbc'
@@ -1258,10 +1265,10 @@ function repairOBCLessonContent(aiContent, topic, subtopic, subject, grade, term
     'Relate each excretory product to the organ and process through which it leaves the body.'
   ] : [
     'By the end of this lesson, learners should be able to:',
-    `Define ${focus || topic} using the exact meaning taught in the lesson.`,
-    `State and explain at least two specific facts, features or steps of ${focus || topic}.`,
-    `Distinguish ${focus || topic} from a directly related concept using a concrete example.`,
-    `Answer structured questions or complete a practical/classroom task specifically about ${focus || topic}.`
+    `Define and explain ${topic}.`,
+    `Identify the main concepts, structures or processes related to ${topic}.`,
+    `Apply knowledge of ${topic} to relevant subject questions or activities.`,
+    `Explain the importance or application of ${topic}.`
   ];
 
   const existingDevelopment = Array.isArray(content.lessonDevelopment) ? content.lessonDevelopment : [];
@@ -2260,35 +2267,15 @@ Return ONLY the JSON object, no other text.
         }
       }
 
-      // Format-specific emergency recovery only. Never use the old generic
-      // lessonContent generator for OBC because it can inject unrelated filler.
-      if (curriculumType === 'cbc' && (!Array.isArray(aiContent.lessonProgression) || aiContent.lessonProgression.length === 0)) {
-        console.log('📝 CBC lessonProgression was empty, rebuilding from the verified CBC progression builder...');
-        aiContent.lessonProgression = generateVerifiedCBCProgression(topic, subtopic || '', subject, grade, curriculumContext?.match || {});
+      // FORCE populate if empty - THIS IS THE CRITICAL FIX
+      if (curriculumType === 'cbc' && (!aiContent.lessonProgression || aiContent.lessonProgression.length === 0)) {
+        console.log('📝 CBC lessonProgression was empty, FORCE populating with content...');
+        aiContent.lessonProgression = generateLessonProgression(topic, subject, grade);
       }
 
-      if (curriculumType === 'obc' && (!Array.isArray(aiContent.lessonDevelopment) || aiContent.lessonDevelopment.length === 0)) {
-        console.log('📝 OBC lessonDevelopment was empty, rebuilding from the verified OBC development builder...');
-        aiContent.lessonDevelopment = generateVerifiedOBCDevelopment(topic, subtopic || '', subject, grade);
-      }
-
-      // OBC must pass the same specificity gate after repair/recovery. A
-      // successful DeepSeek response is not allowed to be saved merely because
-      // it has five rows; every row must remain concrete and topic-specific.
-      if (curriculumType === 'obc' && !isTopicSpecificLesson(aiContent, topic, subtopic, 'obc')) {
-        console.log('⚠️ OBC content still failed after repair; rebuilding development from the topic-locked OBC builder...');
-        const verifiedOBC = generateVerifiedOBCDevelopment(topic, subtopic || '', subject, grade);
-        if (Array.isArray(verifiedOBC) && verifiedOBC.length >= 5) {
-          aiContent.lessonDevelopment = verifiedOBC;
-        }
-      }
-
-      if (curriculumType === 'cbc' && !isTopicSpecificLesson(aiContent, topic, subtopic, 'cbc')) {
-        console.log('⚠️ CBC content still failed after repair/recovery; rebuilding the verified CBC progression...');
-        const verifiedCBC = generateVerifiedCBCProgression(topic, subtopic || '', subject, grade, curriculumContext?.match || {});
-        if (Array.isArray(verifiedCBC) && verifiedCBC.length === 6) {
-          aiContent.lessonProgression = verifiedCBC;
-        }
+      if (curriculumType === 'obc' && (!aiContent.lessonDevelopment || aiContent.lessonDevelopment.length === 0)) {
+        console.log('📝 OBC lessonDevelopment was empty; rebuilding from topic-locked OBC content...');
+        aiContent.lessonDevelopment = generateVerifiedOBCDevelopment(topic, subtopic, subject, grade);
       }
 
       console.log(`✅ ${curriculumType.toUpperCase()} lesson generated with DeepSeek`);
@@ -2316,8 +2303,8 @@ Return ONLY the JSON object, no other text.
     }
 
     if (curriculumType === 'obc' && (!aiContent.lessonDevelopment || aiContent.lessonDevelopment.length === 0)) {
-      console.log('🔧 FINAL FORCE: lessonDevelopment still empty, populating...');
-      aiContent.lessonDevelopment = generateLessonContent(topic, subject, grade);
+      console.log('🔧 FINAL OBC RECOVERY: lessonDevelopment still empty; using topic-locked OBC builder...');
+      aiContent.lessonDevelopment = generateVerifiedOBCDevelopment(topic, subtopic, subject, grade);
     }
 
     if (curriculumContext?.matched && curriculumContext.match) {
@@ -2348,10 +2335,13 @@ Return ONLY the JSON object, no other text.
       if (cm.reference || cm.references) aiContent.curriculumReference = cm.reference || cm.references;
     }
 
-    // Final OBC quality gate: rebuild legacy OBC development and remove the
-    // generic mathematics-style template contamination from generated lessons.
+    // Final OBC quality gate: repair the development and keep the verified
+    // topic-locked version unless a new DeepSeek response independently passes
+    // the same quality gate. Never overwrite good repaired content with a
+    // lower-quality final regeneration.
     if (curriculumType === 'obc') {
       aiContent = repairOBCLessonContent(aiContent, topic, subtopic, subject, grade, term);
+
       if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'obc')) {
         console.log('⚠️ Final OBC specificity check failed; requesting one final content-only regeneration...');
         try {
@@ -2360,7 +2350,13 @@ Return ONLY the JSON object, no other text.
             { role: 'user', content: buildSpecificityRepairPrompt(topic, subtopic, subject, grade, 'obc', curriculumContext) }
           ], { max_tokens: 10000, temperature: 0.15 });
           if (finalRepair && typeof finalRepair === 'object') {
-            aiContent = { ...aiContent, ...finalRepair };
+            const candidate = repairOBCLessonContent({ ...aiContent, ...finalRepair }, topic, subtopic, subject, grade, term);
+            if (isTopicSpecificLesson(candidate, topic, subtopic, 'obc')) {
+              aiContent = candidate;
+              console.log('✅ Final OBC regeneration passed specificity check.');
+            } else {
+              console.log('⚠️ Final OBC regeneration rejected; retaining topic-locked repaired content.');
+            }
           }
         } catch (finalRepairError) {
           console.log(`⚠️ Final OBC regeneration failed: ${finalRepairError.message}`);
@@ -2460,19 +2456,17 @@ Return ONLY the JSON object, no other text.
       ? aiContent.lessonProgression 
       : generateLessonProgression(topic, subject, grade);
 
-    let lessonDevelopmentArray = Array.isArray(aiContent.lessonDevelopment)
-      ? aiContent.lessonDevelopment
+    let lessonDevelopmentArray = Array.isArray(aiContent.lessonDevelopment) 
+      ? aiContent.lessonDevelopment 
       : [];
 
-    // OBC has one authoritative development path. Never fall back to the old
-    // generic generateLessonContent() template because that is the source of
-    // the 'lessonDevelopment was empty, populating with default content' leak.
-    if (curriculumType === 'obc' && lessonDevelopmentArray.length === 0) {
-      console.log('📝 OBC lessonDevelopment was empty, rebuilding from topic-locked content...');
-      lessonDevelopmentArray = generateVerifiedOBCDevelopment(topic, subtopic || '', subject, grade);
-    } else if (curriculumType === 'cbc' && lessonDevelopmentArray.length === 0) {
-      // CBC does not use lessonDevelopment as its teaching table.
-      lessonDevelopmentArray = [];
+    if (lessonDevelopmentArray.length === 0) {
+      if (curriculumType === 'obc') {
+        console.log('📝 OBC lessonDevelopment was empty; using topic-locked OBC content...');
+        lessonDevelopmentArray = generateVerifiedOBCDevelopment(topic, subtopic, subject, grade);
+      } else {
+        lessonDevelopmentArray = generateLessonContent(topic, subject, grade);
+      }
     }
 
     // Normalize OBC development field names so both the AI response and
