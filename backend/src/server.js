@@ -973,6 +973,37 @@ function hasGenericLessonFiller(text) {
   return /using appropriate examples|subject-appropriate examples|relevant subject questions or activities|appropriate classroom task|appropriate task|key points of .* and identify|main concepts, terms, processes or structures related to|apply knowledge of .* to relevant|learners have ideas about the topic|teacher revises through the previous lesson|teacher explains the main content of/i.test(String(text || ''));
 }
 
+
+function normalizeCBCProgressionRows(rows) {
+  if (!Array.isArray(rows) || rows.length !== 6) return rows || [];
+  const requiredStages = [
+    'INTRODUCTION',
+    'LESSON DEVELOPMENT',
+    'ACTIVITY 1',
+    'ACTIVITY 2',
+    'EXERCISE',
+    'CONCLUSION'
+  ];
+  const requiredTimes = ['5 min', '10 min', '15 min', '15 min', '25 min', '10 min'];
+
+  return rows.map((r, i) => {
+    const row = r && typeof r === 'object' ? { ...r } : {};
+    row.stage = requiredStages[i];
+    row.time = requiredTimes[i];
+    row.teacherRole = String(
+      row.teacherRole || row.teacherActivities || row.teacherActivity || ''
+    ).trim();
+    row.learnerRole = String(
+      row.learnerRole || row.learnerActivities || row.learnerActivity ||
+      row.pupilActivities || row.pupilActivity || ''
+    ).trim();
+    row.assessmentCriteria = String(
+      row.assessmentCriteria || row.assessment || row.assessmentTask || ''
+    ).trim();
+    return row;
+  });
+}
+
 function isTopicSpecificLesson(content, topic, subtopic, curriculumType) {
   if (!content || typeof content !== 'object') return false;
   const rows = curriculumType === 'cbc' ? content.lessonProgression : content.lessonDevelopment;
@@ -1005,10 +1036,9 @@ function isTopicSpecificLesson(content, topic, subtopic, curriculumType) {
   if (!concreteEvidence || (!focusPass && !topicPass)) return false;
 
   if (curriculumType === 'cbc') {
-    const requiredStages = ['INTRODUCTION','LESSON DEVELOPMENT','ACTIVITY 1','ACTIVITY 2','EXERCISE','CONCLUSION'];
-    const normalizedStages = rows.map(r => String(r.stage || '').trim().toUpperCase());
-    if (rows.length !== 6 || requiredStages.some((stage, i) => normalizedStages[i] !== stage)) return false;
-    return rows.every(r => {
+    const normalizedRows = normalizeCBCProgressionRows(rows);
+    if (normalizedRows.length !== 6) return false;
+    return normalizedRows.every(r => {
       const teacher = r.teacherRole || r.teacherActivities || r.teacherActivity || '';
       const learner = r.learnerRole || r.learnerActivities || r.learnerActivity || r.pupilActivities || r.pupilActivity || '';
       const assessment = r.assessmentCriteria || r.assessment || r.assessmentTask || '';
@@ -2397,6 +2427,9 @@ Return ONLY the JSON object, no other text.
     // from the selected CDC curriculum context before saving the lesson.
     if (curriculumType === 'cbc') {
       aiContent = repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term, curriculumContext, getCBCSubjectProfile(subject));
+      if (Array.isArray(aiContent.lessonProgression) && aiContent.lessonProgression.length === 6) {
+        aiContent.lessonProgression = normalizeCBCProgressionRows(aiContent.lessonProgression);
+      }
       if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'cbc')) {
         console.log('⚠️ Final CBC specificity check failed; requesting one final content-only regeneration...');
         try {
@@ -2404,10 +2437,18 @@ Return ONLY the JSON object, no other text.
             { role: 'system', content: 'You are a strict Zambian CBC lesson-plan specialist. Return ONLY valid JSON. The lesson must contain concrete content for the exact selected topic and subtopic. Never use generic placeholders.' },
             { role: 'user', content: buildSpecificityRepairPrompt(topic, subtopic, subject, grade, 'cbc', curriculumContext) }
           ], { max_tokens: 10000, temperature: 0.15 });
-          if (finalRepair && typeof finalRepair === 'object') aiContent = { ...aiContent, ...finalRepair };
+          if (finalRepair && typeof finalRepair === 'object') {
+            aiContent = { ...aiContent, ...finalRepair };
+            if (Array.isArray(aiContent.lessonProgression) && aiContent.lessonProgression.length === 6) {
+              aiContent.lessonProgression = normalizeCBCProgressionRows(aiContent.lessonProgression);
+            }
+          }
         } catch (finalRepairError) {
           console.log(`⚠️ Final CBC regeneration failed: ${finalRepairError.message}`);
         }
+      }
+      if (Array.isArray(aiContent.lessonProgression) && aiContent.lessonProgression.length === 6) {
+        aiContent.lessonProgression = normalizeCBCProgressionRows(aiContent.lessonProgression);
       }
       if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'cbc')) {
         console.log('❌ CBC FINAL REJECT DIAGNOSTICS', JSON.stringify({ topic, subtopic, focusText: String(subtopic || topic || ''), rows: Array.isArray(aiContent.lessonProgression) ? aiContent.lessonProgression.length : 0, contentSample: Array.isArray(aiContent.lessonProgression) ? aiContent.lessonProgression.map(r => ({ stage:r?.stage, time:r?.time, teacherRole:r?.teacherRole || r?.teacherActivities, learnerRole:r?.learnerRole || r?.learnerActivities || r?.pupilActivities, assessmentCriteria:r?.assessmentCriteria || r?.assessment })).slice(0,6) : [] }, null, 2));
