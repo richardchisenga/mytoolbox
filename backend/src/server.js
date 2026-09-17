@@ -1081,7 +1081,9 @@ CURRICULUM PRIORITY RULES:
     "Apply knowledge of ${topic} to relevant subject questions or activities",
     "Explain the importance or application of ${topic}"
   ],
-  "lessonDevelopment": ${JSON.stringify(lessonDevelopment, null, 2)},
+  "lessonDevelopment": [
+    {"time":"10 min","learningPoints":"Write concrete content for the selected subtopic, including definitions, facts, relationships or procedures.","teacherActivities":"State exactly what the teacher explains, demonstrates, writes or asks about the selected subtopic.","pupilActivities":"State exactly what learners answer, calculate, classify, draw, discuss or practise.","methods":"Name the actual teaching method used."}
+  ],
   "learnersEvaluation": [
     "Define ${topic} in your own words",
     "Give two examples of ${topic}",
@@ -1107,6 +1109,46 @@ function generateVerifiedOBCDevelopment(topic, subtopic, subject, grade) {
   const t = String(topic || '').trim();
   const st = String(subtopic || '').trim();
   const key = `${t} ${st}`.toLowerCase();
+
+  if (subject.toLowerCase() === 'biology' && (key.includes('eye disorders') || (key.includes('eye') && key.includes('disorder')))) {
+    return [
+      {
+        time: '10 min',
+        learningPoints: `INTRODUCTION: EYE DISORDERS\n\nAn eye disorder is a condition that affects the normal structure or functioning of the eye and may reduce the quality of vision. The lesson focuses on common eye disorders, their causes, symptoms and correction.\n\nKey disorders introduced: myopia (short-sightedness), hypermetropia/hyperopia (long-sightedness), presbyopia, astigmatism and cataract.`,
+        teacherActivities: 'Teacher displays a diagram of the eye and introduces eye disorders. Teacher asks: What happens when a person cannot see distant objects clearly? What is meant by short-sightedness and long-sightedness? Teacher states that the lesson will distinguish disorders by their effects on vision and methods of correction.',
+        pupilActivities: 'Learners observe the eye diagram, answer the introductory questions, distinguish clear vision from impaired vision and record the definition of an eye disorder.',
+        methods: 'Question and Answer, Teacher Exposition, Demonstration'
+      },
+      {
+        time: '25 min',
+        learningPoints: `COMMON REFRACTIVE EYE DISORDERS\n\n1. Myopia (short-sightedness): near objects are seen clearly but distant objects appear blurred. The image tends to form in front of the retina, and it is corrected using a concave (diverging) lens.\n2. Hypermetropia/hyperopia (long-sightedness): distant objects may be seen more clearly than near objects. The image tends to form behind the retina, and it is corrected using a convex (converging) lens.\n3. Presbyopia: an age-related reduction in the ability of the eye to focus on near objects because the lens becomes less flexible and accommodation becomes weaker. It is commonly corrected with suitable converging reading lenses, or bifocal/progressive lenses where required.\n4. Astigmatism: uneven curvature of the cornea or lens causes blurred or distorted vision. It is corrected with cylindrical lenses.`,
+        teacherActivities: 'Teacher explains each refractive disorder using ray diagrams. Teacher draws the retina, normal focal point, myopic focal point and hypermetropic focal point on the board. Teacher shows how concave lenses diverge light rays and convex lenses converge light rays, then explains cylindrical correction for astigmatism.',
+        pupilActivities: 'Learners copy and label the ray diagrams, complete a table showing disorder, characteristic symptom, cause/effect on focusing and corrective lens, and answer oral questions comparing myopia with hypermetropia.',
+        methods: 'Teacher Exposition, Board Illustration, Demonstration, Question and Answer'
+      },
+      {
+        time: '20 min',
+        learningPoints: `OTHER COMMON EYE CONDITIONS AND GUIDED APPLICATION\n\nCataract occurs when the normally transparent lens becomes cloudy, causing blurred or hazy vision and, in advanced cases, serious visual impairment. Treatment may involve surgical removal of the cloudy lens and replacement with an artificial intraocular lens.\n\nGuided classification task: learners match each condition to its main feature/correction: myopia → blurred distant vision → concave lens; hypermetropia → difficulty with near vision → convex lens; astigmatism → distorted/blurred vision → cylindrical lens; presbyopia → age-related difficulty focusing near → reading/bifocal/progressive correction; cataract → cloudy lens → medical/surgical management.`,
+        teacherActivities: 'Teacher gives learners disorder-and-correction cards or a board table. Teacher asks groups to match each disorder with its main visual effect and correction, then checks why a concave lens is used for myopia and a convex lens for hypermetropia. Teacher corrects misconceptions.',
+        pupilActivities: 'Learners work in groups to match disorders, symptoms and corrections, complete the classification table, explain two matches to the class and correct their notes after feedback.',
+        methods: 'Group Work, Matching Activity, Discussion, Question and Answer'
+      },
+      {
+        time: '15 min',
+        learningPoints: `INDIVIDUAL ASSESSMENT: EYE DISORDERS\n\n1. Define an eye disorder.\n2. Distinguish between myopia and hypermetropia.\n3. State the corrective lens used for myopia and explain its action.\n4. State the corrective lens used for hypermetropia and explain its action.\n5. State one cause/effect and one correction for astigmatism.\n6. Explain why presbyopia commonly affects near vision in older people.\n7. State what happens to the lens in a cataract.`,
+        teacherActivities: 'Teacher sets the seven questions, supervises individual work, marks responses and gives immediate correction. Teacher checks that learners identify both the disorder and the correct form of treatment/correction rather than merely memorising names.',
+        pupilActivities: 'Learners answer all questions individually, draw a simple correction ray diagram where required, submit or exchange work for checking, and correct inaccurate responses.',
+        methods: 'Individual Work, Written Exercise, Assessment, Question and Answer'
+      },
+      {
+        time: '10 min',
+        learningPoints: `SUMMARY AND CONCLUSION\n\nEye disorders can affect focusing, image formation or the transparency of eye structures. Myopia is associated with blurred distant vision and is corrected with a concave lens; hypermetropia affects near vision and is corrected with a convex lens; astigmatism is corrected with cylindrical lenses; presbyopia is associated with reduced accommodation with age; cataract involves clouding of the lens and may require surgery.`,
+        teacherActivities: 'Teacher conducts a rapid oral review: Which disorder is corrected with a concave lens? Which with a convex lens? Which is associated with an irregular curvature? What happens in cataract? Teacher gives the exit question: A learner sees nearby objects clearly but distant objects are blurred. Name the disorder and the corrective lens.',
+        pupilActivities: 'Learners answer the rapid-review questions, state the main disorder-correction relationships and answer the exit question: myopia, corrected using a concave lens.',
+        methods: 'Review, Question and Answer, Consolidation'
+      }
+    ];
+  }
 
   if (subject.toLowerCase() === 'biology' && (key.includes('excretion') || key.includes('excretory'))) {
     return [
@@ -1216,18 +1258,25 @@ function repairOBCLessonContent(aiContent, topic, subtopic, subject, grade, term
     'Relate each excretory product to the organ and process through which it leaves the body.'
   ] : [
     'By the end of this lesson, learners should be able to:',
-    `Define and explain ${topic}.`,
-    `Identify the main concepts, structures or processes related to ${topic}.`,
-    `Apply knowledge of ${topic} to relevant subject questions or activities.`,
-    `Explain the importance or application of ${topic}.`
+    `Define ${focus || topic} using the exact meaning taught in the lesson.`,
+    `State and explain at least two specific facts, features or steps of ${focus || topic}.`,
+    `Distinguish ${focus || topic} from a directly related concept using a concrete example.`,
+    `Answer structured questions or complete a practical/classroom task specifically about ${focus || topic}.`
   ];
 
   const existingDevelopment = Array.isArray(content.lessonDevelopment) ? content.lessonDevelopment : [];
   const existingText = existingDevelopment.map(x => `${x?.learningPoints || x?.content || ''} ${x?.teacherActivities || x?.teacherActivity || ''} ${x?.pupilActivities || x?.pupilActivity || ''}`).join(' ');
   const genericOBC = /main content of .* using appropriate examples|key points of .* and identify|subject-appropriate activity|relevant subject questions or activities|appropriate OBC teaching methods/i.test(existingText);
-  // Preserve detailed AI-generated development; use the verified/fallback development only when needed.
-  if (existingDevelopment.length < 5 || genericOBC) content.lessonDevelopment = development;
-  else content.lessonDevelopment = existingDevelopment;
+  // Preserve detailed AI-generated development whenever it is already topic-specific.
+  // The verified builders are only emergency fallbacks; they must never overwrite
+  // good DeepSeek content for an arbitrary subject/topic.
+  const existingSpecific = existingDevelopment.length >= 5 && !genericOBC &&
+    isTopicSpecificLesson(content, topic, focus, 'obc');
+  if (!existingSpecific && development.length >= 5) {
+    content.lessonDevelopment = development;
+  } else if (existingDevelopment.length >= 5) {
+    content.lessonDevelopment = existingDevelopment;
+  }
   content.learnersEvaluation = biologyExcretion ? [
     'Define excretion.',
     'State four human excretory organs and one product removed by each.',
@@ -2211,17 +2260,35 @@ Return ONLY the JSON object, no other text.
         }
       }
 
-      // Curriculum-specific fallback only. CBC uses lessonProgression; OBC uses lessonDevelopment.
-      // Never create a CBC lessonDevelopment array: it is not part of the CBC structure and
-      // doing so can overwrite/trigger generic fallback content after a valid CBC generation.
+      // Format-specific emergency recovery only. Never use the old generic
+      // lessonContent generator for OBC because it can inject unrelated filler.
       if (curriculumType === 'cbc' && (!Array.isArray(aiContent.lessonProgression) || aiContent.lessonProgression.length === 0)) {
-        console.log('📝 CBC lessonProgression was empty, FORCE populating with content...');
-        aiContent.lessonProgression = generateLessonProgression(topic, subject, grade);
+        console.log('📝 CBC lessonProgression was empty, rebuilding from the verified CBC progression builder...');
+        aiContent.lessonProgression = generateVerifiedCBCProgression(topic, subtopic || '', subject, grade, curriculumContext?.match || {});
       }
 
       if (curriculumType === 'obc' && (!Array.isArray(aiContent.lessonDevelopment) || aiContent.lessonDevelopment.length === 0)) {
-        console.log('📝 OBC lessonDevelopment was empty, FORCE populating with content...');
-        aiContent.lessonDevelopment = generateLessonContent(topic, subject, grade);
+        console.log('📝 OBC lessonDevelopment was empty, rebuilding from the verified OBC development builder...');
+        aiContent.lessonDevelopment = generateVerifiedOBCDevelopment(topic, subtopic || '', subject, grade);
+      }
+
+      // OBC must pass the same specificity gate after repair/recovery. A
+      // successful DeepSeek response is not allowed to be saved merely because
+      // it has five rows; every row must remain concrete and topic-specific.
+      if (curriculumType === 'obc' && !isTopicSpecificLesson(aiContent, topic, subtopic, 'obc')) {
+        console.log('⚠️ OBC content still failed after repair; rebuilding development from the topic-locked OBC builder...');
+        const verifiedOBC = generateVerifiedOBCDevelopment(topic, subtopic || '', subject, grade);
+        if (Array.isArray(verifiedOBC) && verifiedOBC.length >= 5) {
+          aiContent.lessonDevelopment = verifiedOBC;
+        }
+      }
+
+      if (curriculumType === 'cbc' && !isTopicSpecificLesson(aiContent, topic, subtopic, 'cbc')) {
+        console.log('⚠️ CBC content still failed after repair/recovery; rebuilding the verified CBC progression...');
+        const verifiedCBC = generateVerifiedCBCProgression(topic, subtopic || '', subject, grade, curriculumContext?.match || {});
+        if (Array.isArray(verifiedCBC) && verifiedCBC.length === 6) {
+          aiContent.lessonProgression = verifiedCBC;
+        }
       }
 
       console.log(`✅ ${curriculumType.toUpperCase()} lesson generated with DeepSeek`);
@@ -2242,14 +2309,14 @@ Return ONLY the JSON object, no other text.
       }
     }
 
-    // ONE MORE FINAL CHECK - only validate/populate the structure belonging to the selected curriculum.
-    if (curriculumType === 'cbc' && (!Array.isArray(aiContent.lessonProgression) || aiContent.lessonProgression.length === 0)) {
-      console.log('🔧 FINAL FORCE: CBC lessonProgression still empty, populating...');
+    // ONE MORE FINAL CHECK - Ensure lessonProgression is populated
+    if (curriculumType === 'cbc' && (!aiContent.lessonProgression || aiContent.lessonProgression.length === 0)) {
+      console.log('🔧 FINAL FORCE: lessonProgression still empty, populating...');
       aiContent.lessonProgression = generateLessonProgression(topic, subject, grade);
     }
 
-    if (curriculumType === 'obc' && (!Array.isArray(aiContent.lessonDevelopment) || aiContent.lessonDevelopment.length === 0)) {
-      console.log('🔧 FINAL FORCE: OBC lessonDevelopment still empty, populating...');
+    if (curriculumType === 'obc' && (!aiContent.lessonDevelopment || aiContent.lessonDevelopment.length === 0)) {
+      console.log('🔧 FINAL FORCE: lessonDevelopment still empty, populating...');
       aiContent.lessonDevelopment = generateLessonContent(topic, subject, grade);
     }
 
@@ -2286,8 +2353,22 @@ Return ONLY the JSON object, no other text.
     if (curriculumType === 'obc') {
       aiContent = repairOBCLessonContent(aiContent, topic, subtopic, subject, grade, term);
       if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'obc')) {
+        console.log('⚠️ Final OBC specificity check failed; requesting one final content-only regeneration...');
+        try {
+          const finalRepair = await generateDeepSeekJSON([
+            { role: 'system', content: 'You are a Zambian OBC lesson-plan specialist. Return ONLY valid JSON. Every lessonDevelopment row must contain concrete, topic-specific content. Never use generic placeholders.' },
+            { role: 'user', content: buildSpecificityRepairPrompt(topic, subtopic, subject, grade, 'obc', curriculumContext) }
+          ], { max_tokens: 10000, temperature: 0.15 });
+          if (finalRepair && typeof finalRepair === 'object') {
+            aiContent = { ...aiContent, ...finalRepair };
+          }
+        } catch (finalRepairError) {
+          console.log(`⚠️ Final OBC regeneration failed: ${finalRepairError.message}`);
+        }
+      }
+      if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'obc')) {
         return res.status(422).json({
-          error: 'The selected topic/subtopic did not produce sufficiently topic-specific lesson content. Please retry or select a curriculum source match.',
+          error: 'The lesson generator could not produce sufficiently topic-specific content for the selected topic/subtopic after regeneration. No generic lesson was saved.',
           code: 'LESSON_CONTENT_NOT_TOPIC_SPECIFIC'
         });
       }
@@ -2379,15 +2460,19 @@ Return ONLY the JSON object, no other text.
       ? aiContent.lessonProgression 
       : generateLessonProgression(topic, subject, grade);
 
-    // CBC and OBC have different lesson table structures. Do not generate the
-    // OBC lessonDevelopment fallback while rendering a CBC lesson.
-    let lessonDevelopmentArray = curriculumType === 'obc' && Array.isArray(aiContent.lessonDevelopment)
+    let lessonDevelopmentArray = Array.isArray(aiContent.lessonDevelopment)
       ? aiContent.lessonDevelopment
       : [];
 
+    // OBC has one authoritative development path. Never fall back to the old
+    // generic generateLessonContent() template because that is the source of
+    // the 'lessonDevelopment was empty, populating with default content' leak.
     if (curriculumType === 'obc' && lessonDevelopmentArray.length === 0) {
-      console.log('📝 OBC lessonDevelopment was empty, populating with default content...');
-      lessonDevelopmentArray = generateLessonContent(topic, subject, grade);
+      console.log('📝 OBC lessonDevelopment was empty, rebuilding from topic-locked content...');
+      lessonDevelopmentArray = generateVerifiedOBCDevelopment(topic, subtopic || '', subject, grade);
+    } else if (curriculumType === 'cbc' && lessonDevelopmentArray.length === 0) {
+      // CBC does not use lessonDevelopment as its teaching table.
+      lessonDevelopmentArray = [];
     }
 
     // Normalize OBC development field names so both the AI response and
