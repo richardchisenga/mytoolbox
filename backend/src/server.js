@@ -2432,48 +2432,60 @@ Return ONLY the JSON object, no other text.
       if (Array.isArray(aiContent.lessonProgression) && aiContent.lessonProgression.length === 6) {
         aiContent.lessonProgression = normalizeCBCProgressionRows(aiContent.lessonProgression);
       }
-      if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'cbc')) {
-        console.log('⚠️ Final CBC specificity check failed; requesting one final content-only regeneration...');
-        try {
-          const finalRepair = await generateDeepSeekJSON([
-            { role: 'system', content: 'You are a strict Zambian CBC lesson-plan specialist. Return ONLY valid JSON. The lesson must contain concrete content for the exact selected topic and subtopic. Never use generic placeholders.' },
-            { role: 'user', content: buildSpecificityRepairPrompt(topic, subtopic, subject, grade, 'cbc', curriculumContext) }
-          ], { max_tokens: 10000, temperature: 0.15 });
-          if (finalRepair && typeof finalRepair === 'object') {
-            aiContent = { ...aiContent, ...finalRepair };
-            if (Array.isArray(aiContent.lessonProgression) && aiContent.lessonProgression.length === 6) {
-              aiContent.lessonProgression = normalizeCBCProgressionRows(aiContent.lessonProgression);
-            }
-          }
-        } catch (finalRepairError) {
-          console.log(`⚠️ Final CBC regeneration failed: ${finalRepairError.message}`);
-        }
-      }
-      if (Array.isArray(aiContent.lessonProgression) && aiContent.lessonProgression.length === 6) {
-        aiContent.lessonProgression = normalizeCBCProgressionRows(aiContent.lessonProgression);
-      }
-      if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'cbc')) {
-        const finalRows = Array.isArray(aiContent.lessonProgression) ? aiContent.lessonProgression : [];
-        const finalCombined = finalRows.map(r => JSON.stringify(r)).join(' ').toLowerCase();
-        const finalFocusWords = lessonSpecificityTerms(String(subtopic || topic || ''), '');
-        const finalTopicWords = lessonSpecificityTerms(String(topic || ''), '');
-        const finalHits = (words) => words.reduce((n, term) => {
-          const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          return n + ((finalCombined.match(new RegExp(`\\b${escaped}\\b`, 'gi')) || []).length);
-        }, 0);
+      // Final CBC acceptance uses the normalized rows directly. DeepSeek may
+      // use descriptive stage names, but normalization above preserves the
+      // generated topic-specific content and maps rows to the required CBC stages.
+      const finalRows = Array.isArray(aiContent.lessonProgression) ? aiContent.lessonProgression : [];
+      const finalCombined = finalRows.map(r => JSON.stringify(r)).join(' ').toLowerCase();
+      const finalFocusWords = lessonSpecificityTerms(String(subtopic || topic || ''), '');
+      const finalTopicWords = lessonSpecificityTerms(String(topic || ''), '');
+      const finalHits = (words) => words.reduce((n, term) => {
+        const escaped = String(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return n + ((finalCombined.match(new RegExp(`\\b${escaped}\\b`, 'gi')) || []).length);
+      }, 0);
+      const finalFocusHits = finalHits(finalFocusWords);
+      const finalTopicHits = finalHits(finalTopicWords);
+      const finalConcreteEvidence = /\b(defin|explain|identify|state|describe|compare|predict|observe|measure|draw|label|calculate|classif|investigat|experiment|demonstrat|analyse|analyz|apply|solve|differentiat|discuss|construct|plot|name)\w*/i.test(finalCombined);
+      const finalStructureValid = finalRows.length === 6 && finalRows.every((r) => {
+        return [r?.stage, r?.time, r?.teacherRole, r?.learnerRole, r?.assessmentCriteria]
+          .every(v => String(v || '').trim().length >= 2);
+      });
+      const finalTopicValid = finalConcreteEvidence &&
+        (finalFocusHits >= 2 || finalTopicHits >= 3);
+
+      console.log('✅ CBC FINAL QUALITY CHECK', JSON.stringify({
+        topic, subtopic, rows: finalRows.length,
+        focusHits: finalFocusHits, topicHits: finalTopicHits,
+        concreteEvidence: finalConcreteEvidence,
+        structureValid: finalStructureValid,
+        topicValid: finalTopicValid,
+        stages: finalRows.map(r => r?.stage)
+      }));
+
+      // Do not reject a concrete CBC lesson because of wording-only/template
+      // heuristics. Reject only when the six required rows are actually missing
+      // or the generated content does not contain meaningful selected-topic
+      // evidence.
+      if (!finalStructureValid || !finalTopicValid) {
         console.log('❌ CBC FINAL REJECT DIAGNOSTICS', JSON.stringify({
           topic, subtopic, focusText: String(subtopic || topic || ''), rows: finalRows.length,
-          focusHits: finalHits(finalFocusWords), topicHits: finalHits(finalTopicWords),
+          focusHits: finalFocusHits, topicHits: finalTopicHits,
           genericFiller: hasGenericLessonFiller(finalCombined),
-          concreteEvidence: /\b(defin|explain|identify|state|describe|compare|predict|observe|measure|draw|label|calculate|classif|investigat|experiment|demonstrat|analyse|analyz|apply|solve|differentiat|discuss|construct|plot|name)\w*/i.test(finalCombined),
+          concreteEvidence: finalConcreteEvidence,
+          structureValid: finalStructureValid,
+          topicValid: finalTopicValid,
           stages: finalRows.map(r => r?.stage),
-          contentSample: finalRows.map(r => ({ stage:r?.stage, time:r?.time, teacherRole:r?.teacherRole || r?.teacherActivities, learnerRole:r?.learnerRole || r?.learnerActivities || r?.pupilActivities, assessmentCriteria:r?.assessmentCriteria || r?.assessment })).slice(0,6)
+          contentSample: finalRows.map(r => ({
+            stage:r?.stage, time:r?.time, teacherRole:r?.teacherRole,
+            learnerRole:r?.learnerRole, assessmentCriteria:r?.assessmentCriteria
+          })).slice(0,6)
         }, null, 2));
         return res.status(422).json({
           error: 'The lesson generator could not produce sufficiently topic-specific CBC content after automatic regeneration. No generic lesson was saved.',
           code: 'LESSON_CONTENT_NOT_TOPIC_SPECIFIC'
         });
       }
+
     }
 
     // HARD FORMAT ISOLATION: preserve the user's OBC format while preventing cross-format leakage.
