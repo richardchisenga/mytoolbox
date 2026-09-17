@@ -847,7 +847,14 @@ function repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term
     }
   }
 
-  aiContent.lessonProgression = generateVerifiedCBCProgression(topic, subtopic, subject, grade, cm);
+  // Preserve a detailed DeepSeek progression when it contains real content.
+  // Only rebuild when missing, too short, malformed, or obviously generic.
+  const lp = Array.isArray(aiContent.lessonProgression) ? aiContent.lessonProgression : [];
+  const lpText = lp.map(x => `${x?.teacherRole || ''} ${x?.learnerRole || ''} ${x?.assessmentCriteria || ''}`).join(' ');
+  const genericCBC = /appropriate classroom task|appropriate examples|key ideas of .* using appropriate|investigate or classify information related to|apply the new knowledge to the activity/i.test(lpText);
+  if (lp.length < 6 || genericCBC) {
+    aiContent.lessonProgression = generateVerifiedCBCProgression(topic, subtopic, subject, grade, cm);
+  }
   return aiContent;
 }
 
@@ -889,6 +896,13 @@ CURRICULUM PRIORITY RULES:
 6. If a curriculum field is unavailable, create a pedagogically appropriate value using the subject profile, but do not present it as an official curriculum statement.
 7. Use learner-centred CBC pedagogy: participation, investigation, collaboration, communication, application and assessment of the stated competence.
 8. The lesson progression MUST total exactly 80 minutes.
+9. DETAIL STANDARD: Write a fully teachable lesson, not a summary. Every stage must contain concrete, topic-specific teaching content, teacher actions, learner actions and observable assessment evidence.
+10. The LESSON DEVELOPMENT must state the actual concepts, definitions, rules, principles, processes, examples, calculations, cases, texts, procedures or practical steps appropriate to the exact topic.
+11. ACTIVITY 1 and ACTIVITY 2 must contain real learner tasks/questions/investigations appropriate to the subject, with what learners are expected to produce or demonstrate.
+12. The EXERCISE must contain actual topic-specific questions/tasks, not phrases such as 'give appropriate questions' or 'apply the concept'.
+13. Avoid generic filler such as 'explain the key ideas', 'use appropriate examples', 'complete an appropriate task' unless followed by the actual content/examples/task.
+14. Do not copy Biology-style activities into Mathematics, Chemistry, Civic Education, Languages, Home Management or other subjects. Use the subject's genuine methods and content.
+15. Make the lesson detailed enough that another teacher could teach the 80-minute lesson directly from the generated plan.
 
 VERIFIED CURRICULUM FIELDS TO PRESERVE WHEN PRESENT:
 Specific competence: ${verifiedOutcomes || '[not supplied]'}
@@ -957,6 +971,13 @@ CURRICULUM PRIORITY RULES:
 3. Preserve the verified OBC wording where supplied.
 4. Do not invent official OBC codes, page numbers, textbook titles or source claims.
 5. If no verified OBC source match exists, generate pedagogically useful legacy OBC content but clearly avoid claiming it is an official syllabus statement.
+6. DETAIL STANDARD: The plan must be fully teachable and content-rich for the exact topic and subtopic.
+7. Learning Points must contain actual subject content: definitions, facts, principles, procedures, worked examples, calculations, cases, texts, practical steps or other concrete material relevant to the topic.
+8. Teacher Activities must describe exactly what the teacher explains, demonstrates, asks, writes, displays, checks or corrects.
+9. Pupil Activities must describe exactly what learners do, answer, calculate, discuss, draw, classify, practise, demonstrate or produce.
+10. Include real topic-specific questions/tasks in guided practice and individual assessment. Do not use generic filler or empty placeholders.
+11. Use genuine methods for the selected subject; do not force Biology, laboratory or generic group activities into unrelated subjects.
+12. Make the lesson detailed enough that another teacher could teach the 80-minute lesson directly from the generated plan.
 
 ⚠️ CRITICAL: You MUST return ONLY valid JSON that EXACTLY matches this OBC lesson structure. The lessonDevelopment array MUST have content with all required fields including content, teacherActivity, pupilActivity, and methods. The content field MUST contain actual lesson content with examples, not empty placeholders.
 
@@ -1133,7 +1154,12 @@ function repairOBCLessonContent(aiContent, topic, subtopic, subject, grade, term
     `Explain the importance or application of ${topic}.`
   ];
 
-  content.lessonDevelopment = development;
+  const existingDevelopment = Array.isArray(content.lessonDevelopment) ? content.lessonDevelopment : [];
+  const existingText = existingDevelopment.map(x => `${x?.learningPoints || x?.content || ''} ${x?.teacherActivities || x?.teacherActivity || ''} ${x?.pupilActivities || x?.pupilActivity || ''}`).join(' ');
+  const genericOBC = /main content of .* using appropriate examples|key points of .* and identify|subject-appropriate activity|relevant subject questions or activities|appropriate OBC teaching methods/i.test(existingText);
+  // Preserve detailed AI-generated development; use the verified/fallback development only when needed.
+  if (existingDevelopment.length < 5 || genericOBC) content.lessonDevelopment = development;
+  else content.lessonDevelopment = existingDevelopment;
   content.learnersEvaluation = biologyExcretion ? [
     'Define excretion.',
     'State four human excretory organs and one product removed by each.',
@@ -2065,8 +2091,9 @@ You are an expert Zambian teacher creating ${curriculumType.toUpperCase()} lesso
 The user will provide a topic and requirements for a lesson plan.
 Parse the information and output it in valid JSON format.
 
-For CBC: Include lessonProgression array with stages, times, teacherRole, learnerRole, and assessmentCriteria.
-For OBC: Include lessonDevelopment array with content, teacherActivity, pupilActivity, and methods.
+For CBC: Include a detailed lessonProgression array with stages, times, teacherRole, learnerRole, and assessmentCriteria. Each row must contain actual topic-specific content and a real learner task.
+For OBC: Include a detailed lessonDevelopment array with time, learningPoints, teacherActivities, pupilActivities, and methods. Each row must contain actual topic-specific teaching content and real learner tasks.
+For BOTH formats: the lesson must be fully teachable, content-rich and specific to the selected subject/topic. Never use generic filler, empty arrays, vague activities, or copied content from another subject.
 
 CURRICULUM ISOLATION:
 - CBC means the current 2024 Competence-Based Curriculum.
@@ -2086,7 +2113,7 @@ Return ONLY the JSON object, no other text.
       ];
 
       aiContent = await generateDeepSeekJSON(messages, { 
-        max_tokens: 4000,
+        max_tokens: 7000,
         temperature: 0.3
       });
       
