@@ -852,9 +852,23 @@ function repairCBCLessonContent(aiContent, topic, subtopic, subject, grade, term
   // topic-specific content. Rebuild only when the progression is missing, too
   // short, or structurally malformed. The final specificity gate below handles
   // genuinely generic content and requests a targeted regeneration.
+  // Normalize common DeepSeek field-name variants without replacing the
+  // generated topic-specific content with a generic/template progression.
   const lp = Array.isArray(aiContent.lessonProgression) ? aiContent.lessonProgression : [];
-  const validLP = lp.length >= 6 && lp.every(x => x && x.stage && x.time && x.teacherRole && x.learnerRole && x.assessmentCriteria);
-  if (!validLP) {
+  aiContent.lessonProgression = lp.map((row, index) => ({
+    ...row,
+    stage: String(row?.stage || '').trim(),
+    time: row?.time || row?.duration || '',
+    teacherRole: row?.teacherRole || row?.teacherActivities || row?.teacherActivity || '',
+    learnerRole: row?.learnerRole || row?.learnerActivities || row?.learnerActivity || row?.pupilActivities || row?.pupilActivity || '',
+    assessmentCriteria: row?.assessmentCriteria || row?.assessment || row?.assessmentTask || ''
+  }));
+
+  // Only use the verified generator when the AI returned no progression at
+  // all. Never overwrite a non-empty AI progression merely because its field
+  // names need normalization; the specificity gate will trigger regeneration
+  // when the actual content is generic.
+  if (aiContent.lessonProgression.length === 0) {
     aiContent.lessonProgression = generateVerifiedCBCProgression(topic, subtopic, subject, grade, cm);
   }
   return aiContent;
@@ -874,7 +888,7 @@ function generateCBCPrompt(topic, grade, subject, classSize, user, subtopic, ter
   const verifiedStandard = cm.expectedStandard || cm.expectedStandards || '';
   const verifiedKnowledge = cm.knowledge || '';
   const verifiedSkills = cm.skills || '';
-  const lessonProgression = generateVerifiedCBCProgression(topic, subtopic, subject, grade, cm);
+  const lessonProgression = []; // DeepSeek must author the actual topic-specific CBC progression.
 
   return `
 You are an expert Zambian teacher creating a CBC (Competence-Based Curriculum) lesson plan for ${grade} ${subject} on the topic: "${topic}"${subtopic ? ` and sub-topic "${subtopic}"` : ''}.
@@ -2280,12 +2294,6 @@ Return ONLY the JSON object, no other text.
         }
       }
 
-      // FORCE populate if empty - THIS IS THE CRITICAL FIX
-      if (curriculumType === 'cbc' && (!aiContent.lessonProgression || aiContent.lessonProgression.length === 0)) {
-        console.log('📝 CBC lessonProgression was empty, FORCE populating with content...');
-        aiContent.lessonProgression = generateLessonProgression(topic, subject, grade);
-      }
-
       if (curriculumType === 'obc' && (!aiContent.lessonDevelopment || aiContent.lessonDevelopment.length === 0)) {
         console.log('📝 OBC lessonDevelopment was empty, FORCE populating with content...');
         aiContent.lessonDevelopment = generateLessonContent(topic, subject, grade);
@@ -2307,12 +2315,6 @@ Return ONLY the JSON object, no other text.
       } else {
         aiContent = generateFallbackOBC(topic, grade, subject, classSize, user);
       }
-    }
-
-    // ONE MORE FINAL CHECK - Ensure lessonProgression is populated
-    if (curriculumType === 'cbc' && (!aiContent.lessonProgression || aiContent.lessonProgression.length === 0)) {
-      console.log('🔧 FINAL FORCE: lessonProgression still empty, populating...');
-      aiContent.lessonProgression = generateLessonProgression(topic, subject, grade);
     }
 
     if (curriculumType === 'obc' && (!aiContent.lessonDevelopment || aiContent.lessonDevelopment.length === 0)) {
@@ -2382,15 +2384,31 @@ Return ONLY the JSON object, no other text.
         console.log('⚠️ Final CBC specificity check failed; requesting one final content-only regeneration...');
         try {
           const finalRepair = await generateDeepSeekJSON([
-            { role: 'system', content: 'You are a strict Zambian CBC lesson-plan specialist. Return ONLY valid JSON. The lesson must contain concrete content for the exact selected topic and subtopic. Never use generic placeholders.' },
+            { role: 'system', content: 'You are a strict Zambian CBC lesson-plan specialist. Return ONLY valid JSON. The lesson must contain concrete content for the exact selected topic and subtopic. Never use generic placeholders. Do not return an empty lessonProgression array.' },
             { role: 'user', content: buildSpecificityRepairPrompt(topic, subtopic, subject, grade, 'cbc', curriculumContext) }
-          ], { max_tokens: 10000, temperature: 0.15 });
-          if (finalRepair && typeof finalRepair === 'object') aiContent = { ...aiContent, ...finalRepair };
+          ], { max_tokens: 12000, temperature: 0.1 });
+          if (finalRepair && typeof finalRepair === 'object') {
+            aiContent = { ...aiContent, ...finalRepair };
+            const rows = Array.isArray(aiContent.lessonProgression) ? aiContent.lessonProgression : [];
+            aiContent.lessonProgression = rows.map(row => ({
+              ...row,
+              time: row?.time || row?.duration || '',
+              teacherRole: row?.teacherRole || row?.teacherActivities || row?.teacherActivity || '',
+              learnerRole: row?.learnerRole || row?.learnerActivities || row?.learnerActivity || row?.pupilActivities || row?.pupilActivity || '',
+              assessmentCriteria: row?.assessmentCriteria || row?.assessment || row?.assessmentTask || ''
+            }));
+          }
         } catch (finalRepairError) {
           console.log(`⚠️ Final CBC regeneration failed: ${finalRepairError.message}`);
         }
       }
       if (!isTopicSpecificLesson(aiContent, topic, subtopic, 'cbc')) {
+        const rows = Array.isArray(aiContent.lessonProgression) ? aiContent.lessonProgression : [];
+        console.log('❌ CBC FINAL REJECT', JSON.stringify({
+          topic, subtopic, rowCount: rows.length,
+          stages: rows.map(r => r?.stage),
+          sample: rows.slice(0, 6).map(r => ({ stage: r?.stage, time: r?.time, teacherRole: r?.teacherRole, learnerRole: r?.learnerRole, assessmentCriteria: r?.assessmentCriteria }))
+        }, null, 2));
         return res.status(422).json({
           error: 'The lesson generator could not produce sufficiently topic-specific CBC content after automatic regeneration. No generic lesson was saved.',
           code: 'LESSON_CONTENT_NOT_TOPIC_SPECIFIC'
